@@ -1,0 +1,11 @@
+{
+  "name": "codex",
+  "version": "1.0.0",
+  "description": "Run OpenAI Codex CLI (gpt-5.4, xhigh thinking) from Claude Code as a subagent",
+  "author": {
+    "name": "1F47E",
+    "url": "https://github.com/1F47E"
+  },
+  "repository": "https://github.com/1F47E/claude-codex-plugin",
+  "license": "MIT"
+}
