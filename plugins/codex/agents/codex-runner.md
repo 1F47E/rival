@@ -28,12 +28,15 @@ Before running codex, run `pwd` to confirm the current working directory. Pass i
 
 Use a single-quoted heredoc to pass the user prompt safely via stdin. This prevents shell injection — the prompt is never interpolated into the command string.
 
+**CRITICAL:** Generate a unique heredoc delimiter for each invocation by appending a random suffix (e.g. `CODEX_PROMPT_a1b2c3d4`). This prevents a crafted prompt from terminating the heredoc early.
+
 Run everything in ONE Bash call (timeout 300000ms):
 
 ```bash
-OUTPUT_FILE=$(mktemp /tmp/codex-run-XXXXXX.txt)
-ERR_FILE="${OUTPUT_FILE}.err"
-cat <<'CODEX_PROMPT_EOF' | codex exec \
+DELIM="CODEX_PROMPT_$(head -c 16 /dev/urandom | xxd -p | head -c 16)"
+OUTPUT_FILE=$(mktemp /tmp/codex-run.XXXXXX)
+ERR_FILE=$(mktemp /tmp/codex-err.XXXXXX)
+cat <<"$DELIM" | codex exec \
   -C "<working directory>" \
   -m gpt-5.4 \
   -c model_reasoning_effort="xhigh" \
@@ -44,14 +47,14 @@ cat <<'CODEX_PROMPT_EOF' | codex exec \
   - \
   2> "$ERR_FILE"
 <the user's prompt goes here verbatim — do NOT escape or modify it>
-CODEX_PROMPT_EOF
+$DELIM
 EXIT_CODE=$?
 echo "OUTPUT_PATH=$OUTPUT_FILE"
 echo "ERR_PATH=$ERR_FILE"
 echo "EXIT_CODE=$EXIT_CODE"
 ```
 
-**CRITICAL:** Place the user's prompt between `<<'CODEX_PROMPT_EOF'` and `CODEX_PROMPT_EOF` exactly as received. The single quotes around the delimiter prevent all shell expansion. Never put the prompt inside a double-quoted argument on the command line.
+**CRITICAL:** Place the user's prompt between the opening `<<` and closing `$DELIM` lines exactly as received. The randomized delimiter prevents injection. Never put the prompt inside a double-quoted argument on the command line.
 
 ## After Execution
 

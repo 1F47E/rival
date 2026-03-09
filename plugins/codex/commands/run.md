@@ -16,9 +16,9 @@ Run OpenAI Codex CLI from Claude Code. All work happens in a subagent to keep th
 If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT launch the agent:
 
 > **Usage:**
-> - `/codex 'explain the auth flow'` — run any prompt via codex
-> - `/codex 'find bugs in src/main.go'` — code analysis
-> - `/codex` — show this usage info
+> - `/codex:run 'explain the auth flow'` — run any prompt via codex
+> - `/codex:run 'find bugs in src/main.go'` — code analysis
+> - `/codex:run` — show this usage info
 
 ### Dispatch to agent
 
