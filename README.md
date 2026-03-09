@@ -1,6 +1,6 @@
 # codex — Claude Code Plugin
 
-<img src="assets/banner.png" width="600px">
+<img src="assets/banner2.png" width="600px">
 
 Run [OpenAI Codex CLI](https://github.com/openai/codex) from Claude Code as a subagent.
 
