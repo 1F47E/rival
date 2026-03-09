@@ -1,4 +1,4 @@
-# codex — Claude Code Plugin
+# codex:rival — Claude Code Plugin
 
 <img src="assets/banner2.png" width="600px">
 
@@ -10,10 +10,10 @@ Run [OpenAI Codex CLI](https://github.com/openai/codex) from Claude Code as a su
 
 ```bash
 # Add this repo as a marketplace
-claude plugin marketplace add https://github.com/1F47E/claude-codex-plugin
+claude plugin marketplace add https://github.com/1F47E/codex-rival
 
 # Install the plugin
-claude plugin install codex@claude-codex-plugin
+claude plugin install codex@codex-rival
 ```
 
 ## Prerequisites
