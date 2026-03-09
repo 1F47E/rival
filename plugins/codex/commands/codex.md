@@ -1,6 +1,6 @@
 ---
 description: Run OpenAI Codex CLI as a subagent (gpt-5.4, xhigh reasoning)
-argument-hint: "review" or a prompt for codex to execute
+argument-hint: "review" | "<custom prompt>" | (empty for usage)
 ---
 
 # Codex CLI Runner
@@ -16,10 +16,10 @@ Run OpenAI Codex CLI from Claude Code. All work happens in a subagent to keep th
 If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT launch the agent:
 
 > **Usage:**
-> - `/codex <prompt>` — run codex with a prompt
 > - `/codex review` — review uncommitted changes
 > - `/codex review --base main` — review changes against a branch
-> - `/codex review --commit abc123` — review a specific commit
+> - `/codex 'explain the auth flow in this project'` — run any custom prompt
+> - `/codex` — show this usage info
 
 ### Dispatch to agent
 
