@@ -21,34 +21,27 @@ claude plugin install codex@claude-codex-plugin
 
 ## Usage
 
-### General prompt
 ```
+/codex explain the auth flow in this project
+/codex find bugs in src/main.go
 /codex list all TypeScript files and summarize the project structure
 ```
 
-### Code review (uncommitted changes)
-```
-/codex review
-```
-
-### Code review against a branch
-```
-/codex review --base main
-```
+Run `/codex` with no arguments to see usage info.
 
 ## How it works
 
 The `/codex` command dispatches to a `codex-runner` subagent that:
 
 1. Verifies codex is installed and authenticated
-2. Runs `codex exec` (or `codex exec review`) with:
+2. Runs `codex exec` with your prompt:
    - Model: `gpt-5.4`
    - Reasoning: `xhigh`
    - Full auto mode (no approval prompts)
    - Ephemeral session (no persistence)
 3. Returns the output to your Claude Code session
 
-Output files are saved to `/tmp/codex-runs/` with timestamps for reference.
+Output files are saved to `/tmp/codex-run-*.txt` for reference.
 
 ## License
 

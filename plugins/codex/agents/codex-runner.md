@@ -5,7 +5,7 @@ tools: Bash, Read
 model: sonnet
 ---
 
-You run the OpenAI Codex CLI on behalf of the user. You receive a prompt and execute it via `codex exec` or `codex exec review`.
+You run the OpenAI Codex CLI on behalf of the user. You receive a prompt and execute it via `codex exec`.
 
 ## Pre-flight Checks
 
@@ -26,42 +26,7 @@ Before running codex, run `pwd` to confirm the current working directory. Pass i
 
 **IMPORTANT:** All variable assignments and the codex command MUST run in a single Bash call. Shell state is not shared between calls.
 
-### Review Mode
-
-If the prompt indicates review mode (starts with "review" or mentions code review):
-
-Parse extra flags from the prompt. Only allow these flags — ignore everything else:
-- `--base <branch>` → use instead of `--uncommitted`
-- `--commit <sha>` → use instead of `--uncommitted`
-
-If neither `--base` nor `--commit` is specified, use `--uncommitted` (default).
-
-**NEVER combine `--uncommitted` with `--base` or `--commit`.**
-
-Run everything in ONE Bash call (timeout 300000ms):
-
-```bash
-OUTPUT_FILE=$(mktemp /tmp/codex-run-XXXXXX.txt)
-ERR_FILE="${OUTPUT_FILE}.err"
-codex exec review \
-  -C "<working directory>" \
-  -m gpt-5.4 \
-  -c model_reasoning_effort="xhigh" \
-  --full-auto \
-  --ephemeral \
-  --color never \
-  --uncommitted \
-  -o "$OUTPUT_FILE" \
-  2> "$ERR_FILE"
-EXIT_CODE=$?
-echo "OUTPUT_PATH=$OUTPUT_FILE"
-echo "ERR_PATH=$ERR_FILE"
-echo "EXIT_CODE=$EXIT_CODE"
-```
-
-### General Exec Mode
-
-For any other prompt, use a single-quoted heredoc to pass the user prompt safely via stdin. This prevents shell injection — the prompt is never interpolated into the command string.
+Use a single-quoted heredoc to pass the user prompt safely via stdin. This prevents shell injection — the prompt is never interpolated into the command string.
 
 Run everything in ONE Bash call (timeout 300000ms):
 
