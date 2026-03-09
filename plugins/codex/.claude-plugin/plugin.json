@@ -1,7 +1,7 @@
 {
   "name": "codex",
   "version": "2.0.0",
-  "description": "Run OpenAI Codex CLI (gpt-5.4, xhigh reasoning) from Claude Code — prompts and code review",
+  "description": "Run OpenAI Codex CLI (gpt-5.4, configurable reasoning) from Claude Code — prompts and code review",
   "author": {
     "name": "1F47E",
     "url": "https://github.com/1F47E"

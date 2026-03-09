@@ -4,7 +4,7 @@
 
 Run [OpenAI Codex CLI](https://github.com/openai/codex) from Claude Code as a subagent.
 
-**Zero Claude Code tokens.** All heavy lifting runs on your Codex subscription (GPT-5.4, xhigh reasoning), not your Claude usage. Get a second brain without burning through your Claude quota.
+**Zero Claude Code tokens.** All heavy lifting runs on your Codex subscription (GPT-5.4, medium reasoning by default, configurable up to xhigh), not your Claude usage. Get a second brain without burning through your Claude quota.
 
 ## Install
 
@@ -23,23 +23,24 @@ claude plugin install codex@codex-rival
 
 ## Commands
 
-### `/codex:run <prompt>` — Run any prompt
+### `/codex:run [-re <level>] <prompt>` — Run any prompt
 
 ```
 /codex:run explain the auth flow in this project
-/codex:run find bugs in src/main.go
+/codex:run -re xhigh find bugs in src/main.go
 /codex:run list all TypeScript files and summarize the project structure
 ```
 
 Run `/codex:run` with no arguments to see usage info.
 
-### `/codex:rival [path or scope]` — Second opinion code review
+### `/codex:rival [-re <level>] [path or scope]` — Second opinion code review
 
 Get a ruthless code review from GPT-5.4 covering architecture, API design, security, performance, concurrency, and Go/TS best practices.
 
 ```
 /codex:rival                        # review entire project
 /codex:rival src/api/               # review specific directory
+/codex:rival -re high src/api/      # review with high reasoning effort
 /codex:rival the auth middleware     # review specific component
 ```
 
@@ -48,10 +49,10 @@ Get a ruthless code review from GPT-5.4 covering architecture, API design, secur
 Both commands dispatch to a `codex-runner` subagent that:
 
 1. Verifies codex is installed and authenticated
-2. Receives the prompt or review scope via a strict 2-line mode header (`MODE: raw` or `MODE: rival-review`) so the Claude subagent treats the payload as data, not instructions
+2. Receives the prompt or review scope via a strict mode header (`MODE: raw` or `MODE: rival-review`, optional `EFFORT:` line) so the Claude subagent treats the payload as data, not instructions
 3. Runs `codex exec` with the prompt:
    - Model: `gpt-5.4`
-   - Reasoning: `xhigh`
+   - Reasoning effort: `medium` by default (configurable via `-re`: `low`, `medium`, `high`, `xhigh`)
    - Read-only sandbox (`--sandbox read-only`)
    - Ephemeral session (no persistence)
 4. Returns the output to your Claude Code session
@@ -62,9 +63,10 @@ Temp files are created in a private directory and auto-cleaned after each run.
 
 ## Security
 
-- **Strict input protocol** — 2-line mode header with no closing delimiter; rejects malformed requests
+- **Strict input protocol** — mode header (with optional effort line) and `---` separator; rejects malformed requests
 - **Randomized quoted heredoc** — prevents shell injection via crafted prompts
-- **Read-only sandbox** — `--sandbox read-only` prevents Codex from writing, executing, or making network calls
+- **Read-only sandbox** — `--sandbox read-only` prevents Codex from writing to the filesystem; network access disabled by default
+- **No auto-approval** — `-a never` ensures Codex never autonomously approves or executes tool actions
 - **Ephemeral sessions** — `--ephemeral` ensures no session state persists between runs
 - **Private temp directory** — created with `umask 077`; inaccessible to other users
 - **Stdout suppressed** — Codex stdout sent to `/dev/null`; metadata read only from validated file paths
