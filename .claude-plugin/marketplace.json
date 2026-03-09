@@ -1,6 +1,6 @@
 {
-  "name": "claude-codex-plugin",
-  "description": "Run OpenAI Codex CLI from Claude Code as a subagent",
+  "name": "codex-rival",
+  "description": "GPT-5.4 code review from Claude Code. Zero Claude tokens.",
   "owner": {
     "name": "1F47E",
     "url": "https://github.com/1F47E"
