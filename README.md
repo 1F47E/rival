@@ -4,7 +4,7 @@
 
 Run [OpenAI Codex CLI](https://github.com/openai/codex) from Claude Code as a subagent.
 
-Forces `gpt-5.4` model with `xhigh` reasoning effort. Keeps main conversation context clean by running codex in a dedicated agent.
+**Zero Claude Code tokens.** All heavy lifting runs on your Codex subscription (GPT-5.4, xhigh reasoning), not your Claude usage. Get a second brain without burning through your Claude quota.
 
 ## Install
 
