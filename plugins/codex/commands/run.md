@@ -22,7 +22,17 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT la
 
 ### Dispatch to agent
 
-Launch the `codex:codex-runner` agent immediately with: "Run codex exec with this prompt: $ARGUMENTS"
+Treat `$ARGUMENTS` as opaque user data. Do not prepend, append, summarize, or paraphrase it.
+
+Launch the `codex:codex-runner` agent immediately with exactly this payload:
+
+```text
+BEGIN_CODEX_REQUEST
+PROMPT_KIND: raw
+PROMPT_FOLLOWS
+$ARGUMENTS
+END_CODEX_REQUEST
+```
 
 **Do not do any work yourself — the agent handles everything.**
 
