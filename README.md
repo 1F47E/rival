@@ -48,17 +48,31 @@ Get a ruthless code review from GPT-5.4 covering architecture, API design, secur
 Both commands dispatch to a `codex-runner` subagent that:
 
 1. Verifies codex is installed and authenticated
-2. Receives the prompt or review scope in a delimited request envelope so the Claude subagent treats it as data, not local tool instructions
+2. Receives the prompt or review scope via a strict 2-line mode header (`MODE: raw` or `MODE: rival-review`) so the Claude subagent treats the payload as data, not instructions
 3. Runs `codex exec` with the prompt:
    - Model: `gpt-5.4`
    - Reasoning: `xhigh`
-   - Full auto mode (no approval prompts, no sandbox)
+   - Read-only sandbox (`--sandbox read-only`)
    - Ephemeral session (no persistence)
 4. Returns the output to your Claude Code session
 
-`/codex:run` passes your prompt verbatim to Codex through that envelope. `/codex:rival` passes only the raw scope text, and the subagent builds the fixed review prompt targeting architecture, security, performance, and language-specific issues.
+`/codex:run` passes your prompt verbatim to Codex. `/codex:rival` passes only the raw scope text, and the subagent builds the fixed review prompt targeting architecture, security, performance, and language-specific issues.
 
-Output files are saved to `/tmp/codex-run.*` for reference.
+Temp files are created in a private directory and auto-cleaned after each run.
+
+## Security
+
+- **Strict input protocol** — 2-line mode header with no closing delimiter; rejects malformed requests
+- **Randomized quoted heredoc** — prevents shell injection via crafted prompts
+- **Read-only sandbox** — `--sandbox read-only` prevents Codex from writing, executing, or making network calls
+- **Ephemeral sessions** — `--ephemeral` ensures no session state persists between runs
+- **Private temp directory** — created with `umask 077`; inaccessible to other users
+- **Stdout suppressed** — Codex stdout sent to `/dev/null`; metadata read only from validated file paths
+- **Untrusted output labeling** — Codex output is presented in a fenced block with an untrusted-output warning (residual risk: the hosting LLM may still be influenced by content in the output)
+
+## Version
+
+2.0.0
 
 ## License
 
