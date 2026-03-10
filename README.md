@@ -25,25 +25,32 @@ You only need the CLI for the commands you use — Codex for `/rival:codex`, Gem
 
 ## Commands
 
-### `/rival:codex [-re <level>] <prompt>` — Run prompt via Codex CLI
+### `/rival:codex [-re <level>] [review [scope] | <prompt>]` — Run prompt via Codex CLI
 
 ```
 /rival:codex explain the auth flow in this project
 /rival:codex -re xhigh find bugs in src/main.go
-/rival:codex list all TypeScript files and summarize the project structure
+/rival:codex review                        — ruthless code review of entire project
+/rival:codex review src/api/               — review specific scope
+/rival:codex -re xhigh review src/api/     — review with xhigh reasoning
 ```
 
 **Reasoning effort** (`-re`): `low`, `medium` (default), `high`, `xhigh`
 
-### `/rival:gemini [-m <model>] <prompt>` — Run prompt via Gemini CLI
+### `/rival:gemini [-m <model>] [-re <level>] [review [scope] | <prompt>]` — Run prompt via Gemini CLI
 
 ```
 /rival:gemini explain the auth flow in this project
 /rival:gemini -m gemini-2.5-flash summarize this codebase
-/rival:gemini find security issues in the API layer
+/rival:gemini -re high analyze this complex algorithm
+/rival:gemini review                                   — ruthless code review of entire project
+/rival:gemini review src/api/                          — review specific scope
+/rival:gemini -m gemini-2.5-flash -re high review src/ — all flags combined
 ```
 
 **Models** (`-m`): `gemini-2.5-pro` (default), `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+**Reasoning effort** (`-re`): `low`, `medium` (default), `high`, `xhigh` — controls Gemini's thinking budget
 
 ## How it works
 
@@ -56,8 +63,9 @@ Each command dispatches to a dedicated runner subagent:
 
 **Gemini runner** (`/rival:gemini`):
 1. Verifies gemini CLI is installed
-2. Runs `gemini` with the prompt (Gemini 2.5 Pro by default, sandbox mode, isolated config)
-3. Returns the output to your Claude Code session
+2. Writes a `settings.json` with the requested thinking budget into an isolated config dir
+3. Runs `gemini` with the prompt (Gemini 2.5 Pro by default, sandbox mode, isolated config)
+4. Returns the output to your Claude Code session
 
 Temp files are created in private directories and auto-cleaned after each run.
 
@@ -72,7 +80,7 @@ Temp files are created in private directories and auto-cleaned after each run.
 - **Untrusted output labeling** — output is presented with an untrusted-output warning
 
 ### Gemini runner
-- **Strict input protocol** — mode/model header with model allowlist validation and `---` separator
+- **Strict input protocol** — mode/model/effort header with model allowlist and effort validation, `---` separator
 - **Model allowlist** — only `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` accepted (prevents injection via model arg)
 - **Randomized quoted heredoc** — same shell injection prevention as Codex runner
 - **Sandbox mode** — `--sandbox` uses macOS seatbelt (note: not equivalent to Codex's read-only sandbox)
@@ -81,7 +89,7 @@ Temp files are created in private directories and auto-cleaned after each run.
 
 ## Version
 
-3.0.0
+3.1.0
 
 ## License
 

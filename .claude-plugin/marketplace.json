@@ -10,7 +10,7 @@
       "name": "rival",
       "description": "Run prompts via Codex CLI (GPT-5.4) and Gemini CLI (Gemini 2.5 Pro) as subagents",
       "source": "./plugins/rival",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "category": "ai-tools",
       "tags": ["codex", "gemini", "openai", "google", "gpt-5.4", "code-review"]
     }

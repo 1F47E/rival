@@ -1,6 +1,6 @@
 {
   "name": "rival",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Dispatch prompts to external AI CLIs (Codex, Gemini) from Claude Code — zero Claude tokens",
   "author": {
     "name": "1F47E",
