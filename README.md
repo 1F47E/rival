@@ -21,7 +21,7 @@ claude plugin install rival@rival
 - [Codex CLI](https://github.com/openai/codex) installed: `npm install -g @openai/codex` + `codex login`
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed: `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY`
 
-You only need the CLI for the commands you use — Codex for `/rival:codex` and `/rival:review`, Gemini for `/rival:gemini`.
+You only need the CLI for the commands you use — Codex for `/rival:codex`, Gemini for `/rival:gemini`.
 
 ## Commands
 
@@ -34,17 +34,6 @@ You only need the CLI for the commands you use — Codex for `/rival:codex` and 
 ```
 
 **Reasoning effort** (`-re`): `low`, `medium` (default), `high`, `xhigh`
-
-### `/rival:review [-re <level>] [path or scope]` — Code review via Codex CLI
-
-Ruthless code review from GPT-5.4 covering architecture, API design, security, performance, concurrency, and Go/TS best practices.
-
-```
-/rival:review                        # review entire project
-/rival:review src/api/               # review specific directory
-/rival:review -re high src/api/      # review with high reasoning effort
-/rival:review the auth middleware     # review specific component
-```
 
 ### `/rival:gemini [-m <model>] <prompt>` — Run prompt via Gemini CLI
 
@@ -60,7 +49,7 @@ Ruthless code review from GPT-5.4 covering architecture, API design, security, p
 
 Each command dispatches to a dedicated runner subagent:
 
-**Codex runner** (`/rival:codex`, `/rival:review`):
+**Codex runner** (`/rival:codex`):
 1. Verifies codex is installed and authenticated
 2. Runs `codex exec` with the prompt (GPT-5.4, configurable reasoning effort, read-only sandbox, ephemeral session)
 3. Returns the output to your Claude Code session
