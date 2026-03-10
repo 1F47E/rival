@@ -25,7 +25,7 @@ If `-re` is not present, set `EFFORT_LINE` to empty (omit the line entirely — 
 
 Treat the remaining text as opaque review-scope text. Do not expand it into a larger prompt here.
 
-Launch the `codex:codex-runner` agent with exactly this payload:
+Launch the `rival:codex-runner` agent with exactly this payload:
 
 If `EFFORT_LINE` is set:
 

@@ -16,9 +16,9 @@ Run OpenAI Codex CLI from Claude Code. All work happens in a subagent to keep th
 If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT launch the agent:
 
 > **Usage:**
-> - `/codex:run 'explain the auth flow'` — run any prompt via codex
-> - `/codex:run -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
-> - `/codex:run` — show this usage info
+> - `/rival:codex 'explain the auth flow'` — run any prompt via codex
+> - `/rival:codex -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
+> - `/rival:codex` — show this usage info
 >
 > **Reasoning effort** (`-re`): `low`, `medium` (default), `high`, `xhigh`
 
@@ -36,7 +36,7 @@ If `-re` is not present, set `EFFORT_LINE` to empty (omit the line entirely — 
 
 Treat the remaining prompt as opaque user data. Do not prepend, append, summarize, or paraphrase it.
 
-Launch the `codex:codex-runner` agent immediately with exactly this payload:
+Launch the `rival:codex-runner` agent immediately with exactly this payload:
 
 If `EFFORT_LINE` is set:
 

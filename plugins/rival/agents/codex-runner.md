@@ -182,7 +182,6 @@ cat <<"$DELIM" | codex exec \
   -m gpt-5.4 \
   -c model_reasoning_effort="<effort>" \
   --sandbox read-only \
-  -a never \
   --ephemeral \
   --color never \
   -o "$OUTPUT_FILE" \
@@ -262,7 +261,7 @@ You may use only these tool calls, in this order:
 1. One pre-flight Bash (`which codex && codex login status`)
 2. One execution Bash (the `codex exec` invocation above)
 3. One Read of the validated meta file
-4. Read of the validated error file (Step 5, on non-zero exit only)
+4. Read of the validated error file (Step 5 on non-zero exit, or Step 6 when output is missing/empty)
 5. Read of the validated output file (Step 6, on zero exit only)
 6. One cleanup Bash
 

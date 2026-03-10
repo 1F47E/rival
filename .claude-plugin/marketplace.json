@@ -1,18 +1,18 @@
 {
-  "name": "codex-rival",
-  "description": "GPT-5.4 code review from Claude Code. Zero Claude tokens.",
+  "name": "rival",
+  "description": "Dispatch prompts to external AI CLIs (Codex, Gemini) from Claude Code. Zero Claude tokens.",
   "owner": {
     "name": "1F47E",
     "url": "https://github.com/1F47E"
   },
   "plugins": [
     {
-      "name": "codex",
-      "description": "Run OpenAI Codex CLI (gpt-5.4, xhigh reasoning) as a subagent",
-      "source": "./plugins/codex",
-      "version": "2.0.0",
+      "name": "rival",
+      "description": "Run prompts via Codex CLI (GPT-5.4) and Gemini CLI (Gemini 2.5 Pro) as subagents",
+      "source": "./plugins/rival",
+      "version": "3.0.0",
       "category": "ai-tools",
-      "tags": ["codex", "openai", "gpt-5.4", "code-review"]
+      "tags": ["codex", "gemini", "openai", "google", "gpt-5.4", "code-review"]
     }
   ]
 }
