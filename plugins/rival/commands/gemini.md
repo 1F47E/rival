@@ -1,5 +1,5 @@
 ---
-description: Run Google Gemini CLI as a subagent (gemini-2.5-pro by default)
+description: Run Google Gemini CLI as a subagent (gemini-3.1-pro-preview by default)
 argument-hint: "[-m model] [-re level] [review [scope]] prompt (empty for usage)"
 ---
 
@@ -17,14 +17,14 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT la
 
 > **Usage:**
 > - `/rival:gemini 'explain the auth flow'` — run any prompt via gemini
-> - `/rival:gemini -m gemini-2.5-flash 'summarize this project'` — use a specific model
+> - `/rival:gemini -m gemini-3-flash-preview 'summarize this project'` — use a specific model
 > - `/rival:gemini -re high 'analyze this complex algorithm'` — use high thinking budget
 > - `/rival:gemini review` — ruthless code review of the entire project
 > - `/rival:gemini review src/api/` — review specific scope
-> - `/rival:gemini -m gemini-2.5-flash -re high review src/api/` — all flags combined
+> - `/rival:gemini -m gemini-3-flash-preview -re high review src/api/` — all flags combined
 > - `/rival:gemini` — show this usage info
 >
-> **Models** (`-m`): `gemini-2.5-pro` (default), `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+> **Models** (`-m`): `gemini-3.1-pro-preview` (default), `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 >
 > **Reasoning effort** (`-re`): `low`, `medium` (default), `high`, `xhigh`
 
@@ -33,12 +33,12 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and do NOT la
 Check if `$ARGUMENTS` starts with `-m `. If it does:
 
 1. Extract the model name (the word immediately after `-m `)
-2. Validate the model is one of: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
-3. If the model is not in the allowlist, respond with: "Invalid model. Must be one of: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`" and stop.
+2. Validate the model is one of: `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+3. If the model is not in the allowlist, respond with: "Invalid model. Must be one of: `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`" and stop.
 4. Strip `-m <model> ` from the front of `$ARGUMENTS` — the remainder continues to Step 2
 5. Set `MODEL` to the validated model name
 
-If `-m` is not present, set `MODEL` to `gemini-2.5-pro`.
+If `-m` is not present, set `MODEL` to `gemini-3.1-pro-preview`.
 
 ### Step 2: Parse `-re` flag
 

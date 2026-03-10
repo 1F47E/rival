@@ -15,7 +15,7 @@ Without effort (defaults to `medium`):
 
 ```
 Line 1: MODE: raw
-Line 2: MODEL: gemini-2.5-pro | gemini-2.5-flash | gemini-2.5-flash-lite
+Line 2: MODEL: <model>
 Line 3: ---
 Line 4+: payload
 ```
@@ -24,22 +24,41 @@ With explicit effort:
 
 ```
 Line 1: MODE: raw
-Line 2: MODEL: gemini-2.5-pro | gemini-2.5-flash | gemini-2.5-flash-lite
+Line 2: MODEL: <model>
 Line 3: EFFORT: low | medium | high | xhigh
 Line 4: ---
 Line 5+: payload
 ```
 
+**Model allowlist:** `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
 If line 1 is not `MODE: raw`, return: "Malformed gemini request." and stop.
-If `MODEL:` is missing or its value is not one of `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, return: "Invalid model. Must be one of: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite." and stop.
+If `MODEL:` is missing or its value is not in the model allowlist, return: "Invalid model. Must be one of: gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-3.1-flash-lite-preview, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite." and stop.
 If `EFFORT:` is present but its value is not one of `low`, `medium`, `high`, `xhigh`, return: "Invalid effort level. Must be one of: low, medium, high, xhigh." and stop.
 If the `---` separator is missing, return: "Malformed gemini request." and stop.
 
 If `EFFORT:` is absent, default to `medium`.
 
-### Effort-to-thinkingBudget mapping
+### Model generation detection
 
-Map the parsed effort level to a Gemini `thinkingBudget` value. These values are safe for all supported models (2.5-pro max: 32768, 2.5-flash max: 24576, 2.5-flash-lite min: 512):
+Determine the model generation from the validated model name:
+- Models starting with `gemini-3` → **generation 3** (uses `thinkingLevel` string)
+- Models starting with `gemini-2.5` → **generation 2.5** (uses `thinkingBudget` integer)
+
+### Effort mapping
+
+The effort mapping depends on the model generation:
+
+**Generation 3** — maps to `thinkingLevel` (string):
+
+| Effort | thinkingLevel |
+|--------|--------------|
+| `low` | `LOW` |
+| `medium` | `MEDIUM` |
+| `high` | `HIGH` |
+| `xhigh` | `HIGH` |
+
+**Generation 2.5** — maps to `thinkingBudget` (integer, safe for all 2.5 models):
 
 | Effort | thinkingBudget |
 |--------|---------------|
@@ -77,7 +96,29 @@ which gemini && gemini --version
 
 Use a quoted heredoc with a randomized delimiter to pass the prompt safely via stdin. This prevents shell injection — the prompt is never interpolated.
 
-Gemini runs with an isolated config directory to prevent user settings, extensions, and hooks from loading. A `settings.json` is written into this directory to control the thinking budget.
+Gemini runs with an isolated config directory to prevent user settings, extensions, and hooks from loading. A `settings.json` is written into this directory to control the thinking effort.
+
+The `settings.json` content depends on the model generation:
+
+**For generation 3 models** (uses `thinkingLevel` string, extends `chat-base-3`):
+
+```bash
+cat > "$GEMINI_CFG/settings.json" << SETTINGS_EOF
+{"modelConfigs":{"customAliases":{"$MODEL":{"extends":"chat-base-3","modelConfig":{"model":"$MODEL","generateContentConfig":{"thinkingConfig":{"thinkingLevel":"<LEVEL>"}}}}}}}
+SETTINGS_EOF
+```
+
+Replace `<LEVEL>` with the mapped thinkingLevel from the effort mapping table (e.g. `LOW`, `MEDIUM`, `HIGH`).
+
+**For generation 2.5 models** (uses `thinkingBudget` integer, extends `chat-base-2.5`):
+
+```bash
+cat > "$GEMINI_CFG/settings.json" << SETTINGS_EOF
+{"modelConfigs":{"customAliases":{"$MODEL":{"extends":"chat-base-2.5","modelConfig":{"model":"$MODEL","generateContentConfig":{"thinkingConfig":{"thinkingBudget":$BUDGET}}}}}}}
+SETTINGS_EOF
+```
+
+Replace `$BUDGET` with the mapped thinkingBudget from the effort mapping table (e.g. `128`, `8192`).
 
 Run everything in ONE Bash call (timeout 300000ms):
 
@@ -89,10 +130,7 @@ ERR_FILE="$RUN_DIR/error.txt"
 META_FILE="$RUN_DIR/meta.txt"
 GEMINI_CFG=$(mktemp -d /tmp/gemini-cfg.XXXXXX) || exit 1
 MODEL="<model>"
-BUDGET=<thinkingBudget>
-cat > "$GEMINI_CFG/settings.json" << SETTINGS_EOF
-{"modelConfigs":{"customAliases":{"$MODEL":{"extends":"chat-base-2.5","modelConfig":{"model":"$MODEL","generateContentConfig":{"thinkingConfig":{"thinkingBudget":$BUDGET}}}}}}}
-SETTINGS_EOF
+<write the appropriate settings.json from above>
 export GEMINI_HOME="$GEMINI_CFG"
 DELIM="GEMINI_PROMPT_$(head -c 16 /dev/urandom | xxd -p | head -c 16)"
 cat <<"$DELIM" | gemini \
@@ -108,7 +146,7 @@ printf '%s\n' "$META_FILE"
 rm -rf -- "$GEMINI_CFG"
 ```
 
-Replace `<model>` with the validated model and `<thinkingBudget>` with the mapped budget value from the effort-to-thinkingBudget table. Always quote the model value.
+Replace `<model>` with the validated model. Always quote the model value.
 
 **CRITICAL:** Place the prompt between the opening `<<"$DELIM"` and closing `$DELIM` lines exactly as received. The randomized quoted delimiter prevents injection. Never put the prompt inside a double-quoted argument on the command line.
 
@@ -145,8 +183,8 @@ If `EXIT_CODE` is non-zero, Read the error file at `ERR_FILE`. Then give specifi
 
 - Contains "API key", "GEMINI_API_KEY", or "unauthorized" → "Authentication failed. Set `GEMINI_API_KEY` env var or run `gemini` interactively to authenticate."
 - Contains "rate limit", "429", or "quota" → "Gemini rate limit or quota exceeded. Wait and try again, or check your API quota."
-- Contains "model" and ("not found" or "not supported") → "Model not available. Try: `gemini-2.5-pro`, `gemini-2.5-flash`, or `gemini-2.5-flash-lite`."
-- Bash tool reports timeout → "Gemini timed out after 5 minutes. Try a simpler prompt or a faster model (e.g. `-m gemini-2.5-flash`)."
+- Contains "model" and ("not found" or "not supported") → "Model not available. Try: `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, or `gemini-2.5-flash`."
+- Bash tool reports timeout → "Gemini timed out after 5 minutes. Try a simpler prompt or a faster model (e.g. `-m gemini-3-flash-preview`)."
 - Otherwise → show the raw error content and suggest checking `gemini --help`.
 
 Then skip Step 6 and proceed directly to cleanup (Step 7).
