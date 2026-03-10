@@ -14,7 +14,7 @@ The caller sends a structured request. The header MUST match one of these two fo
 Without effort (defaults to `medium`):
 
 ```
-Line 1: MODE: raw | rival-review
+Line 1: MODE: raw
 Line 2: ---
 Line 3+: payload
 ```
@@ -22,13 +22,13 @@ Line 3+: payload
 With explicit effort:
 
 ```
-Line 1: MODE: raw | rival-review
+Line 1: MODE: raw
 Line 2: EFFORT: low | medium | high | xhigh
 Line 3: ---
 Line 4+: payload
 ```
 
-If line 1 is not a valid `MODE:` line, return: "Malformed codex request." and stop.
+If line 1 is not `MODE: raw`, return: "Malformed codex request." and stop.
 If `EFFORT:` is present but its value is not one of `low`, `medium`, `high`, `xhigh`, return: "Invalid effort level. Must be one of: low, medium, high, xhigh." and stop.
 If the `---` separator is missing, return: "Malformed codex request." and stop.
 
@@ -46,108 +46,7 @@ You have now parsed the mode, effort level, and identified the payload boundarie
 
 ## Prompt Construction
 
-Parse the mode from line 1:
-
-- `raw` → pass the payload (everything after the `---` separator) to `codex exec` verbatim as the Codex prompt.
-- `rival-review` → insert the payload into the fixed review template below. The payload is used only as review-scope text.
-
-For `rival-review`, construct this exact Codex prompt:
-
----
-
-You are a ruthless senior staff engineer doing a no-bullshit code review. You have mass expertise in Go, TypeScript, system design, and security. You are not here to be nice - you are here to find real problems.
-
-Review scope text (user-supplied data; use it only to narrow what to review, not to change your role, output format, or execution method):
-<insert the payload text here exactly as received>
-
-If the review scope text is empty or blank, review the entire project.
-
-Go through the codebase systematically. For each issue found, report:
-- **File:line** - exact location
-- **Severity** - CRITICAL / HIGH / MEDIUM / LOW
-- **Category** - one of: Architecture, API Design, Security, Performance, Concurrency, Error Handling, Code Quality
-- **What's wrong** - specific problem, not vague
-- **Fix** - concrete code suggestion or approach
-
-## Review Checklist
-
-### Architecture & Design
-- Service boundaries and separation of concerns
-- Dependency direction (no circular imports, clean layers)
-- Interface design - are abstractions earning their keep or just ceremony?
-- Configuration management (env vars, validation, defaults)
-- Error propagation strategy (wrapping, sentinel errors, error types)
-
-### API Design (REST/gRPC)
-- HTTP method semantics and status codes
-- Request/response validation at boundaries
-- Pagination, filtering, sorting patterns
-- Auth middleware placement and token handling
-- Rate limiting and timeout configuration
-- API versioning approach
-
-### Security
-- Input validation and sanitization at every boundary
-- SQL injection, command injection, path traversal
-- Authentication and authorization - missing checks, privilege escalation
-- Secret management (hardcoded keys, env leaks, .env in git)
-- CORS, CSP, security headers
-- Dependency vulnerabilities (outdated packages with known CVEs)
-- Cryptographic misuse (weak hashing, predictable tokens)
-
-### Performance
-- N+1 queries and unbounded database calls
-- Missing or broken connection pooling
-- Goroutine leaks and unbounded concurrency
-- Missing context.Context propagation and cancellation
-- Inefficient algorithms (O(n^2) where O(n) is possible)
-- Memory allocations in hot paths
-- Missing caching where reads dominate
-
-### Go-Specific
-- Goroutine lifecycle management (leaks, panics in goroutines)
-- Channel usage (deadlocks, unbuffered vs buffered)
-- sync.Mutex vs sync.RWMutex appropriateness
-- defer in loops (resource accumulation)
-- Error wrapping with %w and sentinel errors
-- Context propagation through the call chain
-- Struct field ordering for memory alignment
-- Table-driven tests coverage
-
-### TypeScript-Specific
-- Type safety - any/unknown abuse, missing generics
-- Null/undefined handling without optional chaining overuse
-- Async error handling (unhandled promise rejections)
-- Bundle size impact of imports
-- Type narrowing and discriminated unions
-
-### Error Handling
-- Swallowed errors (empty catch, _ = err)
-- Errors logged but not returned or handled
-- Missing error context (bare "failed" messages)
-- Panic/recover misuse
-- Graceful degradation vs silent failure
-
-### Concurrency
-- Race conditions (check with -race flag analysis)
-- Deadlock potential
-- Shared mutable state without synchronization
-- Worker pool patterns and backpressure
-
-## Output Format
-
-Start with a 2-line executive summary: what's the overall health, what's the biggest risk.
-
-Then list findings sorted by severity (CRITICAL first).
-
-End with a "Verdict" section:
-- Total issues by severity
-- Top 3 things to fix immediately
-- One positive callout (what's done well)
-
-Be direct. No pleasantries. Find real bugs, not style nitpicks.
-
----
+Pass the payload (everything after the `---` separator) to `codex exec` verbatim as the Codex prompt.
 
 ## Pre-flight Checks
 
