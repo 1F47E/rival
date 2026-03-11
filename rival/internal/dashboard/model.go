@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"strings"
 
 	"github.com/1F47E/rival/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,23 +10,23 @@ import (
 )
 
 const (
-	paneList   = 0
-	paneDetail = 1
+	viewList   = 0
+	viewDetail = 1
 )
 
 // Model is the bubbletea model for the TUI dashboard.
 type Model struct {
-	sessions     []*session.Session
-	selected     int
-	activePane   int
-	logScroll    int
-	width        int
-	height       int
-	events       chan SessionEvent
-	ctx          context.Context
-	cancel       context.CancelFunc
-	errText      string
-	quitting     bool
+	sessions  []*session.Session
+	selected  int
+	viewMode  int
+	logScroll int // scroll offset from top of log (0 = first line visible)
+	width     int
+	height    int
+	events    chan SessionEvent
+	ctx       context.Context
+	cancel    context.CancelFunc
+	errText   string
+	quitting  bool
 }
 
 // New creates a new dashboard model.
@@ -45,7 +46,6 @@ func (m Model) Init() tea.Cmd {
 		if err := WatchSessions(m.ctx, m.events); err != nil {
 			return errMsg{err}
 		}
-		// WatchSessions sends initial state before returning, so first event is ready.
 		return <-m.events
 	}
 }
@@ -56,6 +56,48 @@ func waitForEvent(events chan SessionEvent) tea.Cmd {
 	return func() tea.Msg {
 		return <-events
 	}
+}
+
+// scrollBottom returns the max valid scroll offset for the current session's log.
+// It reads the log to compute total lines, so it's used sparingly (on navigation events).
+func (m Model) scrollBottom() int {
+	if m.selected >= len(m.sessions) {
+		return 0
+	}
+	s := m.sessions[m.selected]
+
+	// Approximate content height for log area (mirrors renderDetailView's metaLines calc).
+	contentHeight := m.height - 1
+	metaLines := 10 // title + blank + 7 base fields + blank + "Log" header + newline
+	if s.Duration != "" {
+		metaLines++
+	}
+	if s.ExitCode != nil {
+		metaLines++
+	}
+	if s.OutputBytes > 0 {
+		metaLines++
+	}
+	if s.ReviewScope != "" {
+		metaLines++
+	}
+	if s.PromptPreview != "" {
+		metaLines++
+	}
+	if s.ErrorMsg != "" {
+		metaLines++
+	}
+	logHeight := contentHeight - metaLines
+	if logHeight < 3 {
+		logHeight = 3
+	}
+
+	lines := wrapLogLines(s.LogFile, m.width)
+	ms := len(lines) - logHeight
+	if ms < 0 {
+		return 0
+	}
+	return ms
 }
 
 // Update handles messages.
@@ -69,35 +111,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cancel()
 			}
 			return m, tea.Quit
+
 		case "j", "down":
-			if m.activePane == paneList && m.selected < len(m.sessions)-1 {
-				m.selected++
-				m.logScroll = 0
+			if m.viewMode == viewList {
+				if m.selected < len(m.sessions)-1 {
+					m.selected++
+					m.logScroll = m.scrollBottom()
+				}
+			} else {
+				maxS := m.scrollBottom()
+				if m.logScroll < maxS {
+					m.logScroll++
+				}
 			}
-			if m.activePane == paneDetail {
-				m.logScroll = max(0, m.logScroll-1)
-			}
+
 		case "k", "up":
-			if m.activePane == paneList && m.selected > 0 {
-				m.selected--
+			if m.viewMode == viewList {
+				if m.selected > 0 {
+					m.selected--
+					m.logScroll = m.scrollBottom()
+				}
+			} else {
+				if m.logScroll > 0 {
+					m.logScroll--
+				}
+			}
+
+		case "enter":
+			if m.viewMode == viewList && len(m.sessions) > 0 {
+				m.viewMode = viewDetail
+				m.logScroll = m.scrollBottom() // start at tail
+			}
+
+		case "esc", "backspace":
+			if m.viewMode == viewDetail {
+				m.viewMode = viewList
+			}
+
+		case "g":
+			if m.viewMode == viewList {
+				m.selected = 0
+			} else {
 				m.logScroll = 0
 			}
-			if m.activePane == paneDetail {
-				m.logScroll++
-			}
-		case "tab", "l", "right":
-			m.activePane = (m.activePane + 1) % 2
-		case "shift+tab", "h", "left":
-			m.activePane = (m.activePane + 1) % 2
-		case "enter":
-			m.activePane = paneDetail
-		case "g":
-			if m.activePane == paneList {
-				m.selected = 0
-			}
+
 		case "G":
-			if m.activePane == paneList && len(m.sessions) > 0 {
+			if m.viewMode == viewList && len(m.sessions) > 0 {
 				m.selected = len(m.sessions) - 1
+			} else if m.viewMode == viewDetail {
+				m.logScroll = m.scrollBottom()
 			}
 		}
 
@@ -106,9 +168,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case SessionEvent:
+		oldSelected := m.selected
 		m.sessions = msg.Sessions
 		if m.selected >= len(m.sessions) {
 			m.selected = max(0, len(m.sessions)-1)
+		}
+		if m.selected != oldSelected {
+			m.logScroll = m.scrollBottom()
 		}
 		return m, waitForEvent(m.events)
 
@@ -134,34 +200,33 @@ func (m Model) View() string {
 		return "Initializing..."
 	}
 
-	listWidth := m.width * 2 / 5
-	detailWidth := m.width - listWidth - 4 // borders
-	contentHeight := m.height - 3           // help bar
+	contentHeight := m.height - 1 // reserve 1 line for help bar
 
-	// Left pane: session list.
-	listContent := renderSessionList(m.sessions, m.selected, listWidth-2, contentHeight-2)
-	var leftPane string
-	if m.activePane == paneList {
-		leftPane = activePaneStyle.Width(listWidth - 2).Height(contentHeight - 2).Render(listContent)
-	} else {
-		leftPane = paneStyle.Width(listWidth - 2).Height(contentHeight - 2).Render(listContent)
+	var content string
+	var help string
+
+	switch m.viewMode {
+	case viewList:
+		content = renderSessionList(m.sessions, m.selected, m.width, contentHeight)
+		help = helpStyle.Render("  j/k: navigate  enter: open  g/G: top/bottom  q: quit")
+
+	case viewDetail:
+		var sel *session.Session
+		if m.selected < len(m.sessions) {
+			sel = m.sessions[m.selected]
+		}
+		content = clipLines(renderDetailView(sel, m.width, contentHeight, m.logScroll), contentHeight)
+		help = helpStyle.Render("  j/k: scroll  g/G: top/bottom  esc: back  q: quit")
 	}
 
-	// Right pane: detail view.
-	var sel *session.Session
-	if m.selected < len(m.sessions) {
-		sel = m.sessions[m.selected]
-	}
-	detailContent := renderDetailView(sel, detailWidth-2, contentHeight-2, m.logScroll)
-	var rightPane string
-	if m.activePane == paneDetail {
-		rightPane = activePaneStyle.Width(detailWidth - 2).Height(contentHeight - 2).Render(detailContent)
-	} else {
-		rightPane = paneStyle.Width(detailWidth - 2).Height(contentHeight - 2).Render(detailContent)
-	}
+	return lipgloss.JoinVertical(lipgloss.Left, content, help)
+}
 
-	main := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
-	help := helpStyle.Render("  j/k: navigate  tab: switch pane  enter: detail  q: quit")
-
-	return lipgloss.JoinVertical(lipgloss.Left, main, help)
+// clipLines hard-truncates content to at most maxLines lines.
+func clipLines(s string, maxLines int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return s
+	}
+	return strings.Join(lines[:maxLines], "\n")
 }

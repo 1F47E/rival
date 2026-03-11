@@ -9,23 +9,16 @@ var (
 	colorSuccess   = lipgloss.Color("#22C55E") // green
 	colorError     = lipgloss.Color("#EF4444") // red
 	colorRunning   = lipgloss.Color("#F59E0B") // amber
-	colorBorder    = lipgloss.Color("#334155")
-
-	// Pane styles.
-	paneStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder).
-			Padding(0, 1)
-
-	activePaneStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(0, 1)
 
 	// Title.
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorPrimary)
+
+	// List header row.
+	headerStyle = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true)
 
 	// Session list item.
 	selectedItemStyle = lipgloss.NewStyle().
