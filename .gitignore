@@ -1,3 +1,8 @@
-
-.claude/
 .err
+PLAN-rival-go-binary.md
+rival/rival
+.env
+*.key
+credentials.*
+secrets.*
+.rival/
