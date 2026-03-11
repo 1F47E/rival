@@ -14,10 +14,13 @@ func renderSessionList(sessions []*session.Session, selected int, width, height 
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Sessions"))
-	b.WriteString("\n\n")
 
-	maxItems := height - 4 // title + padding
+	// Header row.
+	header := formatHeaderRow(width)
+	b.WriteString(headerStyle.Render(header))
+	b.WriteString("\n")
+
+	maxItems := height - 2 // header + separator
 	if maxItems < 1 {
 		maxItems = 1
 	}
@@ -30,11 +33,11 @@ func renderSessionList(sessions []*session.Session, selected int, width, height 
 
 	for i := offset; i < len(sessions) && i-offset < maxItems; i++ {
 		s := sessions[i]
-		line := formatSessionLine(s)
+		line := formatSessionRow(s, width)
 		if i == selected {
-			b.WriteString(selectedItemStyle.Render(truncate(line, width-4)))
+			b.WriteString(selectedItemStyle.Render(line))
 		} else {
-			b.WriteString(normalItemStyle.Render(truncate(line, width-4)))
+			b.WriteString(normalItemStyle.Render(line))
 		}
 		b.WriteString("\n")
 	}
@@ -42,10 +45,96 @@ func renderSessionList(sessions []*session.Session, selected int, width, height 
 	return b.String()
 }
 
-func formatSessionLine(s *session.Session) string {
-	status := statusStyle(s.Status).Render(s.Status)
+func formatHeaderRow(width int) string {
+	cols := calcColumns(width)
+	return fmt.Sprintf(" %-*s %-*s %-*s %-*s %-*s %-*s %s",
+		cols.status, "STATUS",
+		cols.cli, "CLI",
+		cols.model, "MODEL",
+		cols.effort, "EFFORT",
+		cols.elapsed, "TIME",
+		cols.workdir, "WORKDIR",
+		"PROMPT",
+	)
+}
+
+func formatSessionRow(s *session.Session, width int) string {
+	cols := calcColumns(width)
+
+	// Status icon + text.
+	icon := statusIcon(s.Status)
+	statusText := fmt.Sprintf("%s %s", icon, s.Status)
+
+	// Elapsed time.
 	elapsed := formatElapsed(s)
-	return fmt.Sprintf(" %s  %-7s  %-6s  %s  %s", status, s.CLI, s.Effort, elapsed, s.Model)
+
+	// Truncate workdir and prompt to fit.
+	wd := truncatePath(s.WorkDir, cols.workdir)
+	prompt := ""
+	if cols.prompt > 0 {
+		prompt = truncate(s.PromptPreview, cols.prompt)
+	}
+
+	// Build raw line without ANSI for proper alignment, then apply status color.
+	rawStatus := fmt.Sprintf("%-*s", cols.status, statusText)
+	coloredStatus := statusStyle(s.Status).Render(rawStatus)
+
+	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
+		coloredStatus,
+		cols.cli, s.CLI,
+		cols.model, truncate(s.Model, cols.model),
+		cols.effort, s.Effort,
+		cols.elapsed, elapsed,
+		cols.workdir, wd,
+		prompt,
+	)
+}
+
+type columnWidths struct {
+	status  int
+	cli     int
+	model   int
+	effort  int
+	elapsed int
+	workdir int
+	prompt  int
+}
+
+func calcColumns(width int) columnWidths {
+	// Fixed columns.
+	c := columnWidths{
+		status:  12,
+		cli:     8,
+		model:   20,
+		effort:  8,
+		elapsed: 8,
+	}
+
+	// 2 for leading space + separators between columns (7 spaces for 8 columns).
+	fixed := 2 + c.status + c.cli + c.model + c.effort + c.elapsed + 7
+	remaining := width - fixed
+	if remaining < 10 {
+		remaining = 10
+	}
+
+	// Split remaining between workdir and prompt.
+	c.workdir = remaining / 2
+	c.prompt = remaining - c.workdir
+
+	return c
+}
+
+func statusIcon(status string) string {
+	switch status {
+	case "running":
+		return "●"
+	case "completed":
+		return "●"
+	case "failed":
+		return "●"
+	default:
+		return "○"
+	}
 }
 
 func formatElapsed(s *session.Session) string {
@@ -63,7 +152,6 @@ func truncate(s string, max int) string {
 	if max <= 0 {
 		return ""
 	}
-	// Count runes for proper unicode handling.
 	runes := []rune(s)
 	if len(runes) <= max {
 		return s
@@ -71,5 +159,19 @@ func truncate(s string, max int) string {
 	if max <= 3 {
 		return string(runes[:max])
 	}
-	return string(runes[:max-3]) + "..."
+	return string(runes[:max-1]) + "…"
+}
+
+func truncatePath(path string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(path)
+	if len(runes) <= max {
+		return path
+	}
+	if max <= 4 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-1]) + "…"
 }
