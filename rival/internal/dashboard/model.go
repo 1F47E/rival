@@ -195,8 +195,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode == viewDetail && m.selected < len(m.items) {
 				item := m.items[m.selected]
 				for _, s := range item.Sessions {
-					if s.Status == "running" && s.PID > 0 {
-						_ = syscall.Kill(s.PID, syscall.SIGTERM)
+					if s.Status != "running" || s.PID <= 0 {
+						continue
+					}
+					// Try to kill. If process is already dead, mark session as failed.
+					if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
+						_ = s.Fail(1, "killed (process already dead)")
 					}
 				}
 			}
