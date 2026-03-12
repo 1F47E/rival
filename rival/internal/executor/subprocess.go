@@ -102,24 +102,24 @@ func RunSubprocess(ctx context.Context, sess *session.Session, binary string, ar
 			writers = append(writers, mirror)
 		}
 		mw := io.MultiWriter(writers...)
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer.
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			outputLines++
-			// Single write with newline to avoid interleaving.
-			buf := make([]byte, len(line)+1)
-			copy(buf, line)
-			buf[len(line)] = '\n'
-			n, writeErr := mw.Write(buf)
-			if writeErr != nil {
-				log.Error().Err(writeErr).Str("session", sess.ID).Msg("failed to write output line")
+		reader := bufio.NewReader(stdout)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(line) > 0 {
+				outputLines++
+				n, writeErr := mw.Write(line)
+				if writeErr != nil {
+					log.Error().Err(writeErr).Str("session", sess.ID).Msg("failed to write output line")
+				}
+				outputBytes += int64(n)
 			}
-			outputBytes += int64(n)
-		}
-		if scanErr := scanner.Err(); scanErr != nil {
-			scannerErr = scanErr
-			log.Error().Err(scanErr).Str("session", sess.ID).Msg("stdout scanner error — output may be truncated")
+			if err != nil {
+				if err != io.EOF {
+					scannerErr = err
+					log.Warn().Err(err).Str("session", sess.ID).Msg("stdout read error — output may be truncated")
+				}
+				break
+			}
 		}
 	}()
 

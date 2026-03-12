@@ -33,7 +33,7 @@ func TestParseArgs_RawPrompt(t *testing.T) {
 	if r.Prompt != "explain the auth flow" {
 		t.Errorf("unexpected prompt: %q", r.Prompt)
 	}
-	if r.Effort != "medium" {
+	if r.Effort != config.DefaultEffort {
 		t.Errorf("unexpected effort: %q", r.Effort)
 	}
 }
