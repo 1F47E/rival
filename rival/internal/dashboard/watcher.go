@@ -49,7 +49,9 @@ func WatchSessions(ctx context.Context, events chan<- SessionEvent) error {
 					return
 				}
 				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Remove) {
-					if strings.HasSuffix(event.Name, ".json") && !strings.HasSuffix(event.Name, ".json.tmp") {
+					isJSON := strings.HasSuffix(event.Name, ".json") && !strings.HasSuffix(event.Name, ".json.tmp")
+					isLog := strings.HasSuffix(event.Name, ".log")
+					if isJSON || isLog {
 						sessions := session.LoadAll()
 						events <- SessionEvent{Sessions: sessions}
 					}

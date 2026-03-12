@@ -7,11 +7,38 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/1F47E/rival/internal/session"
 	"github.com/rs/zerolog/log"
 )
+
+// blockedEnvPrefixes are env var prefixes that should not leak from .env to child CLIs.
+var blockedEnvPrefixes = []string{
+	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+	"http_proxy", "https_proxy", "all_proxy", "no_proxy",
+	"NODE_OPTIONS", "LD_PRELOAD", "DYLD_",
+}
+
+// safeEnv returns os.Environ() filtered to block dangerous overrides
+// that could be injected via a repo-local .env file.
+func safeEnv() []string {
+	var result []string
+	for _, kv := range os.Environ() {
+		blocked := false
+		for _, prefix := range blockedEnvPrefixes {
+			if strings.HasPrefix(kv, prefix+"=") || strings.HasPrefix(kv, prefix) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			result = append(result, kv)
+		}
+	}
+	return result
+}
 
 // Result holds subprocess execution results.
 type Result struct {
@@ -35,7 +62,7 @@ func (sw *syncWriter) Write(p []byte) (int, error) {
 // RunSubprocess executes a command, pipes prompt to stdin, tees stdout to log + optional mirror.
 func RunSubprocess(ctx context.Context, sess *session.Session, binary string, args []string, env []string, prompt string, mirror io.Writer) (*Result, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(safeEnv(), env...)
 	cmd.Dir = sess.WorkDir
 
 	stdin, err := cmd.StdinPipe()

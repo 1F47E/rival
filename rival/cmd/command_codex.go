@@ -64,7 +64,7 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		mode = "review"
 	}
 
-	sess, err := session.New("codex", mode, config.CodexModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope)
+	sess, err := session.New("codex", mode, config.CodexModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}

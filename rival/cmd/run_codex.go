@@ -66,7 +66,7 @@ func runCodexAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("empty prompt")
 	}
 
-	sess, err := session.New("codex", mode, config.CodexModel, effort, workdir, prompt, reviewScope)
+	sess, err := session.New("codex", mode, config.CodexModel, effort, workdir, prompt, reviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}

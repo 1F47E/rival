@@ -8,8 +8,8 @@ import (
 	"github.com/1F47E/rival/internal/session"
 )
 
-func renderSessionList(sessions []*session.Session, selected int, width, height int) string {
-	if len(sessions) == 0 {
+func renderSessionList(items []displayItem, selected int, width, height int) string {
+	if len(items) == 0 {
 		return labelStyle.Render("No sessions yet. Run rival to get started.")
 	}
 
@@ -31,9 +31,9 @@ func renderSessionList(sessions []*session.Session, selected int, width, height 
 		offset = selected - maxItems + 1
 	}
 
-	for i := offset; i < len(sessions) && i-offset < maxItems; i++ {
-		s := sessions[i]
-		line := formatSessionRow(s, width)
+	for i := offset; i < len(items) && i-offset < maxItems; i++ {
+		item := items[i]
+		line := formatItemRow(&item, width)
 		if i == selected {
 			b.WriteString(selectedItemStyle.Render(line))
 		} else {
@@ -56,6 +56,104 @@ func formatHeaderRow(width int) string {
 		cols.workdir, "WORKDIR",
 		"PROMPT",
 	)
+}
+
+func formatItemRow(item *displayItem, width int) string {
+	if item.IsGroup() {
+		return formatGroupRow(item, width)
+	}
+	return formatSessionRow(item.Primary(), width)
+}
+
+// CLI icons — Unicode symbols for visual distinction.
+const (
+	iconCodex  = "◈" // OpenAI / Codex
+	iconGemini = "✦" // Google / Gemini
+	iconMega   = "◈✦" // Both
+)
+
+// cliLabel returns a display label with icon for a CLI name.
+func cliLabel(cli string) string {
+	switch cli {
+	case "codex":
+		return iconCodex + " codex"
+	case "gemini":
+		return iconGemini + " gemini"
+	default:
+		return cli
+	}
+}
+
+func formatGroupRow(item *displayItem, width int) string {
+	cols := calcColumns(width)
+	s := item.Primary()
+
+	// Status: worst of the group (running > failed > completed).
+	status := groupStatus(item)
+	icon := statusIcon(status)
+	statusText := fmt.Sprintf("%s %s", icon, status)
+
+	// Elapsed: max of the group.
+	elapsed := groupElapsed(item)
+
+	wd := truncatePath(s.WorkDir, cols.workdir)
+	prompt := ""
+	if cols.prompt > 0 {
+		prompt = truncate(s.PromptPreview, cols.prompt)
+	}
+
+	rawStatus := fmt.Sprintf("%-*s", cols.status, statusText)
+	coloredStatus := statusStyle(status).Render(rawStatus)
+
+	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
+		coloredStatus,
+		cols.cli, iconMega+" mega",
+		cols.model, "mega",
+		cols.effort, s.Effort,
+		cols.elapsed, elapsed,
+		cols.workdir, wd,
+		prompt,
+	)
+}
+
+func groupStatus(item *displayItem) string {
+	for _, s := range item.Sessions {
+		if s.Status == "running" {
+			return "running"
+		}
+	}
+	for _, s := range item.Sessions {
+		if s.Status == "failed" {
+			return "failed"
+		}
+	}
+	return "completed"
+}
+
+func groupElapsed(item *displayItem) string {
+	var maxDur time.Duration
+	anyRunning := false
+	for _, s := range item.Sessions {
+		if s.Status == "running" {
+			anyRunning = true
+			d := time.Since(s.StartTime)
+			if d > maxDur {
+				maxDur = d
+			}
+		} else if s.EndTime != nil {
+			d := s.EndTime.Sub(s.StartTime)
+			if d > maxDur {
+				maxDur = d
+			}
+		}
+	}
+	if anyRunning {
+		return maxDur.Round(time.Second).String()
+	}
+	if maxDur > 0 {
+		return maxDur.Round(time.Second).String()
+	}
+	return "-"
 }
 
 func formatSessionRow(s *session.Session, width int) string {
@@ -81,7 +179,7 @@ func formatSessionRow(s *session.Session, width int) string {
 
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
-		cols.cli, s.CLI,
+		cols.cli, cliLabel(s.CLI),
 		cols.model, truncate(s.Model, cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,
@@ -104,7 +202,7 @@ func calcColumns(width int) columnWidths {
 	// Fixed columns.
 	c := columnWidths{
 		status:  12,
-		cli:     8,
+		cli:     10,
 		model:   20,
 		effort:  8,
 		elapsed: 8,

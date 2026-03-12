@@ -16,11 +16,13 @@ import (
 
 type Session struct {
 	ID            string     `json:"id"`
+	GroupID       string     `json:"group_id,omitempty"`
 	CLI           string     `json:"cli"`
 	Mode          string     `json:"mode"`
 	Model         string     `json:"model"`
 	Effort        string     `json:"effort"`
 	ReviewScope   string     `json:"review_scope,omitempty"`
+	Prompt        string     `json:"prompt,omitempty"`
 	PromptPreview string     `json:"prompt_preview,omitempty"`
 	PromptHash    string     `json:"prompt_hash,omitempty"`
 	Status        string     `json:"status"`
@@ -37,7 +39,8 @@ type Session struct {
 }
 
 // New creates a new session and writes the initial JSON file.
-func New(cli, mode, model, effort, workdir, prompt, reviewScope string) (*Session, error) {
+// groupID links sessions that belong together (e.g. megareview); pass "" for standalone.
+func New(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string) (*Session, error) {
 	dir := config.SessionDirPath()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
@@ -55,11 +58,13 @@ func New(cli, mode, model, effort, workdir, prompt, reviewScope string) (*Sessio
 
 	s := &Session{
 		ID:            id,
+		GroupID:       groupID,
 		CLI:           cli,
 		Mode:          mode,
 		Model:         model,
 		Effort:        effort,
 		ReviewScope:   reviewScope,
+		Prompt:        prompt,
 		PromptPreview: preview,
 		PromptHash:    hash,
 		Status:        "running",

@@ -2,7 +2,10 @@ package dashboard
 
 import (
 	"context"
+	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/1F47E/rival/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,19 +17,67 @@ const (
 	viewDetail = 1
 )
 
+// displayItem wraps one or more sessions for display in the TUI.
+// A megareview group has two sessions; everything else has one.
+type displayItem struct {
+	Sessions []*session.Session
+}
+
+// Primary returns the first session (used for shared metadata).
+func (d *displayItem) Primary() *session.Session {
+	if len(d.Sessions) == 0 {
+		return nil
+	}
+	return d.Sessions[0]
+}
+
+// IsGroup returns true if this item contains multiple sessions.
+func (d *displayItem) IsGroup() bool {
+	return len(d.Sessions) > 1
+}
+
+// groupSessions merges sessions sharing a GroupID into display items.
+func groupSessions(sessions []*session.Session) []displayItem {
+	// Collect groups by GroupID, preserving order of first appearance.
+	groups := make(map[string]*displayItem)
+	var order []string
+
+	for _, s := range sessions {
+		if s.GroupID != "" {
+			if g, ok := groups[s.GroupID]; ok {
+				g.Sessions = append(g.Sessions, s)
+			} else {
+				groups[s.GroupID] = &displayItem{Sessions: []*session.Session{s}}
+				order = append(order, s.GroupID)
+			}
+		} else {
+			// Standalone session — use ID as unique key.
+			key := "solo:" + s.ID
+			groups[key] = &displayItem{Sessions: []*session.Session{s}}
+			order = append(order, key)
+		}
+	}
+
+	items := make([]displayItem, 0, len(order))
+	for _, key := range order {
+		items = append(items, *groups[key])
+	}
+	return items
+}
+
 // Model is the bubbletea model for the TUI dashboard.
 type Model struct {
-	sessions  []*session.Session
-	selected  int
-	viewMode  int
-	logScroll int // scroll offset from top of log (0 = first line visible)
-	width     int
-	height    int
-	events    chan SessionEvent
-	ctx       context.Context
-	cancel    context.CancelFunc
-	errText   string
-	quitting  bool
+	items          []displayItem
+	selected       int
+	viewMode       int
+	promptExpanded bool
+	width          int
+	height         int
+	events         chan SessionEvent
+	ctx            context.Context
+	cancel         context.CancelFunc
+	errText        string
+	quitting       bool
 }
 
 // New creates a new dashboard model.
@@ -52,52 +103,31 @@ func (m Model) Init() tea.Cmd {
 
 type errMsg struct{ error }
 
+// tickMsg fires periodically to refresh live timers and log tails.
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 func waitForEvent(events chan SessionEvent) tea.Cmd {
 	return func() tea.Msg {
 		return <-events
 	}
 }
 
-// scrollBottom returns the max valid scroll offset for the current session's log.
-// It reads the log to compute total lines, so it's used sparingly (on navigation events).
-func (m Model) scrollBottom() int {
-	if m.selected >= len(m.sessions) {
-		return 0
+// hasRunning returns true if any session in the items is still running.
+func hasRunning(items []displayItem) bool {
+	for _, item := range items {
+		for _, s := range item.Sessions {
+			if s.Status == "running" {
+				return true
+			}
+		}
 	}
-	s := m.sessions[m.selected]
-
-	// Approximate content height for log area (mirrors renderDetailView's metaLines calc).
-	contentHeight := m.height - 1
-	metaLines := 10 // title + blank + 7 base fields + blank + "Log" header + newline
-	if s.Duration != "" {
-		metaLines++
-	}
-	if s.ExitCode != nil {
-		metaLines++
-	}
-	if s.OutputBytes > 0 {
-		metaLines++
-	}
-	if s.ReviewScope != "" {
-		metaLines++
-	}
-	if s.PromptPreview != "" {
-		metaLines++
-	}
-	if s.ErrorMsg != "" {
-		metaLines++
-	}
-	logHeight := contentHeight - metaLines
-	if logHeight < 3 {
-		logHeight = 3
-	}
-
-	lines := wrapLogLines(s.LogFile, m.width)
-	ms := len(lines) - logHeight
-	if ms < 0 {
-		return 0
-	}
-	return ms
+	return false
 }
 
 // Update handles messages.
@@ -114,14 +144,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "j", "down":
 			if m.viewMode == viewList {
-				if m.selected < len(m.sessions)-1 {
+				if m.selected < len(m.items)-1 {
 					m.selected++
-					m.logScroll = m.scrollBottom()
-				}
-			} else {
-				maxS := m.scrollBottom()
-				if m.logScroll < maxS {
-					m.logScroll++
 				}
 			}
 
@@ -129,37 +153,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode == viewList {
 				if m.selected > 0 {
 					m.selected--
-					m.logScroll = m.scrollBottom()
-				}
-			} else {
-				if m.logScroll > 0 {
-					m.logScroll--
 				}
 			}
 
 		case "enter":
-			if m.viewMode == viewList && len(m.sessions) > 0 {
+			if m.viewMode == viewList && len(m.items) > 0 {
 				m.viewMode = viewDetail
-				m.logScroll = m.scrollBottom() // start at tail
+				m.promptExpanded = false
 			}
 
 		case "esc", "backspace":
 			if m.viewMode == viewDetail {
 				m.viewMode = viewList
+				m.promptExpanded = false
 			}
 
 		case "g":
 			if m.viewMode == viewList {
 				m.selected = 0
-			} else {
-				m.logScroll = 0
 			}
 
 		case "G":
-			if m.viewMode == viewList && len(m.sessions) > 0 {
-				m.selected = len(m.sessions) - 1
-			} else if m.viewMode == viewDetail {
-				m.logScroll = m.scrollBottom()
+			if m.viewMode == viewList && len(m.items) > 0 {
+				m.selected = len(m.items) - 1
+			}
+
+		case "p":
+			if m.viewMode == viewDetail {
+				m.promptExpanded = !m.promptExpanded
+			}
+
+		case "o":
+			if m.viewMode == viewDetail && m.selected < len(m.items) {
+				item := m.items[m.selected]
+				if s := item.Primary(); s != nil && s.LogFile != "" {
+					_ = exec.Command("open", s.LogFile).Start()
+				}
+			}
+
+		case "x":
+			if m.viewMode == viewDetail && m.selected < len(m.items) {
+				item := m.items[m.selected]
+				for _, s := range item.Sessions {
+					if s.Status == "running" && s.PID > 0 {
+						_ = syscall.Kill(s.PID, syscall.SIGTERM)
+					}
+				}
 			}
 		}
 
@@ -168,15 +207,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case SessionEvent:
-		oldSelected := m.selected
-		m.sessions = msg.Sessions
-		if m.selected >= len(m.sessions) {
-			m.selected = max(0, len(m.sessions)-1)
+		m.items = groupSessions(msg.Sessions)
+		if m.selected >= len(m.items) {
+			m.selected = max(0, len(m.items)-1)
 		}
-		if m.selected != oldSelected {
-			m.logScroll = m.scrollBottom()
+		cmds := []tea.Cmd{waitForEvent(m.events)}
+		if hasRunning(m.items) {
+			cmds = append(cmds, tickCmd())
 		}
-		return m, waitForEvent(m.events)
+		return m, tea.Batch(cmds...)
+
+	case tickMsg:
+		// Re-render for live timers and log tails. Keep ticking while running.
+		if hasRunning(m.items) {
+			return m, tickCmd()
+		}
+		return m, nil
 
 	case errMsg:
 		m.errText = msg.Error()
@@ -207,16 +253,16 @@ func (m Model) View() string {
 
 	switch m.viewMode {
 	case viewList:
-		content = renderSessionList(m.sessions, m.selected, m.width, contentHeight)
+		content = renderSessionList(m.items, m.selected, m.width, contentHeight)
 		help = helpStyle.Render("  j/k: navigate  enter: open  g/G: top/bottom  q: quit")
 
 	case viewDetail:
-		var sel *session.Session
-		if m.selected < len(m.sessions) {
-			sel = m.sessions[m.selected]
+		var item *displayItem
+		if m.selected < len(m.items) {
+			item = &m.items[m.selected]
 		}
-		content = clipLines(renderDetailView(sel, m.width, contentHeight, m.logScroll), contentHeight)
-		help = helpStyle.Render("  j/k: scroll  g/G: top/bottom  esc: back  q: quit")
+		content = clipLines(renderDetailView(item, m.width, contentHeight, m.promptExpanded), contentHeight)
+		help = helpStyle.Render("  p: prompt  o: open log  x: stop  esc: back  q: quit")
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, content, help)
