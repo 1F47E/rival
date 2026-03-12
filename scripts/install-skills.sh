@@ -7,7 +7,7 @@ TARGET_DIR="$HOME/.claude/skills"
 
 mkdir -p "$TARGET_DIR"
 
-for skill in rival-codex rival-gemini; do
+for skill in rival-codex rival-gemini rival-megareview; do
     src="$REPO_DIR/.claude/skills/$skill"
     dst="$TARGET_DIR/$skill"
 
@@ -25,5 +25,6 @@ done
 
 echo ""
 echo "Skills installed. Available commands:"
-echo "  /rival-codex  — Run Codex via rival"
-echo "  /rival-gemini — Run Gemini via rival"
+echo "  /rival-codex      — Run Codex via rival"
+echo "  /rival-gemini     — Run Gemini via rival"
+echo "  /rival-megareview — Run both Codex + Gemini in parallel"
