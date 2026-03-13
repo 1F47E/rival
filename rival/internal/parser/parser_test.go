@@ -148,6 +148,55 @@ func TestParseArgs_EffortAlone(t *testing.T) {
 	}
 }
 
+func TestParseArgs_AutoScope(t *testing.T) {
+	// "review" alone → AutoScope=true
+	r, err := ParseCodexArgs("review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.AutoScope {
+		t.Error("expected AutoScope=true for bare review")
+	}
+
+	// "review src/" → AutoScope=false
+	r, err = ParseCodexArgs("review src/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.AutoScope {
+		t.Error("expected AutoScope=false when explicit scope given")
+	}
+
+	// "-re high review" → AutoScope=true
+	r, err = ParseCodexArgs("-re high review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.AutoScope {
+		t.Error("expected AutoScope=true for -re high review")
+	}
+}
+
+func TestParseReviewArgs_AutoScope(t *testing.T) {
+	// Empty scope in megareview → AutoScope=true
+	r, err := ParseReviewArgs("-re high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.AutoScope {
+		t.Error("expected AutoScope=true for megareview with no scope")
+	}
+
+	// Explicit scope → AutoScope=false
+	r, err = ParseReviewArgs("src/api/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.AutoScope {
+		t.Error("expected AutoScope=false when explicit scope given")
+	}
+}
+
 func TestParseGeminiArgs_Identical(t *testing.T) {
 	r, err := ParseGeminiArgs("-re xhigh review src/")
 	if err != nil {

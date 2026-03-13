@@ -12,6 +12,7 @@ var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Launch the TUI dashboard",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		dashboard.Version = Version
 		m := dashboard.New()
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {

@@ -61,6 +61,11 @@ func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Auto-detect git scope for reviews without explicit scope.
+	if parsed.AutoScope {
+		resolveGitScope(parsed, workdir)
+	}
+
 	// Preflight both CLIs — warn but continue if one is missing.
 	codexOK := true
 	geminiOK := true

@@ -6,29 +6,32 @@ Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.4 via Codex or 
 
 **Zero Claude tokens.** All heavy lifting runs on your Codex/Gemini subscription, not your Claude usage.
 
-![TUI Dashboard](rival-tui.gif)
-
 ## Install
 
-### Binary
+### Homebrew (recommended)
+
+```bash
+brew install 1F47E/tap/rival
+rival install
+```
+
+### From source
 
 ```bash
 cd rival && make install
+rival install
 ```
 
 Or with `go install`:
 
 ```bash
 go install github.com/1F47E/rival@latest
+rival install
 ```
 
-### Skills
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-codex`, `/rival-gemini`, and `/rival-megareview` are available in Claude Code.
 
-```bash
-./scripts/install-skills.sh
-```
-
-This symlinks the Claude Code skills into `~/.claude/skills/`. After installation, `/rival-codex`, `/rival-gemini`, and `/rival-megareview` are available in Claude Code.
+Use `rival install --force` to overwrite without prompting.
 
 ### Prerequisites
 
@@ -44,21 +47,21 @@ You only need the CLI for the commands you use. Megareview requires both.
 ```
 /rival-codex explain the auth flow in this project
 /rival-codex -re xhigh find bugs in src/main.go
-/rival-codex review                        — code review of entire project
-/rival-codex review src/api/               — review specific scope
+/rival-codex review                        — review (auto-detects changed files via git)
+/rival-codex review src/api/               — review specific scope (bypasses git detection)
 /rival-codex -re xhigh review src/api/     — review with xhigh reasoning
 ```
 
 ```
 /rival-gemini explain the auth flow
 /rival-gemini -re high analyze this complex algorithm
-/rival-gemini review                       — code review of entire project
-/rival-gemini review src/api/              — review specific scope
+/rival-gemini review                       — review (auto-detects changed files via git)
+/rival-gemini review src/api/              — review specific scope (bypasses git detection)
 ```
 
 ```
-/rival-megareview                          — review entire project with BOTH CLIs in parallel
-/rival-megareview src/api/                 — review specific scope
+/rival-megareview                          — review with BOTH CLIs (auto-detects changed files)
+/rival-megareview src/api/                 — review specific scope (bypasses git detection)
 /rival-megareview -re xhigh src/api/       — both CLIs, max reasoning effort
 ```
 
@@ -73,9 +76,12 @@ When you run a review, Codex/Gemini get **full access to your project**. They do
 - Explore the full codebase to understand context
 - Run commands to inspect project structure
 
-**No scope = full project review.** Running `/rival-codex review` with no arguments reviews the entire project. The reviewer will explore all directories and files it considers relevant.
+**Smart scope detection.** Running `/rival-codex review` with no arguments auto-detects what to review via git:
+1. **Dirty files** (staged + unstaged + untracked new files) → reviews those files
+2. **Last commit** (if working tree is clean) → reviews files from HEAD
+3. **Full project** → only if not a git repo or no changes found
 
-The **scope** is a focus hint, not a restriction. `review src/api/` tells the reviewer to focus on `src/api/`, but it can (and will) read other files to understand the code in context. It does **not** run `git diff` — it works with the full project tree as-is.
+The **scope** is a focus hint, not a restriction. `review src/api/` tells the reviewer to focus on `src/api/`, but it can (and will) read other files to understand the code in context. Explicit scope bypasses git detection entirely.
 
 This means you can use natural language for the scope:
 
@@ -176,8 +182,9 @@ Second terminal:
 ## Uninstall
 
 ```bash
-./scripts/uninstall-skills.sh
-rm "$(go env GOPATH)/bin/rival"
+rm -rf ~/.claude/skills/rival-codex ~/.claude/skills/rival-gemini ~/.claude/skills/rival-megareview
+brew uninstall rival        # if installed via brew
+# or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```
 
 ## License

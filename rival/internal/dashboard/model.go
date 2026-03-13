@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -65,9 +66,13 @@ func groupSessions(sessions []*session.Session) []displayItem {
 	return items
 }
 
+const pageSize = 100
+
 // Model is the bubbletea model for the TUI dashboard.
 type Model struct {
-	items          []displayItem
+	allItems       []displayItem // all grouped items
+	items          []displayItem // visible slice (paginated)
+	visibleCount   int           // how many items to show
 	selected       int
 	viewMode       int
 	promptExpanded bool
@@ -78,17 +83,39 @@ type Model struct {
 	cancel         context.CancelFunc
 	errText        string
 	quitting       bool
+	totalSessions  int // total session count (before grouping)
 }
+
+// Version is set from cmd package before launching the TUI.
+var Version = "dev"
 
 // New creates a new dashboard model.
 func New() Model {
 	events := make(chan SessionEvent, 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	return Model{
-		events: events,
-		ctx:    ctx,
-		cancel: cancel,
+		visibleCount: pageSize,
+		events:       events,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
+}
+
+// paginateItems sets the visible slice from allItems.
+func (m *Model) paginateItems() {
+	if m.visibleCount >= len(m.allItems) {
+		m.items = m.allItems
+	} else {
+		m.items = m.allItems[:m.visibleCount]
+	}
+	if m.selected >= len(m.items) {
+		m.selected = max(0, len(m.items)-1)
+	}
+}
+
+// hasMore returns true if there are hidden items beyond the visible page.
+func (m *Model) hasMore() bool {
+	return m.visibleCount < len(m.allItems)
 }
 
 // Init starts the file watcher and waits for events.
@@ -178,6 +205,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected = len(m.items) - 1
 			}
 
+		case "l":
+			if m.viewMode == viewList && m.hasMore() {
+				m.visibleCount += pageSize
+				m.paginateItems()
+			}
+
 		case "p":
 			if m.viewMode == viewDetail {
 				m.promptExpanded = !m.promptExpanded
@@ -215,10 +248,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case SessionEvent:
-		m.items = groupSessions(msg.Sessions)
-		if m.selected >= len(m.items) {
-			m.selected = max(0, len(m.items)-1)
-		}
+		m.totalSessions = len(msg.Sessions)
+		m.allItems = groupSessions(msg.Sessions)
+		m.paginateItems()
 		cmds := []tea.Cmd{waitForEvent(m.events)}
 		if hasRunning(m.items) {
 			cmds = append(cmds, tickCmd())
@@ -240,6 +272,96 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// bannerLines is the ASCII logo for the TUI header.
+var bannerLines = []string{
+	`         _             __`,
+	`   _____(_)   ______ _/ /`,
+	"  / ___/ / | / / __ `/ /",
+	` / /  / /| |/ / /_/ / /`,
+	`/_/  /_/ |___/\__,_/_/`,
+}
+
+// bannerWidth is computed from the actual banner lines.
+var bannerWidth = func() int {
+	w := 0
+	for _, l := range bannerLines {
+		if n := len([]rune(l)); n > w {
+			w = n
+		}
+	}
+	return w
+}()
+
+// renderBanner returns the header block: logo left, stats right (if width >= 70).
+func (m Model) renderBanner() string {
+	// Count stats.
+	running, completed, failed := 0, 0, 0
+	for _, item := range m.allItems {
+		for _, s := range item.Sessions {
+			switch s.Status {
+			case "running":
+				running++
+			case "completed":
+				completed++
+			case "failed":
+				failed++
+			}
+		}
+	}
+
+	logo := strings.Join(bannerLines, "\n")
+	styledLogo := bannerStyle.Render(logo)
+
+	// If terminal is narrow, just show the logo.
+	if m.width < 70 {
+		return styledLogo + "\n"
+	}
+
+	// Stats on the right.
+	var stats strings.Builder
+	stats.WriteString(labelStyle.Render(fmt.Sprintf("v%s", Version)))
+	stats.WriteString("\n")
+	stats.WriteString(fmt.Sprintf("  %s %d", runningStyle.Render("●"), running))
+	stats.WriteString(fmt.Sprintf("  %s %d", completedStyle.Render("●"), completed))
+	stats.WriteString(fmt.Sprintf("  %s %d", failedStyle.Render("●"), failed))
+	stats.WriteString("\n")
+	stats.WriteString(labelStyle.Render(fmt.Sprintf("  %d sessions", m.totalSessions)))
+
+	// Pad stats to fill the gap between logo and stats.
+	statsStr := stats.String()
+	gap := m.width - bannerWidth - lipgloss.Width(statsStr) - 4
+	if gap < 2 {
+		gap = 2
+	}
+	spacer := strings.Repeat(" ", gap)
+
+	// Join horizontally: logo lines + spacer + stats lines.
+	logoLines := strings.Split(styledLogo, "\n")
+	statsLines := strings.Split(statsStr, "\n")
+
+	// Pad to same height.
+	for len(statsLines) < len(logoLines) {
+		statsLines = append(statsLines, "")
+	}
+	for len(logoLines) < len(statsLines) {
+		logoLines = append(logoLines, strings.Repeat(" ", bannerWidth))
+	}
+
+	var out strings.Builder
+	for i := range logoLines {
+		sl := ""
+		if i < len(statsLines) {
+			sl = statsLines[i]
+		}
+		out.WriteString(logoLines[i])
+		out.WriteString(spacer)
+		out.WriteString(sl)
+		out.WriteString("\n")
+	}
+
+	return out.String()
+}
+
 // View renders the UI.
 func (m Model) View() string {
 	if m.quitting {
@@ -254,15 +376,23 @@ func (m Model) View() string {
 		return "Initializing..."
 	}
 
-	contentHeight := m.height - 1 // reserve 1 line for help bar
+	header := m.renderBanner()
+	headerLines := strings.Count(header, "\n")
+
+	contentHeight := m.height - headerLines - 1 // -1 for help bar
 
 	var content string
 	var help string
 
 	switch m.viewMode {
 	case viewList:
-		content = renderSessionList(m.items, m.selected, m.width, contentHeight)
-		help = helpStyle.Render("  j/k: navigate  enter: open  g/G: top/bottom  q: quit")
+		content = renderSessionList(m.items, m.selected, m.width, contentHeight, m.hasMore(), len(m.allItems)-len(m.items))
+		helpText := "  j/k: navigate  enter: open  g/G: top/bottom"
+		if m.hasMore() {
+			helpText += "  l: load more"
+		}
+		helpText += "  q: quit"
+		help = helpStyle.Render(helpText)
 
 	case viewDetail:
 		var item *displayItem
@@ -273,7 +403,7 @@ func (m Model) View() string {
 		help = helpStyle.Render("  p: prompt  o: open log  x: stop  esc: back  q: quit")
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, content, help)
+	return lipgloss.JoinVertical(lipgloss.Left, header+content, help)
 }
 
 // clipLines hard-truncates content to at most maxLines lines.
