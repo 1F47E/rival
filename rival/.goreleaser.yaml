@@ -23,20 +23,18 @@ archives:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
-brews:
+homebrew_casks:
   - name: rival
+    binaries:
+      - rival
     homepage: https://github.com/1F47E/rival
     description: "Dispatch prompts to Codex and Gemini CLIs from Claude Code with session tracking and TUI dashboard"
     license: MIT
-    install: |
-      bin.install "rival"
-    test: |
-      system "#{bin}/rival", "version"
     repository:
       owner: 1F47E
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
 
 checksum:
   name_template: checksums.txt
