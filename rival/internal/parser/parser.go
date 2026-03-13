@@ -11,6 +11,7 @@ import (
 type ParseResult struct {
 	Effort      string
 	IsReview    bool
+	AutoScope   bool   // true when review has no explicit scope (use git detection)
 	ReviewScope string
 	Prompt      string
 	IsEmpty     bool
@@ -58,6 +59,7 @@ func parseArgs(raw string) (*ParseResult, error) {
 		result.IsReview = true
 		scope := strings.TrimSpace(s[len("review"):])
 		if scope == "" {
+			result.AutoScope = true
 			scope = "the entire project"
 		}
 		result.ReviewScope = scope

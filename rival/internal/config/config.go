@@ -28,6 +28,17 @@ var GeminiThinkingLevel = map[string]string{
 	"xhigh":  "HIGH",
 }
 
+// DiffReviewPreamble is prepended to ReviewPrompt when git auto-detects changed files.
+// {FILES} is replaced with the newline-separated file list at runtime.
+const DiffReviewPreamble = `The following files have uncommitted changes (or were changed in the last commit). Focus your review on these files, but read other project files as needed for context.
+
+Changed files:
+` + "```" + `
+{FILES}
+` + "```" + `
+
+`
+
 // ReviewPrompt is the language-agnostic review template. {SCOPE} is replaced at runtime.
 const ReviewPrompt = `You are a ruthless senior staff engineer doing a code review. Your job is to find real problems — not nitpick style.
 

@@ -11,6 +11,14 @@ import (
 // Version is set via ldflags.
 var Version = "dev"
 
+const banner = `
+         _             __
+   _____(_)   ______ _/ /
+  / ___/ / | / / __ ` + "`" + `/ /
+ / /  / /| |/ / /_/ / /
+/_/  /_/ |___/\__,_/_/
+`
+
 // ExitCodeError wraps an error with a specific exit code.
 type ExitCodeError struct {
 	Code int
@@ -23,9 +31,14 @@ func (e *ExitCodeError) Unwrap() error { return e.Err }
 var rootCmd = &cobra.Command{
 	Use:           "rival",
 	Short:         "Dispatch prompts to external AI CLIs (Codex, Gemini)",
-	Long:          "rival — run Codex and Gemini from Claude Code skills or the terminal, with session tracking and a TUI dashboard.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Print(banner)
+		fmt.Printf("  v%s — Codex & Gemini from your terminal\n\n", Version)
+		cmd.SetOut(os.Stdout)
+		_ = cmd.Usage()
+	},
 }
 
 func Execute() {

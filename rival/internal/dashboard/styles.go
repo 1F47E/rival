@@ -10,6 +10,11 @@ var (
 	colorError     = lipgloss.Color("#EF4444") // red
 	colorRunning   = lipgloss.Color("#F59E0B") // amber
 
+	// Banner logo.
+	bannerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorPrimary)
+
 	// Title.
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).

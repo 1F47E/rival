@@ -1,6 +1,9 @@
-.err
-PLAN-rival-go-binary.md
+.DS_Store
+*.tape
+*.gif
+.venv/
 rival/rival
+rival/dist/
 .env
 *.key
 credentials.*

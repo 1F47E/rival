@@ -8,7 +8,7 @@ import (
 	"github.com/1F47E/rival/internal/session"
 )
 
-func renderSessionList(items []displayItem, selected int, width, height int) string {
+func renderSessionList(items []displayItem, selected int, width, height int, hasMore bool, hiddenCount int) string {
 	if len(items) == 0 {
 		return labelStyle.Render("No sessions yet. Run rival to get started.")
 	}
@@ -21,6 +21,9 @@ func renderSessionList(items []displayItem, selected int, width, height int) str
 	b.WriteString("\n")
 
 	maxItems := height - 2 // header + separator
+	if hasMore {
+		maxItems-- // reserve 1 line for "load more"
+	}
 	if maxItems < 1 {
 		maxItems = 1
 	}
@@ -39,6 +42,12 @@ func renderSessionList(items []displayItem, selected int, width, height int) str
 		} else {
 			b.WriteString(normalItemStyle.Render(line))
 		}
+		b.WriteString("\n")
+	}
+
+	if hasMore {
+		more := fmt.Sprintf("  ▼ %d more — press l to load", hiddenCount)
+		b.WriteString(labelStyle.Render(more))
 		b.WriteString("\n")
 	}
 

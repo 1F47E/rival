@@ -36,6 +36,7 @@ func ParseReviewArgs(raw string) (*ParseResult, error) {
 	// Remaining text is the scope.
 	scope := s
 	if scope == "" {
+		result.AutoScope = true
 		scope = "the entire project"
 	}
 	result.ReviewScope = scope

@@ -55,6 +55,11 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Auto-detect git scope for reviews without explicit scope.
+	if parsed.IsReview && parsed.AutoScope {
+		resolveGitScope(parsed, workdir)
+	}
+
 	if err := executor.CodexPreflight(); err != nil {
 		return err
 	}
