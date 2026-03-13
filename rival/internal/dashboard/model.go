@@ -198,9 +198,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if s.Status != "running" || s.PID <= 0 {
 						continue
 					}
-					// Try to kill. If process is already dead, mark session as failed.
 					if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
+						// Process already dead — mark failed immediately.
 						_ = s.Fail(1, "killed (process already dead)")
+					} else {
+						// Signal sent — mark failed so TUI updates instantly.
+						// The subprocess executor will overwrite with its own status.
+						_ = s.Fail(137, "killed by user")
 					}
 				}
 			}
