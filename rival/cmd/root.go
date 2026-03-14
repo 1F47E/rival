@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +35,9 @@ var rootCmd = &cobra.Command{
 	Short:         "Dispatch prompts to external AI CLIs (Codex, Gemini)",
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		session.ReapOrphans()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
 		fmt.Printf("  v%s — Codex & Gemini from your terminal\n\n", Version)
@@ -42,6 +47,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	defer telemetry.RecoverPanic()
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *ExitCodeError
 		if errors.As(err, &exitErr) {

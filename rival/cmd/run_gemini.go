@@ -71,6 +71,12 @@ func runGeminiAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("create session: %w", err)
 	}
 
+	defer func() {
+		if sess.Status == "running" {
+			_ = sess.Fail(1, "interrupted")
+		}
+	}()
+
 	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting gemini")
 
 	result, err := executor.RunGemini(context.Background(), sess, prompt, effort, workdir, os.Stdout)

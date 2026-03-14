@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/telemetry"
 	"github.com/google/uuid"
 )
 
@@ -109,6 +110,7 @@ func (s *Session) Complete(exitCode int, outputBytes int64, outputLines int) err
 	s.Duration = now.Sub(s.StartTime).Round(time.Second).String()
 	s.OutputBytes = outputBytes
 	s.OutputLines = outputLines
+	telemetry.TrackSession(s.telemetryData())
 	return s.Save()
 }
 
@@ -120,7 +122,29 @@ func (s *Session) Fail(exitCode int, errMsg string) error {
 	s.EndTime = &now
 	s.Duration = now.Sub(s.StartTime).Round(time.Second).String()
 	s.ErrorMsg = errMsg
+	telemetry.TrackSession(s.telemetryData())
 	return s.Save()
+}
+
+func (s *Session) telemetryData() telemetry.SessionData {
+	dur := time.Duration(0)
+	if s.EndTime != nil {
+		dur = s.EndTime.Sub(s.StartTime)
+	}
+	exitCode := 0
+	if s.ExitCode != nil {
+		exitCode = *s.ExitCode
+	}
+	return telemetry.SessionData{
+		CLI:      s.CLI,
+		Mode:     s.Mode,
+		Model:    s.Model,
+		Effort:   s.Effort,
+		Status:   s.Status,
+		ExitCode: exitCode,
+		Duration: dur,
+		ErrorMsg: s.ErrorMsg,
+	}
 }
 
 // LoadAll reads and returns all sessions, sorted newest first.
