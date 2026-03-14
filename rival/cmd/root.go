@@ -7,6 +7,7 @@ import (
 
 	"github.com/1F47E/rival/internal/session"
 	"github.com/1F47E/rival/internal/telemetry"
+	"github.com/1F47E/rival/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +38,7 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		session.ReapOrphans()
+		update.Check(Version)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
