@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -70,6 +72,13 @@ func reviewAction(cmd *cobra.Command, args []string) error {
 	} else {
 		parsed.ReviewScope = scope
 		parsed.Prompt = strings.ReplaceAll(config.ReviewPrompt, "{SCOPE}", scope)
+	}
+
+	// Validate --cli flag.
+	switch cliOnly {
+	case "", "codex", "gemini":
+	default:
+		return fmt.Errorf("invalid --cli value %q, must be codex or gemini", cliOnly)
 	}
 
 	// Preflight.
@@ -145,15 +154,25 @@ func runReviewCLI(cli, groupID string, parsed *parser.ParseResult, workdir strin
 		return reviewResult{cli: cli, err: fmt.Errorf("create session: %w", err)}
 	}
 
+	defer func() {
+		if sess.Status == "running" {
+			_ = sess.Fail(1, "interrupted")
+		}
+	}()
+
 	log.Info().Str("session", sess.ID).Str("cli", cli).Msg("starting review")
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	var result *executor.Result
 	switch cli {
 	case "codex":
 		result, err = executor.RunCodex(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
 	case "gemini":
 		result, err = executor.RunGemini(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	default:
+		return reviewResult{cli: cli, err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
 
 	if err != nil {

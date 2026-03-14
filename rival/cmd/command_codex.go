@@ -38,6 +38,12 @@ func init() {
 func commandCodexAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 
+	// If stdin is a terminal, show usage instead of hanging.
+	if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) != 0 {
+		_, _ = fmt.Fprintln(os.Stdout, codexUsage)
+		return nil
+	}
+
 	// Read raw args from stdin.
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {

@@ -38,6 +38,11 @@ func init() {
 func commandGeminiAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 
+	if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) != 0 {
+		_, _ = fmt.Fprintln(os.Stdout, geminiUsage)
+		return nil
+	}
+
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
