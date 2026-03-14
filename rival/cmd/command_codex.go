@@ -74,6 +74,12 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("create session: %w", err)
 	}
 
+	defer func() {
+		if sess.Status == "running" {
+			_ = sess.Fail(1, "interrupted")
+		}
+	}()
+
 	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting codex (command mode)")
 
 	// No stdout mirror in command mode — skill reads final output.

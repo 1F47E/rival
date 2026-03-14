@@ -117,12 +117,25 @@ func formatGroupRow(item *displayItem, width int) string {
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
 		cols.cli, iconMega+" mega",
-		cols.model, "mega",
+		cols.model, truncate(groupModels(item), cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,
 		cols.workdir, wd,
 		prompt,
 	)
+}
+
+// groupModels returns a combined model string like "gpt-5.4 + gemini-3.1-pro".
+func groupModels(item *displayItem) string {
+	var models []string
+	seen := map[string]bool{}
+	for _, s := range item.Sessions {
+		if s.Model != "" && !seen[s.Model] {
+			seen[s.Model] = true
+			models = append(models, s.Model)
+		}
+	}
+	return strings.Join(models, " + ")
 }
 
 func groupStatus(item *displayItem) string {
@@ -212,7 +225,7 @@ func calcColumns(width int) columnWidths {
 	c := columnWidths{
 		status:  12,
 		cli:     10,
-		model:   20,
+		model:   28,
 		effort:  8,
 		elapsed: 8,
 	}

@@ -160,6 +160,12 @@ func runOneCLI(cli, groupID string, parsed *parser.ParseResult, workdir string) 
 		return reviewResult{cli: cli, err: fmt.Errorf("create session: %w", err)}
 	}
 
+	defer func() {
+		if sess.Status == "running" {
+			_ = sess.Fail(1, "interrupted")
+		}
+	}()
+
 	log.Info().Str("session", sess.ID).Str("cli", cli).Str("group", groupID).Msg("starting megareview")
 
 	ctx := context.Background()
