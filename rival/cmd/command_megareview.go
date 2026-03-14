@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -44,6 +46,11 @@ type reviewResult struct {
 
 func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
+
+	if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) != 0 {
+		_, _ = fmt.Fprintln(os.Stdout, megareviewUsage)
+		return nil
+	}
 
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -168,13 +175,17 @@ func runOneCLI(cli, groupID string, parsed *parser.ParseResult, workdir string) 
 
 	log.Info().Str("session", sess.ID).Str("cli", cli).Str("group", groupID).Msg("starting megareview")
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	var result *executor.Result
 	switch cli {
 	case "codex":
 		result, err = executor.RunCodex(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
 	case "gemini":
 		result, err = executor.RunGemini(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	default:
+		return reviewResult{cli: cli, err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
 
 	if err != nil {

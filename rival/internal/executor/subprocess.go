@@ -163,17 +163,6 @@ func RunSubprocess(ctx context.Context, sess *session.Session, binary string, ar
 	wg.Wait()
 	err = cmd.Wait()
 
-	// Check for I/O errors from goroutines.
-	if stdinErr != nil {
-		return nil, fmt.Errorf("write prompt to stdin: %w", stdinErr)
-	}
-	if scannerErr != nil {
-		log.Warn().Err(scannerErr).Str("session", sess.ID).Msg("stdout was truncated")
-	}
-	if stderrErr != nil {
-		log.Warn().Err(stderrErr).Str("session", sess.ID).Msg("stderr capture failed")
-	}
-
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -181,6 +170,17 @@ func RunSubprocess(ctx context.Context, sess *session.Session, binary string, ar
 		} else {
 			return nil, fmt.Errorf("subprocess %s: %w", binary, err)
 		}
+	}
+
+	// Only report stdinErr if child exited 0 — broken pipe is expected when child dies early.
+	if stdinErr != nil && exitCode == 0 {
+		return nil, fmt.Errorf("write prompt to stdin: %w", stdinErr)
+	}
+	if scannerErr != nil {
+		log.Warn().Err(scannerErr).Str("session", sess.ID).Msg("stdout was truncated")
+	}
+	if stderrErr != nil {
+		log.Warn().Err(stderrErr).Str("session", sess.ID).Msg("stderr capture failed")
 	}
 
 	return &Result{
