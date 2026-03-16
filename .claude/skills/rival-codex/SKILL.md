@@ -4,7 +4,6 @@ version: 3.7.0
 description: Run Codex through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-codex.
 argument-hint: "[-re level] [review [scope] | prompt]"
 context: fork
-disable-model-invocation: true
 allowed-tools: Bash
 ---
 
