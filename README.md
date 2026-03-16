@@ -93,6 +93,44 @@ This means you can use natural language for the scope:
 
 The reviewer will figure out what to look at, explore the relevant code, and give you a review with full project understanding.
 
+### Roles & Consilium (megareview)
+
+Megareview assigns **specialized roles** to each reviewer:
+
+- **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
+- **Gemini → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
+
+Both reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
+
+A third **consilium judge** (runs via Codex) then:
+- Merges duplicate findings (same file + line + problem → single finding with all reporters in `found_by`)
+- Applies consensus bonus (+2 confidence for findings reported by 2+ reviewers)
+- Filters by confidence threshold (default: ≥6)
+- Sorts by severity (critical first), then confidence
+- Produces a unified verdict: `approve`, `request_changes`, or `comment`
+
+```
+═══ RIVAL REVIEW ═══
+
+Summary: ...
+
+[CRITICAL] file.go:42 — Title
+  Description...
+  Fix: ...
+  Found by: codex, gemini
+
+[HIGH] file.go:100 — Title
+  ...
+
+Recommendation: request_changes — ...
+
+Reviewed by: codex (bug_hunter), gemini (arch_security)
+Judge: codex (consilium)
+Findings: 3 (threshold: 6)
+```
+
+If only one CLI is available, the consilium judge falls back to whichever CLI is present.
+
 ### Direct CLI
 
 ```bash
@@ -143,7 +181,7 @@ Claude Code main session
     │
     │ /rival-codex review src/
     ▼
-Claude skill (context: fork, disable-model-invocation)
+Claude skill (context: fork)
     │
     │ stdin heredoc → rival command codex --workdir $(pwd)
     ▼
@@ -155,13 +193,18 @@ rival binary
     ├─ writes session JSON + live log to ~/.rival/sessions/
     └─ returns output to skill → back to Claude Code
 
-Megareview:
+Megareview (roles + consilium):
     rival binary
     ├─ generates shared GroupID (UUID)
-    ├─ spawns codex + gemini concurrently (goroutines)
-    ├─ each gets its own session with shared GroupID
-    ├─ waits for both, prints combined output
-    └─ TUI groups them into a single display row
+    ├─ assigns roles: codex=bug_hunter, gemini=arch_security
+    ├─ spawns both concurrently with role-specific prompts
+    ├─ parses structured JSON output from each reviewer
+    ├─ spawns codex again as consilium judge
+    │   ├─ merges duplicates, applies consensus bonus
+    │   ├─ filters by confidence threshold (≥6)
+    │   └─ produces unified verdict with found_by attribution
+    ├─ prints formatted review to stdout
+    └─ TUI groups all sessions by GroupID
 
 Second terminal:
     rival tui
@@ -174,7 +217,7 @@ Second terminal:
 ### Key design decisions
 
 - **Full project access**: reviewers run as AI CLI tools with tool use — they explore your codebase, not just diffs
-- **Isolated execution**: skills use `context: fork` + `disable-model-invocation` — zero impact on your Claude context
+- **Isolated execution**: skills use `context: fork` — runs in subagent, zero impact on your Claude context
 - **Stdin piping**: prompts passed via heredoc, never shell-quoted into argv (prevents injection)
 - **Env filtering**: child processes get a sanitized environment (blocks proxy/preload vars from .env)
 - **Fault tolerant**: megareview continues if one CLI fails, reports the error inline
