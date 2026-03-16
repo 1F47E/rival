@@ -1,6 +1,6 @@
 ---
 name: rival-megareview
-version: 3.7.0
+version: 3.8.0
 description: Run Codex + Gemini code reviews with role-specific prompts and consilium judge via the rival binary. Use only when the user explicitly invokes /rival-megareview.
 argument-hint: "[-re level] [scope]"
 context: fork

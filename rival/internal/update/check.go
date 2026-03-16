@@ -34,7 +34,7 @@ func Check(currentVersion string) {
 		return
 	}
 
-	latest, err := fetchLatest()
+	latest, err := FetchLatest()
 	if err != nil {
 		return
 	}
@@ -75,7 +75,8 @@ func saveCache(path, latest string) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func fetchLatest() (string, error) {
+// FetchLatest queries GitHub for the latest release tag name (without "v" prefix).
+func FetchLatest() (string, error) {
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Get(releasesURL)
 	if err != nil {
@@ -93,7 +94,7 @@ func fetchLatest() (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return "", err
 	}
-	return release.TagName, nil
+	return strings.TrimPrefix(release.TagName, "v"), nil
 }
 
 func printIfNewer(current, latest string) {
@@ -104,7 +105,7 @@ func printIfNewer(current, latest string) {
 	lv := normalizeVersion(latest)
 	if lv != "" && cv != "" && lv != cv && lv > cv {
 		currentDisplay := strings.TrimPrefix(current, "v")
-		_, _ = fmt.Fprintf(os.Stderr, "\n  Update available: v%s → %s — run 'brew upgrade rival'\n\n", currentDisplay, latest)
+		_, _ = fmt.Fprintf(os.Stderr, "\n  Update available: v%s → v%s — run 'rival update'\n\n", currentDisplay, latest)
 	}
 }
 
