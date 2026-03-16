@@ -9,10 +9,11 @@ const (
 	CodexModel  = "gpt-5.4"
 	GeminiModel = "gemini-3.1-pro-preview"
 
-	DefaultEffort         = "high"
-	SessionDir            = ".rival/sessions"
-	PromptPreviewLen      = 100
-	PromptDetailMaxLines  = 10
+	DefaultEffort              = "high"
+	DefaultConfidenceThreshold = 6
+	SessionDir                 = ".rival/sessions"
+	PromptPreviewLen           = 100
+	PromptDetailMaxLines       = 10
 )
 
 var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
