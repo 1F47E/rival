@@ -4,7 +4,6 @@ version: 3.7.0
 description: Run Codex + Gemini code reviews with role-specific prompts and consilium judge via the rival binary. Use only when the user explicitly invokes /rival-megareview.
 argument-hint: "[-re level] [scope]"
 context: fork
-disable-model-invocation: true
 allowed-tools: Bash
 ---
 
