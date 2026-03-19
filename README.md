@@ -22,12 +22,7 @@ cd rival && make install
 rival install
 ```
 
-Or with `go install`:
-
-```bash
-go install github.com/1F47E/rival@latest
-rival install
-```
+> **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
 `rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-codex`, `/rival-gemini`, and `/rival-megareview` are available in Claude Code.
 
