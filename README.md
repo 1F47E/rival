@@ -2,9 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.4 via Codex or Gemini 3.1 Pro via Gemini CLI — as isolated subagents that keep your main context clean.
-
-**Zero Claude tokens.** All heavy lifting runs on your Codex/Gemini subscription, not your Claude usage.
+Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.4 via Codex, Gemini 3.1 Pro via Gemini CLI, or Claude Opus 4.6 via Claude Code CLI — as isolated subagents that keep your main context clean.
 
 ## Install
 
@@ -24,7 +22,7 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-codex`, `/rival-gemini`, and `/rival-megareview` are available in Claude Code.
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-codex`, `/rival-gemini`, `/rival-claude`, and `/rival-megareview` are available in Claude Code.
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -32,8 +30,9 @@ Use `rival install --force` to overwrite without prompting.
 
 - [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login`
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY`
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate
 
-You only need the CLI for the commands you use. Megareview requires both.
+You only need the CLIs for the commands you use. Megareview uses all available CLIs.
 
 ## Usage
 
@@ -55,7 +54,14 @@ You only need the CLI for the commands you use. Megareview requires both.
 ```
 
 ```
-/rival-megareview                          — review with BOTH CLIs (auto-detects changed files)
+/rival-claude explain the auth flow
+/rival-claude -re xhigh find code quality issues in src/
+/rival-claude review                       — review (auto-detects changed files via git)
+/rival-claude review src/api/              — review specific scope (bypasses git detection)
+```
+
+```
+/rival-megareview                          — review with ALL CLIs (auto-detects changed files)
 /rival-megareview src/api/                 — review specific scope (bypasses git detection)
 /rival-megareview -re xhigh src/api/       — both CLIs, max reasoning effort
 ```
@@ -94,8 +100,19 @@ Megareview assigns **specialized roles** to each reviewer:
 
 - **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
 - **Gemini → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
+- **Claude → Code Quality & DX** — focuses on readability, naming, unnecessary complexity, error message quality, API ergonomics, maintainability traps, developer footguns, and dead code.
 
-Both reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
+All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
+
+Role prompts can be customized via `~/.rival/config.yaml`:
+
+```yaml
+roles:
+  bug_hunter: |
+    Your custom bug hunter instructions...
+  code_quality: |
+    Your custom code quality instructions...
+```
 
 A third **consilium judge** (runs via Codex) then:
 - Merges duplicate findings (same file + line + problem → single finding with all reporters in `found_by`)
@@ -119,9 +136,9 @@ Summary: ...
 
 Recommendation: request_changes — ...
 
-Reviewed by: codex (bug_hunter), gemini (arch_security)
+Reviewed by: codex (bug_hunter), gemini (arch_security), claude (code_quality)
 Judge: codex (consilium)
-Findings: 3 (threshold: 6)
+Findings: 5 (threshold: 6)
 ```
 
 If only one CLI is available, the consilium judge falls back to whichever CLI is present.
@@ -132,6 +149,7 @@ If only one CLI is available, the consilium judge falls back to whichever CLI is
 # Run with prompt from stdin
 echo 'explain the auth flow' | rival command codex --workdir .
 echo 'explain the auth flow' | rival command gemini --workdir .
+echo 'explain the auth flow' | rival command claude --workdir .
 
 # Review via megareview (both CLIs in parallel)
 echo 'src/api/' | rival command megareview --workdir .
@@ -145,7 +163,7 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, CLI (◈ codex / ✦ gemini / ◈✦ mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row.
+**List view** shows all sessions with status, CLI (◈ codex / ✦ gemini / ● claude / ◈✦● mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row.
 
 **Detail view** shows full metadata, prompt, and live-streaming log output. For megareview groups, both Codex and Gemini logs are shown side by side.
 
@@ -191,8 +209,8 @@ rival binary
 Megareview (roles + consilium):
     rival binary
     ├─ generates shared GroupID (UUID)
-    ├─ assigns roles: codex=bug_hunter, gemini=arch_security
-    ├─ spawns both concurrently with role-specific prompts
+    ├─ assigns roles: codex=bug_hunter, gemini=arch_security, claude=code_quality
+    ├─ spawns all available CLIs concurrently with role-specific prompts
     ├─ parses structured JSON output from each reviewer
     ├─ spawns codex again as consilium judge
     │   ├─ merges duplicates, applies consensus bonus
@@ -220,7 +238,7 @@ Second terminal:
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-codex ~/.claude/skills/rival-gemini ~/.claude/skills/rival-megareview
+rm -rf ~/.claude/skills/rival-codex ~/.claude/skills/rival-gemini ~/.claude/skills/rival-claude ~/.claude/skills/rival-megareview
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```

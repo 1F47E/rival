@@ -29,6 +29,11 @@ func ParseGeminiArgs(raw string) (*ParseResult, error) {
 	return parseArgs(raw)
 }
 
+// ParseClaudeArgs parses raw arguments for the claude command.
+func ParseClaudeArgs(raw string) (*ParseResult, error) {
+	return parseArgs(raw)
+}
+
 func parseArgs(raw string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
