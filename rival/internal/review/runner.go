@@ -38,6 +38,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 	// Preflight.
 	codexOK := true
 	geminiOK := true
+	claudeOK := true
 	if err := executor.CodexPreflight(); err != nil {
 		log.Warn().Err(err).Msg("codex unavailable")
 		codexOK = false
@@ -46,19 +47,27 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 		log.Warn().Err(err).Msg("gemini unavailable")
 		geminiOK = false
 	}
-	if !codexOK && !geminiOK {
+	if err := executor.ClaudePreflight(); err != nil {
+		log.Warn().Err(err).Msg("claude unavailable")
+		claudeOK = false
+	}
+	if !codexOK && !geminiOK && !claudeOK {
 		return nil, fmt.Errorf("no CLI reviewers available")
 	}
 
-	// Determine which CLI to use for the consilium judge (prefer codex, fallback to gemini).
+	// Determine which CLI to use for the consilium judge (prefer codex, fallback to claude, then gemini).
 	judgeCLI := "codex"
 	if !codexOK {
-		judgeCLI = "gemini"
+		if claudeOK {
+			judgeCLI = "claude"
+		} else {
+			judgeCLI = "gemini"
+		}
 	}
 
 	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
 	var wg sync.WaitGroup
-	results := make(chan cliResult, 2)
+	results := make(chan cliResult, 3)
 
 	if codexOK {
 		wg.Add(1)
@@ -72,6 +81,13 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 		go func() {
 			defer wg.Done()
 			results <- runReviewer(ctx, "gemini", groupID, scope, effort, workdir)
+		}()
+	}
+	if claudeOK {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- runReviewer(ctx, "claude", groupID, scope, effort, workdir)
 		}()
 	}
 
@@ -131,10 +147,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 
 func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir string) cliResult {
 	role := RoleForCLI(cli)
-	model := config.CodexModel
-	if cli == "gemini" {
-		model = config.GeminiModel
-	}
+	model := modelForCLI(cli)
 
 	prompt := BuildRolePrompt(role, scope)
 
@@ -157,6 +170,8 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
 	case "gemini":
 		result, err = executor.RunGemini(ctx, sess, prompt, effort, workdir, nil)
+	case "claude":
+		result, err = executor.RunClaude(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
@@ -190,10 +205,7 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, scope, effort, workdir, groupID string, threshold int) (*ConsiliumOutput, error) {
 	prompt := BuildConsiliumPrompt(inputs, scope, threshold)
 
-	model := config.CodexModel
-	if judgeCLI == "gemini" {
-		model = config.GeminiModel
-	}
+	model := modelForCLI(judgeCLI)
 
 	sess, err := session.New(judgeCLI, "consilium", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
@@ -214,6 +226,8 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
 	case "gemini":
 		result, err = executor.RunGemini(ctx, sess, prompt, effort, workdir, nil)
+	case "claude":
+		result, err = executor.RunClaude(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
@@ -242,6 +256,19 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 	}
 
 	return output, nil
+}
+
+func modelForCLI(cli string) string {
+	switch cli {
+	case "codex":
+		return config.CodexModel
+	case "gemini":
+		return config.GeminiModel
+	case "claude":
+		return config.ClaudeModel
+	default:
+		return cli
+	}
 }
 
 func truncate(s string, max int) string {

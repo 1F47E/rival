@@ -3,11 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	CodexModel  = "gpt-5.4"
 	GeminiModel = "gemini-3.1-pro-preview"
+	ClaudeModel = "claude-opus-4-6"
 
 	DefaultEffort              = "high"
 	DefaultConfidenceThreshold = 6
@@ -17,6 +20,14 @@ const (
 )
 
 var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
+
+// ClaudeEffortLevel maps rival effort levels to claude CLI --effort values.
+var ClaudeEffortLevel = map[string]string{
+	"low":    "low",
+	"medium": "medium",
+	"high":   "high",
+	"xhigh":  "max",
+}
 
 // SystemPrompt is prepended as a system instruction to all CLI invocations.
 const SystemPrompt = `Answer the user's question directly. Do not offer follow-up options, menus, walkthroughs, or ask if they want more. No filler, no sign-offs. Just deliver the answer and stop.`
@@ -77,4 +88,42 @@ func SessionDirPath() string {
 		return filepath.Join(".", SessionDir)
 	}
 	return filepath.Join(home, SessionDir)
+}
+
+// UserConfig holds optional user configuration from ~/.rival/config.yaml.
+type UserConfig struct {
+	Roles map[string]string `yaml:"roles"`
+}
+
+var userConfig *UserConfig
+
+// LoadUserConfig reads ~/.rival/config.yaml if it exists.
+func LoadUserConfig() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	path := filepath.Join(home, ".rival", "config.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var cfg UserConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return
+	}
+	userConfig = &cfg
+}
+
+// RolePromptOverride returns the user-configured prompt for a role, if any.
+func RolePromptOverride(role string) (string, bool) {
+	if userConfig == nil {
+		return "", false
+	}
+	v, ok := userConfig.Roles[role]
+	return v, ok
+}
+
+func init() {
+	LoadUserConfig()
 }

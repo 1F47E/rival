@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/1F47E/rival/internal/config"
 )
 
 // BuildRolePrompt builds a role-specific review prompt by combining
@@ -13,11 +15,18 @@ func BuildRolePrompt(role Role, scope string) string {
 
 	sb.WriteString(fmt.Sprintf("Review scope: %s\n\n", scope))
 
-	switch role {
-	case RoleBugHunter:
-		sb.WriteString(bugHunterInstructions())
-	case RoleArchSecurity:
-		sb.WriteString(archSecurityInstructions())
+	// Check for user-configured role prompt override.
+	if override, ok := config.RolePromptOverride(string(role)); ok {
+		sb.WriteString(override)
+	} else {
+		switch role {
+		case RoleBugHunter:
+			sb.WriteString(bugHunterInstructions())
+		case RoleArchSecurity:
+			sb.WriteString(archSecurityInstructions())
+		case RoleCodeQuality:
+			sb.WriteString(codeQualityInstructions())
+		}
 	}
 
 	sb.WriteString(reviewerJSONContract())
@@ -121,6 +130,41 @@ You are not the final judge. Your value is independent attack from a different a
 `
 }
 
+func codeQualityInstructions() string {
+	return `## Role: Code Quality & Developer Experience Reviewer
+
+You are the code quality and developer experience reviewer for this code review.
+
+Your job is to find issues that hurt readability, maintainability, and developer ergonomics.
+
+Focus on:
+- readability and naming clarity
+- unnecessary complexity and over-engineering
+- error message quality and developer-facing UX
+- API ergonomics and consistency
+- maintainability traps and future-proofing pitfalls
+- missing documentation for non-obvious logic
+- developer footguns and surprising behavior
+- dead code and unused abstractions
+- inconsistent patterns within the codebase
+- poor separation of concerns
+
+Do not spend time on:
+- formatting or whitespace
+- trivial style preferences
+- performance unless it directly impacts DX (e.g., slow dev builds)
+
+Rules:
+- report only issues that would meaningfully improve a developer's experience working with this code
+- prefer fewer, stronger findings over many weak ones
+- every finding must include exact file and line
+- if code is functional but confusing, explain the confusion clearly
+- read the code in the review scope before producing findings
+
+You are not the final judge. Your value is the DX perspective that other reviewers miss.
+`
+}
+
 func consiliumInstructions(threshold int) string {
 	return fmt.Sprintf(`## Instructions
 
@@ -198,7 +242,7 @@ Return JSON only. No prose, no markdown, no explanation outside the JSON. Your e
       "body": "concrete explanation tied to code",
       "suggestion": "concrete fix",
       "confidence": 8,
-      "found_by": ["codex", "gemini"]
+      "found_by": ["codex", "gemini", "claude"]
     }
   ],
   "recommendation": {
