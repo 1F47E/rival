@@ -33,6 +33,7 @@ func RunCodex(ctx context.Context, sess *session.Session, prompt, effort, workdi
 		"-c", fmt.Sprintf("model_reasoning_effort=%s", effort),
 		"--sandbox", "read-only",
 		"--ephemeral",
+		"--skip-git-repo-check",
 		"--color", "never",
 		"-",
 	}
