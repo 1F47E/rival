@@ -84,6 +84,6 @@ func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, _ = fmt.Fprint(os.Stdout, review.FormatConsole(result.Output, result.Inputs, result.Threshold, result.JudgeCLI))
+	_, _ = fmt.Fprint(os.Stdout, review.FormatConsole(result.Output, result.Inputs, result.Threshold, result.JudgeCLI, result.Skipped))
 	return nil
 }

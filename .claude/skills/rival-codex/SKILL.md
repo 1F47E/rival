@@ -1,6 +1,6 @@
 ---
 name: rival-codex
-version: 3.9.0
+version: 3.10.0
 description: Run Codex through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-codex.
 argument-hint: "[-re level] [review [scope] | prompt]"
 context: fork

@@ -6,7 +6,7 @@ import (
 )
 
 // FormatConsole formats the consilium output for terminal display.
-func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int, judgeCLI string) string {
+func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int, judgeCLI string, skipped []SkippedCLI) string {
 	var sb strings.Builder
 
 	sb.WriteString("\n═══ RIVAL REVIEW ═══\n\n")
@@ -38,6 +38,13 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 		reviewers = append(reviewers, fmt.Sprintf("%s (%s)", input.CLI, input.Role))
 	}
 	sb.WriteString(fmt.Sprintf("Reviewed by: %s\n", strings.Join(reviewers, ", ")))
+	if len(skipped) > 0 {
+		var parts []string
+		for _, s := range skipped {
+			parts = append(parts, fmt.Sprintf("%s (%s)", s.CLI, s.Reason))
+		}
+		sb.WriteString(fmt.Sprintf("Skipped: %s\n", strings.Join(parts, ", ")))
+	}
 	sb.WriteString(fmt.Sprintf("Judge: %s (consilium)\n", judgeCLI))
 	sb.WriteString(fmt.Sprintf("Findings: %d (threshold: %d)\n", len(output.Findings), threshold))
 

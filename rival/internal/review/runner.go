@@ -13,12 +13,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// SkippedCLI records a CLI that was unavailable during megareview.
+type SkippedCLI struct {
+	CLI    string
+	Reason string
+}
+
 // RunResult holds the outcome of the full mega review pipeline.
 type RunResult struct {
 	Output    *ConsiliumOutput
 	Inputs    []ReviewInput
 	Threshold int
 	JudgeCLI  string
+	Skipped   []SkippedCLI
 }
 
 // cliResult holds the outcome of a single CLI reviewer.
@@ -39,17 +46,21 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 	codexOK := true
 	geminiOK := true
 	claudeOK := true
+	var skipped []SkippedCLI
 	if err := executor.CodexPreflight(); err != nil {
 		log.Warn().Err(err).Msg("codex unavailable")
 		codexOK = false
+		skipped = append(skipped, SkippedCLI{CLI: "codex", Reason: err.Error()})
 	}
 	if err := executor.GeminiPreflight(); err != nil {
 		log.Warn().Err(err).Msg("gemini unavailable")
 		geminiOK = false
+		skipped = append(skipped, SkippedCLI{CLI: "gemini", Reason: err.Error()})
 	}
 	if err := executor.ClaudePreflight(); err != nil {
 		log.Warn().Err(err).Msg("claude unavailable")
 		claudeOK = false
+		skipped = append(skipped, SkippedCLI{CLI: "claude", Reason: err.Error()})
 	}
 	if !codexOK && !geminiOK && !claudeOK {
 		return nil, fmt.Errorf("no CLI reviewers available")
@@ -142,6 +153,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 		Inputs:    inputs,
 		Threshold: threshold,
 		JudgeCLI:  judgeCLI,
+		Skipped:   skipped,
 	}, nil
 }
 

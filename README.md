@@ -235,6 +235,39 @@ Second terminal:
 - **Env filtering**: child processes get a sanitized environment (blocks proxy/preload vars from .env)
 - **Fault tolerant**: megareview continues if one CLI fails, reports the error inline
 
+## Docker Mode (Claude)
+
+Run Claude via Docker with a separate Anthropic subscription. This is an internal setting — skills and commands stay the same, the executor switches transparently.
+
+### Setup
+
+1. Generate a token on the second account:
+   ```bash
+   claude setup-token   # → sk-ant-oat01-...
+   ```
+
+2. Set the env var:
+   ```bash
+   export RIVAL_CLAUDE_TOKEN=sk-ant-oat01-YOUR-TOKEN-HERE
+   ```
+
+3. Enable Docker mode in `~/.rival/config.yaml`:
+   ```yaml
+   claude:
+     mode: docker
+   ```
+
+4. First run auto-builds the `rival-claude` Docker image. Subsequent runs reuse it.
+
+Now `/rival-claude`, megareview, and all claude commands run inside Docker using the second subscription. Set `mode: native` (or remove the key) to switch back.
+
+### Notes
+
+- OAuth tokens can expire — re-run `claude setup-token` if you get 401 errors
+- The Docker image is `node:22-slim` + `@anthropic-ai/claude-code` (auto-built, ~200MB)
+- Your workdir is mounted as `/workspace` inside the container
+- To rebuild the image: `docker rmi rival-claude`, next run rebuilds automatically
+
 ## Uninstall
 
 ```bash
