@@ -10,7 +10,9 @@ import (
 const (
 	CodexModel  = "gpt-5.4"
 	GeminiModel = "gemini-3.1-pro-preview"
-	ClaudeModel = "claude-opus-4-6"
+	ClaudeModel          = "claude-opus-4-6"
+	ClaudeDockerImage    = "rival-claude"
+	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
 	DefaultEffort              = "high"
 	DefaultConfidenceThreshold = 6
@@ -90,9 +92,15 @@ func SessionDirPath() string {
 	return filepath.Join(home, SessionDir)
 }
 
+// ClaudeConfig holds claude-specific settings.
+type ClaudeConfig struct {
+	Mode string `yaml:"mode"` // "native" (default) or "docker"
+}
+
 // UserConfig holds optional user configuration from ~/.rival/config.yaml.
 type UserConfig struct {
-	Roles map[string]string `yaml:"roles"`
+	Claude ClaudeConfig      `yaml:"claude"`
+	Roles  map[string]string `yaml:"roles"`
 }
 
 var userConfig *UserConfig
@@ -122,6 +130,14 @@ func RolePromptOverride(role string) (string, bool) {
 	}
 	v, ok := userConfig.Roles[role]
 	return v, ok
+}
+
+// IsClaudeDockerMode returns true if the user configured claude to run via Docker.
+func IsClaudeDockerMode() bool {
+	if userConfig == nil {
+		return false
+	}
+	return userConfig.Claude.Mode == "docker"
 }
 
 func init() {
