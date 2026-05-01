@@ -125,7 +125,7 @@ func formatGroupRow(item *displayItem, width int) string {
 	)
 }
 
-// groupModels returns a combined model string like "gpt-5.4 + gemini-3.1-pro".
+// groupModels returns a combined model string like "gpt-5.5 + gemini-3.1-pro".
 func groupModels(item *displayItem) string {
 	var models []string
 	seen := map[string]bool{}

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	CodexModel  = "gpt-5.4"
+	CodexModel  = "gpt-5.5"
 	GeminiModel = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-6"
 	ClaudeDockerImage    = "rival-claude"
