@@ -47,14 +47,13 @@ func BuildConsiliumPrompt(inputs []ReviewInput, scope string, threshold int) str
 	for _, input := range inputs {
 		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s (%s) [role: %s] ===\n\n", input.CLI, input.Model, input.Role))
 		if input.Parsed != nil {
-			data, err := json.MarshalIndent(input.Parsed, "", "  ")
-			if err == nil {
+			if data, err := json.MarshalIndent(input.Parsed, "", "  "); err == nil {
 				sb.WriteString(string(data))
 			} else {
-				sb.WriteString(input.RawOutput)
+				sb.WriteString(failedReviewerStub(input.CLI, input.RawOutput))
 			}
 		} else {
-			sb.WriteString(input.RawOutput)
+			sb.WriteString(failedReviewerStub(input.CLI, input.RawOutput))
 		}
 		sb.WriteString("\n\n=== END REVIEW ===\n\n")
 	}
@@ -222,6 +221,29 @@ Return JSON only. No prose, no markdown, no explanation outside the JSON. Your e
 
 If the code is solid, return: {"summary": "...", "findings": []}
 `
+}
+
+const maxDebugTail = 2048
+
+func failedReviewerStub(cli, rawOutput string) string {
+	tail := rawOutput
+	if len(tail) > maxDebugTail {
+		tail = tail[len(tail)-maxDebugTail:]
+	}
+	stub := struct {
+		Summary  string `json:"summary"`
+		Findings []any  `json:"findings"`
+		DebugTail string `json:"debug_tail,omitempty"`
+	}{
+		Summary:  fmt.Sprintf("%s failed to produce structured JSON output", cli),
+		Findings: []any{},
+		DebugTail: strings.TrimSpace(tail),
+	}
+	data, err := json.MarshalIndent(stub, "", "  ")
+	if err != nil {
+		return fmt.Sprintf(`{"summary":"%s failed: internal marshal error","findings":[]}`, cli)
+	}
+	return string(data)
 }
 
 func consiliumJSONContract() string {

@@ -2,11 +2,11 @@ package skills
 
 import "embed"
 
-//go:embed all:rival-codex
-//go:embed all:rival-gemini
-//go:embed all:rival-claude
-//go:embed all:rival-megareview
+//go:embed all:rival-codex-only
+//go:embed all:rival-gemini-only
+//go:embed all:rival-claude-only
+//go:embed all:rival-review
 var Files embed.FS
 
 // Names lists all embedded skill directory names.
-var Names = []string{"rival-codex", "rival-gemini", "rival-claude", "rival-megareview"}
+var Names = []string{"rival-codex-only", "rival-gemini-only", "rival-claude-only", "rival-review"}

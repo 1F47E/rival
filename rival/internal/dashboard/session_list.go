@@ -78,16 +78,22 @@ func formatItemRow(item *displayItem, width int) string {
 const (
 	iconCodex  = "◈" // OpenAI / Codex
 	iconGemini = "✦" // Google / Gemini
-	iconMega   = "◈✦" // Both
+	iconClaude = "⬡" // Anthropic / Claude
+	iconMega   = "◈✦⬡" // All three
 )
 
 // cliLabel returns a display label with icon for a CLI name.
-func cliLabel(cli string) string {
+func cliLabel(cli, mode string) string {
 	switch cli {
 	case "codex":
 		return iconCodex + " codex"
 	case "gemini":
 		return iconGemini + " gemini"
+	case "claude":
+		if mode == "docker" {
+			return iconClaude + " claude/dk"
+		}
+		return iconClaude + " claude"
 	default:
 		return cli
 	}
@@ -201,7 +207,7 @@ func formatSessionRow(s *session.Session, width int) string {
 
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
-		cols.cli, cliLabel(s.CLI),
+		cols.cli, cliLabel(s.CLI, s.Mode),
 		cols.model, truncate(s.Model, cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,

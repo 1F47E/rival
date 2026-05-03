@@ -1,5 +1,5 @@
 ---
-name: rival-claude
+name: rival-claude-only
 version: 3.10.0
 description: Run Claude through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-claude.
 argument-hint: "[-re level] [review [scope] | prompt]"
@@ -20,11 +20,11 @@ Run Claude Code CLI via the `rival` Go binary. All work happens in a forked suba
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-claude 'explain the auth flow'` — run any prompt via claude
-> - `/rival-claude -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
-> - `/rival-claude review` — code review (auto-detects changed files via git)
-> - `/rival-claude review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-claude -re xhigh review src/api/` — review with xhigh reasoning
+> - `/rival-claude-only 'explain the auth flow'` — run any prompt via claude
+> - `/rival-claude-only -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
+> - `/rival-claude-only review` — code review (auto-detects changed files via git)
+> - `/rival-claude-only review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-claude-only -re xhigh review src/api/` — review with xhigh reasoning
 > - `/rival-claude` — show this usage info
 >
 > **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`

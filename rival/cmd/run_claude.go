@@ -70,6 +70,7 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
+	sess.Account = config.ClaudeSubscription()
 
 	defer func() {
 		if sess.Status == "running" {

@@ -1,7 +1,7 @@
 ---
-name: rival-megareview
+name: rival-review
 version: 3.10.0
-description: Run Codex + Gemini code reviews with role-specific prompts and consilium judge via the rival binary. Use only when the user explicitly invokes /rival-megareview.
+description: Run Codex + Gemini code reviews with role-specific prompts and consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-re level] [scope]"
 context: fork
 allowed-tools: Bash
@@ -20,10 +20,10 @@ Run both Codex and Gemini code reviews in parallel via the `rival` Go binary. Re
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-megareview` — review with both CLIs (auto-detects changed files via git)
-> - `/rival-megareview src/api/` — review specific scope
-> - `/rival-megareview -re xhigh src/api/` — review with xhigh reasoning effort
-> - `/rival-megareview` — show this usage info
+> - `/rival-review` — review with both CLIs (auto-detects changed files via git)
+> - `/rival-review src/api/` — review specific scope
+> - `/rival-review -re xhigh src/api/` — review with xhigh reasoning effort
+> - `/rival-review` — show this usage info
 >
 > **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`
 

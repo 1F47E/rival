@@ -1,5 +1,5 @@
 ---
-name: rival-codex
+name: rival-codex-only
 version: 3.10.0
 description: Run Codex through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-codex.
 argument-hint: "[-re level] [review [scope] | prompt]"
@@ -20,11 +20,11 @@ Run OpenAI Codex CLI via the `rival` Go binary. All work happens in a forked sub
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-codex 'explain the auth flow'` — run any prompt via codex
-> - `/rival-codex -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
-> - `/rival-codex review` — code review (auto-detects changed files via git)
-> - `/rival-codex review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-codex -re xhigh review src/api/` — review with xhigh reasoning
+> - `/rival-codex-only 'explain the auth flow'` — run any prompt via codex
+> - `/rival-codex-only -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
+> - `/rival-codex-only review` — code review (auto-detects changed files via git)
+> - `/rival-codex-only review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-codex-only -re xhigh review src/api/` — review with xhigh reasoning
 > - `/rival-codex` — show this usage info
 >
 > **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`

@@ -167,6 +167,9 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 	if err != nil {
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("create session: %w", err)}
 	}
+	if cli == "claude" {
+		sess.Account = config.ClaudeSubscription()
+	}
 
 	defer func() {
 		if sess.Status == "running" {
@@ -222,6 +225,9 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 	sess, err := session.New(judgeCLI, "consilium", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("create consilium session: %w", err)
+	}
+	if judgeCLI == "claude" {
+		sess.Account = config.ClaudeSubscription()
 	}
 
 	defer func() {

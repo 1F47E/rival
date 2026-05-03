@@ -1,5 +1,5 @@
 ---
-name: rival-gemini
+name: rival-gemini-only
 version: 3.10.0
 description: Run Gemini through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-gemini.
 argument-hint: "[-re level] [review [scope] | prompt]"
@@ -20,11 +20,11 @@ Run Google Gemini CLI via the `rival` Go binary. All work happens in a forked su
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-gemini 'explain the auth flow'` — run any prompt via gemini
-> - `/rival-gemini -re high 'analyze this complex algorithm'` — use high thinking budget
-> - `/rival-gemini review` — code review (auto-detects changed files via git)
-> - `/rival-gemini review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-gemini -re xhigh review src/api/` — review with xhigh reasoning
+> - `/rival-gemini-only 'explain the auth flow'` — run any prompt via gemini
+> - `/rival-gemini-only -re high 'analyze this complex algorithm'` — use high thinking budget
+> - `/rival-gemini-only review` — code review (auto-detects changed files via git)
+> - `/rival-gemini-only review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-gemini-only -re xhigh review src/api/` — review with xhigh reasoning
 > - `/rival-gemini` — show this usage info
 >
 > **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`

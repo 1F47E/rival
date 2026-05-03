@@ -76,6 +76,9 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	sess, err := session.New("claude", mode, config.ClaudeModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	if err == nil {
+		sess.Account = config.ClaudeSubscription()
+	}
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}

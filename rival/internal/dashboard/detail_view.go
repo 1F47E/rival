@@ -36,6 +36,9 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 	addField(&meta, "Model", s.Model, width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", s.Mode, width)
+	if s.Account != "" {
+		addField(&meta, "Account", s.Account, width)
+	}
 	addStyledField(&meta, "Status", s.Status, statusStyle(s.Status), width)
 	addField(&meta, "WorkDir", s.WorkDir, width)
 	addField(&meta, "Started", s.StartTime.Format("15:04:05"), width)
@@ -103,7 +106,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	meta.WriteString("\n\n")
 
 	// Shared metadata from primary session.
-	addField(&meta, "CLI", "codex+gemini", width)
+	addField(&meta, "CLI", "codex+gemini+claude", width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", "megareview", width)
 	addStyledField(&meta, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)

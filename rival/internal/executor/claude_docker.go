@@ -17,7 +17,9 @@ const claudeDockerImage = "rival-claude"
 
 // Embedded Dockerfile content — written to temp file for auto-build.
 const claudeDockerfile = `FROM node:22-slim
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code && \
+    useradd -m -s /bin/bash claude
+USER claude
 WORKDIR /workspace
 ENTRYPOINT ["claude"]
 `
@@ -25,12 +27,7 @@ ENTRYPOINT ["claude"]
 // ClaudeDockerPreflight checks docker is available, token is set, and image exists (auto-builds if missing).
 func ClaudeDockerPreflight() error {
 	if _, err := exec.LookPath("docker"); err != nil {
-		return fmt.Errorf("docker not installed")
-	}
-
-	token := os.Getenv(config.ClaudeDockerTokenEnv)
-	if token == "" {
-		return fmt.Errorf("%s env var not set. Generate with: claude setup-token", config.ClaudeDockerTokenEnv)
+		return fmt.Errorf("claude requires Docker but docker is not installed")
 	}
 
 	// Check docker daemon is running.
@@ -38,7 +35,18 @@ func ClaudeDockerPreflight() error {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker daemon not running: %w", err)
+		return fmt.Errorf("claude requires Docker but the daemon is not running — start Docker Desktop and retry")
+	}
+
+	token := os.Getenv(config.ClaudeDockerTokenEnv)
+	if token == "" {
+		return fmt.Errorf("%s env var not set. To authenticate:\n"+
+			"  1. docker run -d --name rival-claude-login --user claude --entrypoint sh %s -c 'sleep 3600'\n"+
+			"  2. docker exec -it rival-claude-login claude login\n"+
+			"  3. docker exec rival-claude-login cat /home/claude/.claude/.credentials.json\n"+
+			"  4. export %s=<accessToken from step 3>\n"+
+			"  5. docker rm -f rival-claude-login",
+			config.ClaudeDockerTokenEnv, claudeDockerImage, config.ClaudeDockerTokenEnv)
 	}
 
 	// Check image exists, auto-build if missing.
@@ -48,7 +56,7 @@ func ClaudeDockerPreflight() error {
 	if err := inspectCmd.Run(); err != nil {
 		log.Info().Msg("rival-claude docker image not found, building...")
 		if buildErr := buildClaudeDockerImage(); buildErr != nil {
-			return fmt.Errorf("auto-build docker image: %w", buildErr)
+			return fmt.Errorf("failed to build %s docker image: %w", claudeDockerImage, buildErr)
 		}
 		log.Info().Msg("rival-claude docker image built successfully")
 	}

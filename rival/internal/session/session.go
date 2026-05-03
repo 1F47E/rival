@@ -36,6 +36,7 @@ type Session struct {
 	OutputBytes   int64      `json:"output_bytes"`
 	OutputLines   int        `json:"output_lines"`
 	ErrorMsg      string     `json:"error,omitempty"`
+	Account       string     `json:"account,omitempty"`
 	PID           int        `json:"pid"`
 }
 

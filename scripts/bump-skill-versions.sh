@@ -8,14 +8,14 @@ VERSION="${1:?Usage: $0 <version>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 SKILL_DIRS=(
-  "$ROOT/rival/internal/skills/rival-codex"
-  "$ROOT/rival/internal/skills/rival-gemini"
-  "$ROOT/rival/internal/skills/rival-claude"
-  "$ROOT/rival/internal/skills/rival-megareview"
-  "$ROOT/.claude/skills/rival-codex"
-  "$ROOT/.claude/skills/rival-gemini"
-  "$ROOT/.claude/skills/rival-claude"
-  "$ROOT/.claude/skills/rival-megareview"
+  "$ROOT/rival/internal/skills/rival-codex-only"
+  "$ROOT/rival/internal/skills/rival-gemini-only"
+  "$ROOT/rival/internal/skills/rival-claude-only"
+  "$ROOT/rival/internal/skills/rival-review"
+  "$ROOT/.claude/skills/rival-codex-only"
+  "$ROOT/.claude/skills/rival-gemini-only"
+  "$ROOT/.claude/skills/rival-claude-only"
+  "$ROOT/.claude/skills/rival-review"
 )
 
 for dir in "${SKILL_DIRS[@]}"; do
