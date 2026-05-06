@@ -2,7 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.4 via Codex, Gemini 3.1 Pro via Gemini CLI, or Claude Opus 4.6 via Claude Code CLI — as isolated subagents that keep your main context clean.
+Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini 3.1 Pro via Gemini CLI, or Claude Opus 4.6 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean.
 
 ## Install
 
@@ -22,7 +22,7 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-codex`, `/rival-gemini`, `/rival-claude`, and `/rival-megareview` are available in Claude Code.
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-gemini-only`, and `/rival-claude-only` are available in Claude Code.
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -30,7 +30,7 @@ Use `rival install --force` to overwrite without prompting.
 
 - [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login`
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY`
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below)
 
 You only need the CLIs for the commands you use. Megareview uses all available CLIs.
 
@@ -38,46 +38,49 @@ You only need the CLIs for the commands you use. Megareview uses all available C
 
 ### Claude Code Skills
 
+**Default review** (runs all available CLIs + consilium judge):
+
 ```
-/rival-codex explain the auth flow in this project
-/rival-codex -re xhigh find bugs in src/main.go
-/rival-codex review                        — review (auto-detects changed files via git)
-/rival-codex review src/api/               — review specific scope (bypasses git detection)
-/rival-codex -re xhigh review src/api/     — review with xhigh reasoning
+/rival-review                              — review with ALL CLIs (auto-detects changed files)
+/rival-review src/api/                     — review specific scope (bypasses git detection)
+/rival-review -re xhigh src/api/           — all CLIs, max reasoning effort
+```
+
+**Single-CLI skills** (use only when you want one specific CLI):
+
+```
+/rival-codex-only explain the auth flow in this project
+/rival-codex-only -re xhigh find bugs in src/main.go
+/rival-codex-only review                   — review (auto-detects changed files via git)
+/rival-codex-only review src/api/          — review specific scope
 ```
 
 ```
-/rival-gemini explain the auth flow
-/rival-gemini -re high analyze this complex algorithm
-/rival-gemini review                       — review (auto-detects changed files via git)
-/rival-gemini review src/api/              — review specific scope (bypasses git detection)
+/rival-gemini-only explain the auth flow
+/rival-gemini-only -re high analyze this complex algorithm
+/rival-gemini-only review                  — review (auto-detects changed files via git)
+/rival-gemini-only review src/api/         — review specific scope
 ```
 
 ```
-/rival-claude explain the auth flow
-/rival-claude -re xhigh find code quality issues in src/
-/rival-claude review                       — review (auto-detects changed files via git)
-/rival-claude review src/api/              — review specific scope (bypasses git detection)
+/rival-claude-only explain the auth flow
+/rival-claude-only -re xhigh find code quality issues in src/
+/rival-claude-only review                  — review (auto-detects changed files via git)
+/rival-claude-only review src/api/         — review specific scope
 ```
 
-```
-/rival-megareview                          — review with ALL CLIs (auto-detects changed files)
-/rival-megareview src/api/                 — review specific scope (bypasses git detection)
-/rival-megareview -re xhigh src/api/       — both CLIs, max reasoning effort
-```
-
-**Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`
+**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default)
 
 ### How Reviews Work
 
-When you run a review, Codex/Gemini get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
+When you run a review, Codex/Gemini/Claude get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
 - Explore the full codebase to understand context
 - Run commands to inspect project structure
 
-**Smart scope detection.** Running `/rival-codex review` with no arguments auto-detects what to review via git:
+**Smart scope detection.** Running `/rival-review` with no arguments auto-detects what to review via git:
 1. **Dirty files** (staged + unstaged + untracked new files) → reviews those files
 2. **Last commit** (if working tree is clean) → reviews files from HEAD
 3. **Full project** → only if not a git repo or no changes found
@@ -87,9 +90,9 @@ The **scope** is a focus hint, not a restriction. `review src/api/` tells the re
 This means you can use natural language for the scope:
 
 ```
-/rival-codex review the files changed in the last commit
-/rival-codex review the authentication middleware
-/rival-megareview -re xhigh the new payment flow in src/billing/
+/rival-codex-only review the files changed in the last commit
+/rival-codex-only review the authentication middleware
+/rival-review -re xhigh the new payment flow in src/billing/
 ```
 
 The reviewer will figure out what to look at, explore the relevant code, and give you a review with full project understanding.
@@ -141,7 +144,7 @@ Judge: codex (consilium)
 Findings: 5 (threshold: 6)
 ```
 
-If only one CLI is available, the consilium judge falls back to whichever CLI is present.
+If only one CLI is available, the consilium judge falls back to whichever CLI is present. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
 
 ### Direct CLI
 
@@ -151,7 +154,7 @@ echo 'explain the auth flow' | rival command codex --workdir .
 echo 'explain the auth flow' | rival command gemini --workdir .
 echo 'explain the auth flow' | rival command claude --workdir .
 
-# Review via megareview (both CLIs in parallel)
+# Review via megareview (all CLIs in parallel)
 echo 'src/api/' | rival command megareview --workdir .
 ```
 
@@ -163,9 +166,9 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, CLI (◈ codex / ✦ gemini / ● claude / ◈✦● mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row.
+**List view** shows all sessions with status, CLI (◈ codex / ✦ gemini / ⬡ claude / ◈✦⬡ mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row. Claude sessions show `⬡ claude` for native or `⬡ claude/dk` for Docker mode.
 
-**Detail view** shows full metadata, prompt, and live-streaming log output. For megareview groups, both Codex and Gemini logs are shown side by side.
+**Detail view** shows full metadata (including Mode and Account/subscription type for Claude), prompt, and live-streaming log output. For megareview groups, all reviewer logs are shown.
 
 #### Keys
 
@@ -192,16 +195,16 @@ rival version               # show version
 ```
 Claude Code main session
     │
-    │ /rival-codex review src/
+    │ /rival-review
     ▼
 Claude skill (context: fork)
     │
-    │ stdin heredoc → rival command codex --workdir $(pwd)
+    │ stdin heredoc → rival command megareview --workdir $(pwd)
     ▼
 rival binary
     ├─ parses arguments (-re flag, review/prompt mode)
     ├─ builds review prompt with scope injection
-    ├─ spawns codex/gemini via subprocess
+    ├─ spawns codex/gemini/claude via subprocess
     ├─ pipes prompt to stdin, tees stdout to log file
     ├─ writes session JSON + live log to ~/.rival/sessions/
     └─ returns output to skill → back to Claude Code
@@ -234,44 +237,70 @@ Second terminal:
 - **Stdin piping**: prompts passed via heredoc, never shell-quoted into argv (prevents injection)
 - **Env filtering**: child processes get a sanitized environment (blocks proxy/preload vars from .env)
 - **Fault tolerant**: megareview continues if one CLI fails, reports the error inline
+- **Consilium overflow protection**: reviewer outputs that fail JSON parsing are replaced with a stub + 2KB debug tail, preventing oversized judge prompts
 
-## Docker Mode (Claude)
+## Claude: Native vs Docker
 
-Run Claude via Docker with a separate Anthropic subscription. This is an internal setting — skills and commands stay the same, the executor switches transparently.
+Claude auto-detects its execution mode:
 
-### Setup
+- **Native** (default): if `claude` CLI is on PATH, uses it directly. No extra config needed.
+- **Docker**: if `claude` CLI is not available, runs inside a Docker container with a separate Anthropic subscription.
 
-1. Generate a token on the second account:
+### Docker Setup
+
+1. Build the image (auto-builds on first run, or manually):
    ```bash
-   claude setup-token   # → sk-ant-oat01-...
+   docker build -t rival-claude -f - . <<'EOF'
+   FROM node:22-slim
+   RUN npm install -g @anthropic-ai/claude-code && \
+       useradd -m -s /bin/bash claude
+   USER claude
+   WORKDIR /workspace
+   ENTRYPOINT ["claude"]
+   EOF
    ```
 
-2. Set the env var:
+2. Authenticate via interactive login in a temp container:
+   ```bash
+   docker run -d --name rival-claude-login --user claude --entrypoint sh rival-claude -c 'sleep 3600'
+   docker exec -it rival-claude-login claude login
+   # Opens auth URL → authorize in browser → paste localhost redirect back
+   docker exec rival-claude-login cat /home/claude/.claude/.credentials.json
+   # Copy the accessToken value (starts with sk-ant-oat01-...)
+   docker rm -f rival-claude-login
+   ```
+
+3. Export the token:
    ```bash
    export RIVAL_CLAUDE_TOKEN=sk-ant-oat01-YOUR-TOKEN-HERE
    ```
 
-3. Enable Docker mode in `~/.rival/config.yaml`:
+4. Optionally set subscription type in `~/.rival/config.yaml`:
    ```yaml
    claude:
-     mode: docker
+     subscription: team    # or "personal" — shown in TUI
    ```
-
-4. First run auto-builds the `rival-claude` Docker image. Subsequent runs reuse it.
-
-Now `/rival-claude`, megareview, and all claude commands run inside Docker using the second subscription. Set `mode: native` (or remove the key) to switch back.
 
 ### Notes
 
-- OAuth tokens can expire — re-run `claude setup-token` if you get 401 errors
-- The Docker image is `node:22-slim` + `@anthropic-ai/claude-code` (auto-built, ~200MB)
+- OAuth tokens expire — re-run the login flow if you get 401 errors
+- The Docker image runs as non-root user `claude` (required by Claude CLI)
 - Your workdir is mounted as `/workspace` inside the container
-- To rebuild the image: `docker rmi rival-claude`, next run rebuilds automatically
+- To rebuild: `docker rmi rival-claude`, next run rebuilds automatically
+- TUI shows `⬡ claude/dk` for Docker sessions, `⬡ claude` for native
+
+## Models
+
+| CLI | Model | Default Effort |
+|-----|-------|---------------|
+| Codex | `gpt-5.5` | xhigh |
+| Gemini | `gemini-3.1-pro-preview` | xhigh |
+| Claude | `claude-opus-4-6[1m]` | max |
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-codex ~/.claude/skills/rival-gemini ~/.claude/skills/rival-claude ~/.claude/skills/rival-megareview
+rm -rf ~/.claude/skills/rival-codex-only ~/.claude/skills/rival-gemini-only ~/.claude/skills/rival-claude-only ~/.claude/skills/rival-review
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```
