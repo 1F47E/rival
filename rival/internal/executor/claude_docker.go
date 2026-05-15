@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/1F47E/rival/internal/config"
@@ -107,7 +108,7 @@ func RunClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort,
 		if err != nil {
 			return nil, fmt.Errorf("get working dir: %w", err)
 		}
-		absWorkdir = wd + "/" + workdir
+		absWorkdir = filepath.Join(wd, workdir)
 	}
 
 	args := []string{
