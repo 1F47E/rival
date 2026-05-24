@@ -3,7 +3,6 @@ package executor
 import (
 	"context"
 	"io"
-	"os"
 	"os/exec"
 
 	"github.com/1F47E/rival/internal/config"
@@ -44,6 +43,10 @@ func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort,
 		"--system-prompt", config.SystemPrompt,
 	}
 
-	env := os.Environ()
-	return RunSubprocess(ctx, sess, "claude", args, env, prompt, mirror)
+	// Pass nil for extra env: RunSubprocess already seeds the child
+	// environment from safeEnv() (filtered os.Environ()). Passing os.Environ()
+	// here would re-append the *unfiltered* environment after safeEnv(), and
+	// last-wins precedence would let blocked vars (NODE_OPTIONS, LD_PRELOAD,
+	// DYLD_*, proxies) injected via a repo-local .env slip back into the child.
+	return RunSubprocess(ctx, sess, "claude", args, nil, prompt, mirror)
 }
