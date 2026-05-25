@@ -34,6 +34,11 @@ func ParseClaudeArgs(raw string) (*ParseResult, error) {
 	return parseArgs(raw)
 }
 
+// ParseAntigravityArgs parses raw arguments for the antigravity command.
+func ParseAntigravityArgs(raw string) (*ParseResult, error) {
+	return parseArgs(raw)
+}
+
 func parseArgs(raw string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {

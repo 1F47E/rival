@@ -126,5 +126,6 @@ func RunClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort,
 		"--system-prompt", config.SystemPrompt,
 	}
 
-	return RunSubprocess(ctx, sess, "docker", args, nil, prompt, mirror)
+	fullPrompt := config.BuildWorkdirPreamble(workdir) + "\n" + prompt
+	return RunSubprocess(ctx, sess, "docker", args, nil, fullPrompt, mirror)
 }

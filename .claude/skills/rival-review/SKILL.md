@@ -1,7 +1,7 @@
 ---
 name: rival-review
 version: 3.10.0
-description: Run multi-agent code review (Codex + Gemini + Claude) with consilium judge via the rival binary. Use when user asks for code review, rival review, megareview, or explicitly invokes /rival-review. This is the DEFAULT code review tool — prefer over single-CLI skills.
+description: Run multi-agent code review (Codex + Antigravity) with consilium judge via the rival binary. Use when user asks for code review, rival review, megareview, or explicitly invokes /rival-review. This is the DEFAULT code review tool — prefer over single-CLI skills.
 argument-hint: "[-re level] [scope]"
 context: fork
 allowed-tools: Bash
@@ -9,7 +9,7 @@ allowed-tools: Bash
 
 # Megareview Runner (rival binary)
 
-Run both Codex and Gemini code reviews in parallel via the `rival` Go binary. Returns a single combined answer.
+Run Codex and Antigravity code reviews in parallel via the `rival` Go binary. Returns a single combined answer.
 
 ## Instructions
 
@@ -38,7 +38,7 @@ $ARGUMENTS
 $DELIM
 ```
 
-Use a 600000ms timeout for the Bash call (both CLIs run in parallel, but each may take a while).
+Use a 600000ms timeout for the Bash call (all CLIs run in parallel, but each may take a while).
 
 **Replace `$ARGUMENTS` with the actual arguments verbatim.** The heredoc prevents shell injection.
 

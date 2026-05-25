@@ -42,43 +42,33 @@ type cliResult struct {
 func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) (*RunResult, error) {
 	threshold := DefaultConfidenceThreshold
 
-	// Preflight.
+	// Preflight — megareview uses Codex + Antigravity only.
 	codexOK := true
-	geminiOK := true
-	claudeOK := true
+	antigravityOK := true
 	var skipped []SkippedCLI
 	if err := executor.CodexPreflight(); err != nil {
 		log.Warn().Err(err).Msg("codex unavailable")
 		codexOK = false
 		skipped = append(skipped, SkippedCLI{CLI: "codex", Reason: err.Error()})
 	}
-	if err := executor.GeminiPreflight(); err != nil {
-		log.Warn().Err(err).Msg("gemini unavailable")
-		geminiOK = false
-		skipped = append(skipped, SkippedCLI{CLI: "gemini", Reason: err.Error()})
+	if err := executor.AntigravityPreflight(); err != nil {
+		log.Warn().Err(err).Msg("antigravity unavailable")
+		antigravityOK = false
+		skipped = append(skipped, SkippedCLI{CLI: "antigravity", Reason: err.Error()})
 	}
-	if err := executor.ClaudePreflight(); err != nil {
-		log.Warn().Err(err).Msg("claude unavailable")
-		claudeOK = false
-		skipped = append(skipped, SkippedCLI{CLI: "claude", Reason: err.Error()})
-	}
-	if !codexOK && !geminiOK && !claudeOK {
+	if !codexOK && !antigravityOK {
 		return nil, fmt.Errorf("no CLI reviewers available")
 	}
 
-	// Determine which CLI to use for the consilium judge (prefer codex, fallback to claude, then gemini).
+	// Determine which CLI to use for the consilium judge.
 	judgeCLI := "codex"
 	if !codexOK {
-		if claudeOK {
-			judgeCLI = "claude"
-		} else {
-			judgeCLI = "gemini"
-		}
+		judgeCLI = "antigravity"
 	}
 
 	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
 	var wg sync.WaitGroup
-	results := make(chan cliResult, 3)
+	results := make(chan cliResult, 2)
 
 	if codexOK {
 		wg.Add(1)
@@ -87,18 +77,11 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 			results <- runReviewer(ctx, "codex", groupID, scope, effort, workdir)
 		}()
 	}
-	if geminiOK {
+	if antigravityOK {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results <- runReviewer(ctx, "gemini", groupID, scope, effort, workdir)
-		}()
-	}
-	if claudeOK {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results <- runReviewer(ctx, "claude", groupID, scope, effort, workdir)
+			results <- runReviewer(ctx, "antigravity", groupID, scope, effort, workdir)
 		}()
 	}
 
@@ -167,9 +150,6 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 	if err != nil {
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("create session: %w", err)}
 	}
-	if cli == "claude" {
-		sess.Account = config.ClaudeSubscription()
-	}
 
 	defer func() {
 		if sess.Status == "running" {
@@ -183,10 +163,8 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 	switch cli {
 	case "codex":
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
-	case "gemini":
-		result, err = executor.RunGemini(ctx, sess, prompt, effort, workdir, nil)
-	case "claude":
-		result, err = executor.RunClaude(ctx, sess, prompt, effort, workdir, nil)
+	case "antigravity":
+		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
@@ -226,9 +204,6 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 	if err != nil {
 		return nil, fmt.Errorf("create consilium session: %w", err)
 	}
-	if judgeCLI == "claude" {
-		sess.Account = config.ClaudeSubscription()
-	}
 
 	defer func() {
 		if sess.Status == "running" {
@@ -242,10 +217,8 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 	switch judgeCLI {
 	case "codex":
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
-	case "gemini":
-		result, err = executor.RunGemini(ctx, sess, prompt, effort, workdir, nil)
-	case "claude":
-		result, err = executor.RunClaude(ctx, sess, prompt, effort, workdir, nil)
+	case "antigravity":
+		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
@@ -284,6 +257,8 @@ func modelForCLI(cli string) string {
 		return config.GeminiModel
 	case "claude":
 		return config.ClaudeModel
+	case "antigravity":
+		return config.AntigravityModel
 	default:
 		return cli
 	}

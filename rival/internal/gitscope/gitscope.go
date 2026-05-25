@@ -60,6 +60,25 @@ func mergeFileLists(a, b string) string {
 	return strings.Join(result, "\n")
 }
 
+// DiffStat returns `git diff --stat` output, mirroring Resolve's mode detection.
+// Returns "" if not a git repo or no changes.
+func DiffStat(workdir string) string {
+	tracked, _ := gitCmd(workdir, "diff", "--name-only", "HEAD")
+	untracked, _ := gitCmd(workdir, "ls-files", "--others", "--exclude-standard")
+	hasDirty := strings.TrimSpace(tracked) != "" || strings.TrimSpace(untracked) != ""
+
+	if hasDirty {
+		stat, _ := gitCmd(workdir, "diff", "--stat", "HEAD")
+		return strings.TrimSpace(stat)
+	}
+
+	stat, err := gitCmd(workdir, "diff", "--stat", "HEAD~1", "HEAD")
+	if err == nil {
+		return strings.TrimSpace(stat)
+	}
+	return ""
+}
+
 func gitCmd(workdir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = workdir
