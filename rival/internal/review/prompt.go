@@ -219,7 +219,7 @@ Return JSON only. No prose, no markdown, no explanation outside the JSON. Your e
 }
 ` + "```" + `
 
-If the code is solid, return: {"summary": "...", "findings": []}
+If the code is solid, return: {"summary": "No issues found.", "findings": []}
 `
 }
 

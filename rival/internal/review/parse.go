@@ -6,112 +6,181 @@ import (
 	"strings"
 )
 
-// ParseReviewerOutput extracts structured JSON from raw CLI output.
-// CLIs often wrap JSON in markdown fences or add prose before/after.
+// ParseReviewerOutput extracts a reviewer's structured JSON from raw CLI output.
+//
+// CLIs make this more than one json.Unmarshal: they echo the prompt (which
+// contains the schema example), print unrelated JSON (tool/telemetry events),
+// and wrap JSON in prose. We therefore scan every top-level JSON object and pick
+// the LAST one that is a genuine reviewer payload — it must carry both "summary"
+// and "findings" keys and must not be the schema example itself.
 func ParseReviewerOutput(raw string) (*ReviewerOutput, error) {
-	jsonStr := extractJSON(raw)
-	if jsonStr == "" {
-		return nil, fmt.Errorf("no JSON found in output")
+	objs := jsonObjects(raw)
+	var lastErr error
+	for i := len(objs) - 1; i >= 0; i-- {
+		c := objs[i]
+		if !hasJSONKey(c, "summary") || !hasJSONKey(c, "findings") {
+			continue
+		}
+		var out ReviewerOutput
+		if err := json.Unmarshal([]byte(c), &out); err != nil {
+			lastErr = err // a payload-shaped candidate that failed to decode
+			continue
+		}
+		if isExampleSummary(out.Summary) {
+			continue // the echoed schema example, not a real answer
+		}
+		out.Findings = dropPlaceholderReviewerFindings(out.Findings)
+		return &out, nil
 	}
-
-	var out ReviewerOutput
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
-		return nil, fmt.Errorf("unmarshal reviewer output: %w", err)
+	if lastErr != nil {
+		return nil, fmt.Errorf("no valid reviewer JSON payload (last decode error: %w)", lastErr)
 	}
-	return &out, nil
+	return nil, fmt.Errorf("no reviewer JSON payload found in output")
 }
 
-// ParseConsiliumOutput extracts structured consilium JSON from raw CLI output.
+// ParseConsiliumOutput extracts the consilium judge's structured JSON.
 func ParseConsiliumOutput(raw string) (*ConsiliumOutput, error) {
-	jsonStr := extractJSON(raw)
-	if jsonStr == "" {
-		return nil, fmt.Errorf("no JSON found in consilium output")
+	objs := jsonObjects(raw)
+	var lastErr error
+	for i := len(objs) - 1; i >= 0; i-- {
+		c := objs[i]
+		if !hasJSONKey(c, "findings") || !hasJSONKey(c, "recommendation") {
+			continue
+		}
+		var out ConsiliumOutput
+		if err := json.Unmarshal([]byte(c), &out); err != nil {
+			lastErr = err
+			continue
+		}
+		if isExampleSummary(out.Summary) || out.Recommendation.Status == "approve|request_changes|comment" {
+			continue // the echoed schema example, not a real verdict
+		}
+		out.Findings = dropPlaceholderFindings(out.Findings)
+		return &out, nil
 	}
-
-	var out ConsiliumOutput
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
-		return nil, fmt.Errorf("unmarshal consilium output: %w", err)
+	if lastErr != nil {
+		return nil, fmt.Errorf("no valid consilium JSON payload (last decode error: %w)", lastErr)
 	}
-	return &out, nil
+	return nil, fmt.Errorf("no consilium JSON payload found in output")
 }
 
-// extractJSON finds the first valid JSON object in text.
-// Handles markdown fences (```json ... ```), bare JSON, and prose wrapping.
-func extractJSON(s string) string {
-	// Try markdown fence first.
-	if idx := strings.Index(s, "```json"); idx >= 0 {
-		start := idx + len("```json")
-		if end := strings.Index(s[start:], "```"); end >= 0 {
-			return strings.TrimSpace(s[start : start+end])
-		}
+// hasJSONKey reports whether candidate is a JSON object with the given top-level
+// key actually present (not merely defaulting to a zero value on unmarshal).
+// This rejects unrelated JSON such as a {"event":"done"} tool/telemetry line.
+func hasJSONKey(candidate, key string) bool {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(candidate), &m); err != nil {
+		return false
 	}
-	if idx := strings.Index(s, "```"); idx >= 0 {
-		start := idx + len("```")
-		// Skip optional language tag on same line.
-		if nl := strings.Index(s[start:], "\n"); nl >= 0 {
-			content := s[start+nl:]
-			if end := strings.Index(content, "```"); end >= 0 {
-				candidate := strings.TrimSpace(content[:end])
-				if len(candidate) > 0 && candidate[0] == '{' {
-					return candidate
-				}
-			}
-		}
+	_, ok := m[key]
+	return ok
+}
+
+// isExampleSummary matches the schema example summaries from the prompt contract
+// (reviewerJSONContract / consiliumJSONContract). A real summary is never one of
+// these exact strings. The clean-review example uses a real sentence ("No issues
+// found.") so a genuine clean review is not mistaken for the example.
+func isExampleSummary(s string) bool {
+	switch strings.TrimSpace(s) {
+	case "1-3 sentence reviewer summary", "1-3 sentence overall review summary":
+		return true
 	}
+	return false
+}
 
-	// Try to find bare JSON object — validate each candidate.
-	remaining := s
-	for {
-		start := strings.Index(remaining, "{")
-		if start < 0 {
-			return ""
+// isPlaceholderFinding matches a finding copied from the schema example: the enum
+// fields hold the literal pipe-delimited option lists, or the file is the
+// contract's placeholder. Real findings never have these field values.
+func isPlaceholderFinding(file, severity, category string) bool {
+	return file == "path/to/file" ||
+		severity == "critical|high|medium|low" ||
+		category == "bug|security|performance|concurrency|architecture|tests|ux"
+}
+
+// dropPlaceholderReviewerFindings removes individual schema-example findings so a
+// single echoed placeholder item does not discard an otherwise real review.
+func dropPlaceholderReviewerFindings(in []ReviewerFinding) []ReviewerFinding {
+	out := in[:0:0]
+	for _, f := range in {
+		if isPlaceholderFinding(f.File, f.Severity, f.Category) {
+			continue
 		}
+		out = append(out, f)
+	}
+	return out
+}
 
-		// Find matching closing brace.
-		depth := 0
-		inStr := false
-		esc := false
-		found := -1
-		for i := start; i < len(remaining); i++ {
-			if esc {
+func dropPlaceholderFindings(in []Finding) []Finding {
+	out := in[:0:0]
+	for _, f := range in {
+		if isPlaceholderFinding(f.File, f.Severity, f.Category) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// jsonObjects returns every balanced, valid JSON object in s, in order of
+// appearance (closing-brace order), including objects nested inside larger
+// non-JSON brace spans.
+//
+// It is a single forward pass using an explicit stack of '{' indices (no
+// recursion, so adversarial deep nesting can't overflow the goroutine stack;
+// and no per-brace re-scan, so it stays linear rather than O(N^2)). Every time
+// a brace closes we test the span it delimits with json.Valid, so:
+//   - a lone/unbalanced brace from a grep/tool line never hides a later payload
+//     (the payload's own brace pair is still tested when it closes), and
+//   - a valid payload nested inside a balanced-but-invalid span is still found.
+//
+// While outside any object (empty stack) prose and code are ignored entirely —
+// only '{' matters — so stray quotes or braces in surrounding text can't desync
+// the scan. JSON string/escape state is tracked only inside an object.
+func jsonObjects(s string) []string {
+	var out []string
+	var stack []int // indices of currently-open '{'
+	inStr := false
+	esc := false
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+
+		if len(stack) == 0 {
+			if c == '{' {
+				stack = append(stack, i)
+				inStr = false
 				esc = false
-				continue
 			}
-			c := remaining[i]
-			if c == '\\' && inStr {
-				esc = true
-				continue
-			}
-			if c == '"' {
-				inStr = !inStr
-				continue
-			}
+			continue
+		}
+
+		if esc {
+			esc = false
+			continue
+		}
+		if c == '\\' {
 			if inStr {
-				continue
+				esc = true
 			}
-			switch c {
-			case '{':
-				depth++
-			case '}':
-				depth--
-				if depth == 0 {
-					found = i
-				}
-			}
-			if found >= 0 {
-				break
+			continue
+		}
+		if c == '"' {
+			inStr = !inStr
+			continue
+		}
+		if inStr {
+			continue
+		}
+		switch c {
+		case '{':
+			stack = append(stack, i)
+		case '}':
+			start := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if candidate := s[start : i+1]; json.Valid([]byte(candidate)) {
+				out = append(out, candidate)
 			}
 		}
-
-		if found < 0 {
-			return ""
-		}
-
-		candidate := remaining[start : found+1]
-		if json.Valid([]byte(candidate)) {
-			return candidate
-		}
-		// Not valid JSON — skip past this '{' and try again.
-		remaining = remaining[start+1:]
 	}
+	return out
 }
