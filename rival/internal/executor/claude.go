@@ -3,7 +3,6 @@ package executor
 import (
 	"context"
 	"io"
-	"os"
 	"os/exec"
 
 	"github.com/1F47E/rival/internal/config"
@@ -44,6 +43,6 @@ func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort,
 		"--system-prompt", config.SystemPrompt,
 	}
 
-	env := os.Environ()
-	return RunSubprocess(ctx, sess, "claude", args, env, prompt, mirror)
+	fullPrompt := config.BuildWorkdirPreamble(workdir) + "\n" + prompt
+	return RunSubprocess(ctx, sess, "claude", args, nil, fullPrompt, mirror)
 }

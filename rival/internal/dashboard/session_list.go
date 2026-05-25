@@ -76,10 +76,11 @@ func formatItemRow(item *displayItem, width int) string {
 
 // CLI icons — Unicode symbols for visual distinction.
 const (
-	iconCodex  = "◈" // OpenAI / Codex
-	iconGemini = "✦" // Google / Gemini
-	iconClaude = "⬡" // Anthropic / Claude
-	iconMega   = "◈✦⬡" // All three
+	iconCodex        = "◈" // OpenAI / Codex
+	iconGemini       = "✦" // Google / Gemini
+	iconClaude       = "⬡" // Anthropic / Claude
+	iconAntigravity  = "△" // Google / Antigravity
+	iconMega         = "◈△" // Codex + Antigravity
 )
 
 // cliLabel returns a display label with icon for a CLI name.
@@ -94,6 +95,8 @@ func cliLabel(cli, mode string) string {
 			return iconClaude + " claude/dk"
 		}
 		return iconClaude + " claude"
+	case "antigravity":
+		return iconAntigravity + " antigravity"
 	default:
 		return cli
 	}

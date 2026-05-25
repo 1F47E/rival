@@ -79,6 +79,12 @@ Focus on:
 - race conditions
 - data loss risks
 
+AI-generated code checklist (check these explicitly):
+- hallucinated imports: verify every import exists in the project's dependency tree
+- happy-path-only logic: for every external call (DB, API, filesystem), check what happens on null/empty/error/timeout
+- N+1 patterns: database or API calls inside loops, missing pagination on list queries
+- shallow test assertions: tests that check truthiness instead of specific values, or only verify no-throw
+
 Do not spend time on:
 - style or formatting
 - minor cleanup
@@ -111,6 +117,12 @@ Focus on:
 - security and permission problems
 - hidden impact on tests, configuration, and integration boundaries
 - error handling gaps that create silent failures
+
+AI-generated code checklist (check these explicitly):
+- security anti-patterns: string interpolation in SQL/shell queries, innerHTML, hardcoded secrets/tokens, missing auth middleware on new routes
+- over-abstraction: new abstraction layers (factories, interfaces, helpers) not justified by the spec — flag if a simple inline would work
+- unbounded queries: missing LIMIT/pagination on list endpoints, queries that work with 10 rows but die with 10,000
+- scope creep: files modified outside the review scope that weren't requested
 
 Do not spend time on:
 - formatting or naming
@@ -147,6 +159,12 @@ Focus on:
 - dead code and unused abstractions
 - inconsistent patterns within the codebase
 - poor separation of concerns
+
+AI-generated code checklist (check these explicitly):
+- commented-out code with TODO/FIXME: half-finished work disguised as a deliverable — flag it
+- file count vs scope: if the spec is small but the diff creates many new files, flag over-engineering
+- unnecessary abstractions: factories, interfaces, helpers that can be inlined without losing clarity
+- shallow tests: assertions that check truthiness/defined instead of specific expected values
 
 Do not spend time on:
 - formatting or whitespace

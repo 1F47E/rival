@@ -86,8 +86,22 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		updated++
 	}
 
+	// Clean up deprecated skills.
+	var removed int
+	for _, name := range skills.Deprecated {
+		targetDir := filepath.Join(targetBase, name)
+		if _, err := os.Stat(targetDir); err == nil {
+			if err := os.RemoveAll(targetDir); err != nil {
+				fmt.Printf("  ✗ %s — failed to remove: %v\n", name, err)
+			} else {
+				fmt.Printf("  🗑 %s — removed (deprecated)\n", name)
+				removed++
+			}
+		}
+	}
+
 	fmt.Println()
-	fmt.Printf("Done: %d installed, %d updated, %d up to date\n", installed, updated, skipped)
+	fmt.Printf("Done: %d installed, %d updated, %d up to date, %d removed\n", installed, updated, skipped, removed)
 	return nil
 }
 

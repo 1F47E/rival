@@ -33,7 +33,7 @@ func (e *ExitCodeError) Unwrap() error { return e.Err }
 
 var rootCmd = &cobra.Command{
 	Use:           "rival",
-	Short:         "Dispatch prompts to external AI CLIs (Codex, Gemini)",
+	Short:         "Dispatch prompts to external AI CLIs (Codex, Antigravity)",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -42,7 +42,7 @@ var rootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
-		fmt.Printf("  v%s — Codex & Gemini from your terminal\n\n", Version)
+		fmt.Printf("  v%s — Codex & Antigravity from your terminal\n\n", Version)
 		cmd.SetOut(os.Stdout)
 		_ = cmd.Usage()
 	},

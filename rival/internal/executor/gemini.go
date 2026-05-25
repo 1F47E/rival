@@ -77,6 +77,6 @@ func RunGemini(ctx context.Context, sess *session.Session, prompt, effort, workd
 		fmt.Sprintf("GEMINI_HOME=%s", tmpDir),
 	}
 
-	fullPrompt := config.SystemPrompt + "\n\n" + prompt
+	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	return RunSubprocess(ctx, sess, "gemini", args, env, fullPrompt, mirror)
 }

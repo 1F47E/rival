@@ -18,6 +18,8 @@ func RoleForCLI(cli string) Role {
 		return RoleArchSecurity
 	case "claude":
 		return RoleCodeQuality
+	case "antigravity":
+		return RoleBugHunter
 	default:
 		return RoleBugHunter
 	}
