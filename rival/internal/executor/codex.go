@@ -38,6 +38,6 @@ func RunCodex(ctx context.Context, sess *session.Session, prompt, effort, workdi
 		"-",
 	}
 
-	fullPrompt := config.SystemPrompt + "\n\n" + prompt
+	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	return RunSubprocess(ctx, sess, "codex", args, nil, fullPrompt, mirror)
 }

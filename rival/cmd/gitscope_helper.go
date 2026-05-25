@@ -24,6 +24,13 @@ func resolveGitScope(parsed *parser.ParseResult, workdir string) {
 	parsed.ReviewScope = files
 	// Preamble lists the files in a code block; ReviewPrompt uses them as scope.
 	preamble := strings.ReplaceAll(config.DiffReviewPreamble, "{FILES}", files)
+	// Add diff stats if available.
+	diffStat := gitscope.DiffStat(workdir)
+	if diffStat != "" {
+		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
+	} else {
+		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "")
+	}
 	review := strings.ReplaceAll(config.ReviewPrompt, "{SCOPE}", "the changed files listed above")
 	parsed.Prompt = preamble + review
 }

@@ -18,8 +18,8 @@ import (
 
 var reviewCmd = &cobra.Command{
 	Use:   "review [scope]",
-	Short: "Run Codex + Gemini code review with consilium judge",
-	Long: `Run both Codex and Gemini code reviews in parallel with role-specific prompts,
+	Short: "Run Codex + Antigravity code review with consilium judge",
+	Long: `Run Codex and Antigravity code reviews in parallel with role-specific prompts,
 then merge findings via a consilium judge for a unified verdict.
 
 Without a scope argument, auto-detects changed files via git:
@@ -53,6 +53,12 @@ func reviewAction(cmd *cobra.Command, args []string) error {
 			log.Info().Str("files", files).Msg("git scope: auto-detected changed files")
 			scope = config.DiffReviewPreamble
 			scope = strings.ReplaceAll(scope, "{FILES}", files)
+			diffStat := gitscope.DiffStat(workdir)
+			if diffStat != "" {
+				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
+			} else {
+				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "")
+			}
 			scope += "\nFocus your review on the changed files listed above."
 		} else {
 			scope = "the entire project"

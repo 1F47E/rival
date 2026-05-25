@@ -106,7 +106,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	meta.WriteString("\n\n")
 
 	// Shared metadata from primary session.
-	addField(&meta, "CLI", "codex+gemini+claude", width)
+	addField(&meta, "CLI", "codex+antigravity", width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", "megareview", width)
 	addStyledField(&meta, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)

@@ -19,7 +19,7 @@ import (
 )
 
 const megareviewUsage = `Usage:
-  /rival-megareview — review the entire project with both Codex and Gemini in parallel
+  /rival-review — review the entire project with Codex and Antigravity in parallel
   /rival-megareview src/api/ — review specific scope
   /rival-megareview -re xhigh src/api/ — review with xhigh reasoning effort
   /rival-megareview — show this usage info
@@ -28,7 +28,7 @@ Reasoning effort (-re): low, medium (default), high, xhigh`
 
 var commandMegareviewCmd = &cobra.Command{
 	Use:   "megareview",
-	Short: "Run Codex and Gemini reviews with consilium judge",
+	Short: "Run Codex and Antigravity reviews with consilium judge",
 	RunE:  commandMegareviewAction,
 }
 
@@ -68,6 +68,12 @@ func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 		if files != "" {
 			log.Info().Str("files", files).Msg("git scope: auto-detected changed files")
 			scope = strings.ReplaceAll(config.DiffReviewPreamble, "{FILES}", files)
+			diffStat := gitscope.DiffStat(workdir)
+			if diffStat != "" {
+				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
+			} else {
+				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "")
+			}
 			scope += "\nFocus your review on the changed files listed above."
 		} else {
 			scope = "the entire project"
