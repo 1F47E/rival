@@ -42,7 +42,7 @@ var rootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
-		fmt.Printf("  v%s — Codex & Antigravity from your terminal\n\n", Version)
+		fmt.Printf("  %s — Codex & Antigravity from your terminal\n\n", Version)
 		cmd.SetOut(os.Stdout)
 		_ = cmd.Usage()
 	},
