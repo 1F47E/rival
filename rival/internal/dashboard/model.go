@@ -319,7 +319,7 @@ func (m Model) renderBanner() string {
 
 	// Stats on the right.
 	var stats strings.Builder
-	stats.WriteString(labelStyle.Render(fmt.Sprintf("v%s", Version)))
+	stats.WriteString(labelStyle.Render(Version))
 	stats.WriteString("\n")
 	stats.WriteString(fmt.Sprintf("  %s %d", runningStyle.Render("●"), running))
 	stats.WriteString(fmt.Sprintf("  %s %d", completedStyle.Render("●"), completed))

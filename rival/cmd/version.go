@@ -11,7 +11,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print rival version",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
-		fmt.Printf("  v%s\n", Version)
+		fmt.Printf("  %s\n", Version)
 	},
 }
 
