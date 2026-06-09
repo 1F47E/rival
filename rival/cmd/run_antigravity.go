@@ -94,6 +94,18 @@ func runAntigravityAction(cmd *cobra.Command, args []string) error {
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("antigravity exited with code %d", result.ExitCode)}
 	}
 
+	// agy exits 0 on a 429 with empty stdout, writing the quota error only to
+	// its log/stderr. Read the session log (captures stdout+stderr) and fail
+	// loudly so a quota-blocked run is not mistaken for a clean, empty review.
+	if logData, readErr := os.ReadFile(sess.LogFile); readErr == nil && executor.IsQuotaExhausted(string(logData)) {
+		msg := "antigravity hit provider quota/rate limit (429): authenticate to a quota-bearing account (agy login) or wait for quota reset"
+		if saveErr := sess.Fail(1, msg); saveErr != nil {
+			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
+		}
+		log.Error().Str("session", sess.ID).Msg(msg)
+		return &ExitCodeError{Code: 1, Err: fmt.Errorf("%s", msg)}
+	}
+
 	if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {
 		log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session completion")
 	}

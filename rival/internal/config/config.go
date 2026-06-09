@@ -86,6 +86,49 @@ Rules:
 - If the code is solid, say so briefly. Do not invent problems.
 - Skip style, formatting, naming, and documentation unless they mask a real bug.`
 
+// PlanReviewPrompt is the plan/spec review template used by `rival command plan`.
+// It targets a single planning/spec markdown document (NOT source code) and asks
+// codex to rate it and surface bugs + gaps. {FILE} is replaced with the absolute
+// path at the call site. The model must emit ONE JSON object matching the contract
+// below so the output can be parsed structurally (see review.ParsePlanOutput).
+const PlanReviewPrompt = `You are a ruthless senior staff engineer reviewing an engineering PLAN / SPEC document (not source code). Your job is to find real problems that would make this plan fail, mislead an implementer, or ship the wrong thing — not to nitpick wording.
+
+Plan document to review: {FILE}
+
+Read the file in full (use your tools). Judge it as an implementation blueprint. Look for:
+
+1. **Bugs / logic flaws** — steps that are wrong, contradictory, out of order, or that would break when implemented as written.
+2. **Gaps** — missing steps, unhandled edge cases, undefined error/failure behavior, absent rollback/migration/auth/validation, things the plan silently assumes.
+3. **Ambiguity** — instructions vague enough that two engineers would build different things; unstated assumptions; undefined terms.
+4. **Scope / feasibility** — unrealistic claims, hidden dependencies, under-estimated work, or parts that conflict with how the rest of the system (as described) works.
+5. **Verification gaps** — no way to tell if the plan succeeded; missing tests, acceptance criteria, or rollback checks.
+
+Rules:
+- Only report issues you are confident are real. No speculative nitpicks, no style/grammar comments.
+- If the plan is genuinely solid, say so in the summary and return few or zero findings. Do not invent problems.
+- Rate the plan overall from 1 (unimplementable / dangerously wrong) to 10 (airtight, ready to execute).
+
+Output: respond with EXACTLY ONE JSON object and nothing else (no prose before or after, no markdown fences). Schema:
+
+{
+  "summary": "1-3 sentence overall assessment of the plan",
+  "rating": 7,
+  "findings": [
+    {
+      "file": "section or heading the issue is in (or the filename)",
+      "line": 0,
+      "severity": "critical|high|medium|low",
+      "category": "bug|gap|ambiguity|scope|verification",
+      "title": "one-line description of the issue",
+      "body": "what is wrong and why it matters for implementation",
+      "suggestion": "concrete fix or what to add",
+      "confidence": 8
+    }
+  ]
+}
+
+Severity guidance: critical = plan is wrong/will cause data loss or a broken build if followed; high = significant gap or flaw that blocks correct implementation; medium = real ambiguity or missing detail an implementer will trip on; low = minor gap or clarification. "line" may be 0 when not applicable. Sort findings by severity, highest first.`
+
 // IsValidEffort checks if the given effort level is in the allowlist.
 func IsValidEffort(e string) bool {
 	for _, v := range ValidEfforts {

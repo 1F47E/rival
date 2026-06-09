@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.10.0
+version: 3.11.0
 description: Run multi-agent code review (Codex + Antigravity) with consilium judge via the rival binary. Use when user asks for code review, rival review, megareview, or explicitly invokes /rival-review. This is the DEFAULT code review tool — prefer over single-CLI skills.
 argument-hint: "[-re level] [scope]"
 context: fork

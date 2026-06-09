@@ -81,12 +81,16 @@ const (
 	iconClaude       = "⬡" // Anthropic / Claude
 	iconAntigravity  = "△" // Google / Antigravity
 	iconMega         = "◈△" // Codex + Antigravity
+	iconPlan         = "▤" // Plan/spec review (codex under the hood)
 )
 
 // cliLabel returns a display label with icon for a CLI name.
 func cliLabel(cli, mode string) string {
 	switch cli {
 	case "codex":
+		if mode == "plan" {
+			return iconPlan + " plan"
+		}
 		return iconCodex + " codex"
 	case "gemini":
 		return iconGemini + " gemini"
