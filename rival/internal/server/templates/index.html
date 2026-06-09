@@ -74,6 +74,7 @@
 
 <script>
 const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', antigravity: '△' };
+const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
 let pollTimer = null;
@@ -123,9 +124,10 @@ function buildRow(g) {
   if (g.is_group) {
     cliText = '◈△ mega';
   } else {
-    const icon = CLI_ICONS[primary.cli] || '';
+    let icon = CLI_ICONS[primary.cli] || '';
     let label = primary.cli;
     if (primary.cli === 'claude' && primary.mode === 'docker') label = 'claude/dk';
+    if (primary.cli === 'codex' && primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
     cliText = icon + ' ' + label;
   }
 

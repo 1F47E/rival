@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.10.0
+version: 3.11.0
 description: Run Codex + Antigravity code reviews with consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-re level] [scope]"
 context: fork
