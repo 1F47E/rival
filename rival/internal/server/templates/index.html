@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rival dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{mono:['JetBrains Mono','Menlo','monospace']}}}}</script>
+<style>
+  body { font-family: 'JetBrains Mono', 'Menlo', monospace; }
+  .status-running { color: #f59e0b; }
+  .status-completed { color: #22c55e; }
+  .status-failed { color: #ef4444; }
+  tr.session-row:hover { background: #1e293b; cursor: pointer; }
+  .log-content { max-height: 400px; overflow-y: auto; }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-300 min-h-screen">
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <pre class="text-indigo-400 text-xs leading-tight">     _            __
+ ___(_)  ___  __/ /
+/ __/ / |/ / _ / /
+/ / / /|  / /_/ /
+/_/ /_/ |_/\__,_/</pre>
+      <span id="version" class="text-gray-600 text-xs ml-1"></span>
+    </div>
+    <div class="flex gap-6 text-sm">
+      <span>● <span id="stat-running" class="status-running font-bold">0</span> running</span>
+      <span>● <span id="stat-completed" class="status-completed font-bold">0</span> completed</span>
+      <span>● <span id="stat-failed" class="status-failed font-bold">0</span> failed</span>
+      <span class="text-gray-500">│ <span id="stat-total" class="font-bold">0</span> total</span>
+    </div>
+  </div>
+
+  <!-- Session Table -->
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-gray-500 text-left border-b border-gray-800">
+        <th class="py-2 px-2 w-24">STATUS</th>
+        <th class="py-2 px-2 w-28">CLI</th>
+        <th class="py-2 px-2 w-48">MODEL</th>
+        <th class="py-2 px-2 w-16">EFFORT</th>
+        <th class="py-2 px-2 w-20">TIME</th>
+        <th class="py-2 px-2 w-48">WORKDIR</th>
+        <th class="py-2 px-2">PROMPT</th>
+      </tr>
+    </thead>
+    <tbody id="session-table"></tbody>
+  </table>
+
+  <!-- Detail Panel -->
+  <div id="detail-panel" class="hidden mt-4 bg-gray-900 rounded-lg p-4 border border-gray-800">
+    <div class="flex justify-between items-start mb-3">
+      <h3 id="detail-title" class="text-indigo-400 font-bold"></h3>
+      <button onclick="closeDetail()" class="text-gray-500 hover:text-gray-300">✕</button>
+    </div>
+    <div id="detail-meta" class="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4"></div>
+    <div id="detail-prompt-section" class="hidden mb-4">
+      <div class="text-gray-500 text-xs mb-1">PROMPT</div>
+      <pre id="detail-prompt" class="text-xs bg-gray-950 rounded p-3 max-h-32 overflow-y-auto whitespace-pre-wrap"></pre>
+    </div>
+    <div>
+      <div class="text-gray-500 text-xs mb-1">LOG</div>
+      <pre id="detail-log" class="text-xs bg-gray-950 rounded p-3 log-content whitespace-pre-wrap text-gray-400">Loading...</pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', antigravity: '△' };
+const PLAN_ICON = '▤';
+let pollInterval = 10000;
+let selectedId = null;
+let pollTimer = null;
+let lastGroups = [];
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.textContent;
+}
+
+function elapsed(g) {
+  if (g.elapsed && g.status !== 'running') return g.elapsed;
+  const start = new Date(g.sessions[0].start_time);
+  const ms = Date.now() - start.getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  return m + 'm' + (s % 60) + 's';
+}
+
+function truncate(str, len) {
+  if (!str) return '';
+  return str.length > len ? str.substring(0, len) + '…' : str;
+}
+
+function truncPath(p, len) {
+  if (!p) return '';
+  if (p.length <= len) return p;
+  const parts = p.split('/');
+  while (parts.join('/').length > len && parts.length > 2) parts.shift();
+  return '…/' + parts.join('/');
+}
+
+function buildRow(g) {
+  const primary = g.sessions[0];
+  const id = primary.id;
+  const tr = document.createElement('tr');
+  tr.className = 'session-row border-b border-gray-900' + (selectedId === id ? ' bg-gray-800' : '');
+  tr.onclick = () => toggleDetail(id);
+
+  const statusCls = 'status-' + g.status;
+  const statusIcons = { running: '●', completed: '●', failed: '●' };
+
+  let cliText;
+  if (g.is_group) {
+    cliText = '◈△ mega';
+  } else {
+    let icon = CLI_ICONS[primary.cli] || '';
+    let label = primary.cli;
+    if (primary.cli === 'claude' && primary.mode === 'docker') label = 'claude/dk';
+    if (primary.cli === 'codex' && primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
+    cliText = icon + ' ' + label;
+  }
+
+  const cells = [
+    { cls: statusCls, text: (statusIcons[g.status] || '○') + ' ' + g.status },
+    { cls: '', text: cliText },
+    { cls: 'text-gray-400', text: truncate(g.models, 30) },
+    { cls: '', text: primary.effort },
+    { cls: 'text-gray-400', text: elapsed(g) },
+    { cls: 'text-gray-500', text: truncPath(primary.work_dir, 30) },
+    { cls: 'text-gray-500', text: truncate(g.prompt_preview, 60) },
+  ];
+
+  cells.forEach(c => {
+    const td = document.createElement('td');
+    td.className = 'py-2 px-2 ' + c.cls;
+    td.textContent = c.text;
+    tr.appendChild(td);
+  });
+
+  return tr;
+}
+
+async function fetchSessions() {
+  try {
+    const resp = await fetch('/api/sessions');
+    const data = await resp.json();
+    renderStats(data.stats);
+    lastGroups = data.groups;
+    renderTable(data.groups);
+    document.getElementById('version').textContent = data.version || '';
+    pollInterval = data.stats.running > 0 ? 2000 : 10000;
+  } catch (e) {
+    console.error('fetch failed:', e);
+  }
+  schedulePoll();
+}
+
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(fetchSessions, pollInterval);
+}
+
+function renderStats(stats) {
+  document.getElementById('stat-running').textContent = stats.running;
+  document.getElementById('stat-completed').textContent = stats.completed;
+  document.getElementById('stat-failed').textContent = stats.failed;
+  document.getElementById('stat-total').textContent = stats.total;
+}
+
+function renderTable(groups) {
+  const tbody = document.getElementById('session-table');
+  tbody.replaceChildren();
+  groups.forEach(g => tbody.appendChild(buildRow(g)));
+}
+
+async function toggleDetail(id) {
+  const panel = document.getElementById('detail-panel');
+  if (selectedId === id) { closeDetail(); return; }
+  selectedId = id;
+
+  const group = lastGroups.find(g => g.sessions[0].id === id);
+  if (!group) return;
+
+  const primary = group.sessions[0];
+  document.getElementById('detail-title').textContent =
+    group.is_group ? 'Megareview ' + id.substring(0, 8) : 'Session ' + id.substring(0, 8);
+
+  const meta = document.getElementById('detail-meta');
+  meta.replaceChildren();
+  const fields = [
+    ['CLI', group.cli], ['Model', group.models], ['Effort', primary.effort],
+    ['Mode', primary.mode || 'native'], ['Status', group.status], ['WorkDir', primary.work_dir],
+    ['Started', new Date(primary.start_time).toLocaleTimeString()],
+    ['Duration', group.elapsed || elapsed(group)],
+  ];
+  if (primary.account) fields.push(['Account', primary.account]);
+  if (primary.error) fields.push(['Error', primary.error]);
+  if (primary.review_scope) fields.push(['Review', truncate(primary.review_scope, 80)]);
+  fields.forEach(([k, v]) => {
+    const div = document.createElement('div');
+    const label = document.createElement('span');
+    label.className = 'text-gray-500';
+    label.textContent = k;
+    const val = document.createElement('span');
+    val.className = k === 'Status' ? ' status-' + v : '';
+    val.textContent = ' ' + (v || '-');
+    div.appendChild(label);
+    div.appendChild(val);
+    meta.appendChild(div);
+  });
+
+  const promptSection = document.getElementById('detail-prompt-section');
+  const promptPre = document.getElementById('detail-prompt');
+  if (primary.prompt) {
+    promptSection.classList.remove('hidden');
+    promptPre.textContent = primary.prompt;
+  } else {
+    promptSection.classList.add('hidden');
+  }
+
+  const logEl = document.getElementById('detail-log');
+  logEl.textContent = 'Loading...';
+  panel.classList.remove('hidden');
+  renderTable(lastGroups);
+
+  let logText = '';
+  for (const s of group.sessions) {
+    try {
+      const logResp = await fetch('/api/sessions/' + s.id + '/log');
+      const t = await logResp.text();
+      if (group.sessions.length > 1) {
+        logText += '=== ' + s.cli.toUpperCase() + ' (' + s.model + ') ===\n' + t + '\n\n';
+      } else {
+        logText = t;
+      }
+    } catch (e) {
+      logText += '\nFailed to load log for ' + s.id;
+    }
+  }
+  logEl.textContent = logText;
+}
+
+function closeDetail() {
+  selectedId = null;
+  document.getElementById('detail-panel').classList.add('hidden');
+  fetchSessions();
+}
+
+fetchSessions();
+</script>
+</body>
+</html>

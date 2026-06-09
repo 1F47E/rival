@@ -70,13 +70,15 @@ func buildClaudeDockerImage() error {
 	if err != nil {
 		return fmt.Errorf("create temp dockerfile: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.WriteString(claudeDockerfile); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return fmt.Errorf("write dockerfile: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close dockerfile: %w", err)
+	}
 
 	// Build image.
 	cmd := exec.Command("docker", "build", "-t", claudeDockerImage, "-f", tmpFile.Name(), ".")

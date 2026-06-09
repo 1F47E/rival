@@ -2,7 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini 3.1 Pro via Gemini CLI, or Claude Opus 4.6 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean.
+Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, or Claude Opus 4.6 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + Antigravity in parallel and merges their findings with a consilium judge.
 
 ## Install
 
@@ -22,28 +22,29 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-gemini-only`, and `/rival-claude-only` are available in Claude Code.
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-antigravity-only`, and `/rival-plan` are available in Claude Code. (Install also removes the deprecated `/rival-gemini-only` and `/rival-claude-only` skills.)
 
 Use `rival install --force` to overwrite without prompting.
 
 ### Prerequisites
 
-- [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login`
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY`
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below)
+- [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login` — used by megareview, `/rival-codex-only`, and `/rival-plan`
+- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — used by megareview and `/rival-antigravity-only`
+- [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below) — optional standalone
 
-You only need the CLIs for the commands you use. Megareview uses all available CLIs.
+You only need the CLIs for the commands you use. **Megareview uses Codex + Antigravity.**
 
 ## Usage
 
 ### Claude Code Skills
 
-**Default review** (runs all available CLIs + consilium judge):
+**Default review** (runs Codex + Antigravity + consilium judge):
 
 ```
-/rival-review                              — review with ALL CLIs (auto-detects changed files)
+/rival-review                              — review with Codex + Antigravity (auto-detects changed files)
 /rival-review src/api/                     — review specific scope (bypasses git detection)
-/rival-review -re xhigh src/api/           — all CLIs, max reasoning effort
+/rival-review -re xhigh src/api/           — both CLIs, max reasoning effort
 ```
 
 **Single-CLI skills** (use only when you want one specific CLI):
@@ -56,24 +57,23 @@ You only need the CLIs for the commands you use. Megareview uses all available C
 ```
 
 ```
-/rival-gemini-only explain the auth flow
-/rival-gemini-only -re high analyze this complex algorithm
-/rival-gemini-only review                  — review (auto-detects changed files via git)
-/rival-gemini-only review src/api/         — review specific scope
+/rival-antigravity-only explain the auth flow
+/rival-antigravity-only -re high analyze this complex algorithm
+/rival-antigravity-only review             — review (auto-detects changed files via git)
+/rival-antigravity-only review src/api/    — review specific scope
 ```
 
+**Plan/spec review** (single path to a markdown plan, rated 1-10 by Codex):
+
 ```
-/rival-claude-only explain the auth flow
-/rival-claude-only -re xhigh find code quality issues in src/
-/rival-claude-only review                  — review (auto-detects changed files via git)
-/rival-claude-only review src/api/         — review specific scope
+/rival-plan path/to/plan.md                — rate the plan 1-10, surface bugs + gaps
 ```
 
-**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default)
+**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default). Plan review is fixed at `xhigh`.
 
 ### How Reviews Work
 
-When you run a review, Codex/Gemini/Claude get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
+When you run a review, Codex and Antigravity get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
@@ -102,10 +102,11 @@ The reviewer will figure out what to look at, explore the relevant code, and giv
 Megareview assigns **specialized roles** to each reviewer:
 
 - **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
-- **Gemini → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
-- **Claude → Code Quality & DX** — focuses on readability, naming, unnecessary complexity, error message quality, API ergonomics, maintainability traps, developer footguns, and dead code.
+- **Antigravity → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
+
+If a reviewer hits a provider quota/rate limit (a 429 — `agy` exits 0 with empty output on this), rival detects it from the captured log and reports that reviewer as **skipped** with a reason, rather than silently counting it as a clean empty review.
 
 Role prompts can be customized via `~/.rival/config.yaml`:
 
@@ -117,7 +118,7 @@ roles:
     Your custom code quality instructions...
 ```
 
-A third **consilium judge** (runs via Codex) then:
+A separate **consilium judge** (runs via Codex) then:
 - Merges duplicate findings (same file + line + problem → single finding with all reporters in `found_by`)
 - Applies consensus bonus (+2 confidence for findings reported by 2+ reviewers)
 - Filters by confidence threshold (default: ≥6)
@@ -132,30 +133,32 @@ Summary: ...
 [CRITICAL] file.go:42 — Title
   Description...
   Fix: ...
-  Found by: codex, gemini
+  Found by: codex, antigravity
 
 [HIGH] file.go:100 — Title
   ...
 
 Recommendation: request_changes — ...
 
-Reviewed by: codex (bug_hunter), gemini (arch_security), claude (code_quality)
+Reviewed by: codex (bug_hunter), antigravity (arch_security)
 Judge: codex (consilium)
 Findings: 5 (threshold: 6)
 ```
 
-If only one CLI is available, the consilium judge falls back to whichever CLI is present. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
+The consilium judge runs via Codex, falling back to Antigravity if Codex is unavailable. If only one reviewer is available, the consilium judge falls back to whichever CLI is present. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
 
 ### Direct CLI
 
 ```bash
 # Run with prompt from stdin
 echo 'explain the auth flow' | rival command codex --workdir .
-echo 'explain the auth flow' | rival command gemini --workdir .
-echo 'explain the auth flow' | rival command claude --workdir .
+echo 'explain the auth flow' | rival command antigravity --workdir .
 
-# Review via megareview (all CLIs in parallel)
+# Review via megareview (Codex + Antigravity in parallel)
 echo 'src/api/' | rival command megareview --workdir .
+
+# Rate a plan/spec doc 1-10 with Codex
+echo 'docs/plan.md' | rival command plan --workdir .
 ```
 
 ### TUI Dashboard
@@ -166,7 +169,7 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, CLI (◈ codex / ✦ gemini / ⬡ claude / ◈✦⬡ mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row. Claude sessions show `⬡ claude` for native or `⬡ claude/dk` for Docker mode.
+**List view** shows all sessions with status, CLI (◈ codex / △ antigravity / ⬡ claude / ▤ plan / ◈△ mega), model, effort, elapsed time, workdir, and prompt preview. Megareview sessions are grouped into a single row. Claude sessions show `⬡ claude` for native or `⬡ claude/dk` for Docker mode. Plan reviews show `▤ plan`.
 
 **Detail view** shows full metadata (including Mode and Account/subscription type for Claude), prompt, and live-streaming log output. For megareview groups, all reviewer logs are shown.
 
@@ -204,7 +207,7 @@ Claude skill (context: fork)
 rival binary
     ├─ parses arguments (-re flag, review/prompt mode)
     ├─ builds review prompt with scope injection
-    ├─ spawns codex/gemini/claude via subprocess
+    ├─ spawns codex/antigravity via subprocess
     ├─ pipes prompt to stdin, tees stdout to log file
     ├─ writes session JSON + live log to ~/.rival/sessions/
     └─ returns output to skill → back to Claude Code
@@ -212,8 +215,9 @@ rival binary
 Megareview (roles + consilium):
     rival binary
     ├─ generates shared GroupID (UUID)
-    ├─ assigns roles: codex=bug_hunter, gemini=arch_security, claude=code_quality
-    ├─ spawns all available CLIs concurrently with role-specific prompts
+    ├─ assigns roles: codex=bug_hunter, antigravity=arch_security
+    ├─ spawns codex + antigravity concurrently with role-specific prompts
+    ├─ skips any reviewer that hits a provider quota/rate limit (429)
     ├─ parses structured JSON output from each reviewer
     ├─ spawns codex again as consilium judge
     │   ├─ merges duplicates, applies consensus bonus
@@ -291,16 +295,17 @@ Claude auto-detects its execution mode:
 
 ## Models
 
-| CLI | Model | Default Effort |
-|-----|-------|---------------|
-| Codex | `gpt-5.5` | xhigh |
-| Gemini | `gemini-3.1-pro-preview` | xhigh |
-| Claude | `claude-opus-4-6[1m]` | max |
+| CLI | Model | Default Effort | Used by |
+|-----|-------|---------------|---------|
+| Codex | `gpt-5.5` | xhigh | megareview, consilium judge, `/rival-codex-only`, `/rival-plan` |
+| Antigravity | `gemini-3.5-flash` | xhigh | megareview, judge fallback, `/rival-antigravity-only` |
+| Gemini | `gemini-3.1-pro-preview` | xhigh | standalone `rival command gemini` only |
+| Claude | `claude-opus-4-6[1m]` | max | standalone only |
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-codex-only ~/.claude/skills/rival-gemini-only ~/.claude/skills/rival-claude-only ~/.claude/skills/rival-review
+rm -rf ~/.claude/skills/rival-codex-only ~/.claude/skills/rival-antigravity-only ~/.claude/skills/rival-plan ~/.claude/skills/rival-review
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```

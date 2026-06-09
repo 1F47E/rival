@@ -93,10 +93,20 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 	for r := range results {
 		if r.Err != nil {
 			log.Error().Str("cli", r.CLI).Err(r.Err).Msg("reviewer failed")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: r.Err.Error()})
 			continue
 		}
 		if r.ExitCode != 0 {
 			log.Error().Str("cli", r.CLI).Int("exit_code", r.ExitCode).Msg("reviewer exited with error")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
+			continue
+		}
+		// agy exits 0 on a 429; detect quota exhaustion from the captured log so
+		// a quota-blocked reviewer is reported as skipped, not counted as a
+		// successful (but empty) review that silently degrades the consilium.
+		if executor.IsQuotaExhausted(r.RawOutput) {
+			log.Error().Str("cli", r.CLI).Msg("reviewer hit provider quota/rate limit (429) — skipping")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
 			continue
 		}
 
@@ -115,7 +125,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 	}
 
 	if len(inputs) == 0 {
-		return nil, fmt.Errorf("all reviewers failed")
+		return nil, fmt.Errorf("all reviewers failed or hit quota limits (see skipped reasons): %s", formatSkipped(skipped))
 	}
 
 	log.Info().Int("successful", len(inputs)).Str("judge", judgeCLI).Msg("reviewers complete, running consilium")
@@ -174,25 +184,46 @@ func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir strin
 		return cliResult{CLI: cli, Model: model, Role: role, Err: err}
 	}
 
-	if result.ExitCode != 0 {
-		_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", cli, result.ExitCode))
-	} else {
-		_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
-	}
-
-	// Read the log file to get raw output.
+	// Read the log file to get raw output (includes stdout + stderr, so the
+	// agy 429 envelope is captured here even though it exits 0).
 	logData, err := os.ReadFile(sess.LogFile)
 	if err != nil {
+		if result.ExitCode != 0 {
+			_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", cli, result.ExitCode))
+		}
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("read log: %w", err), ExitCode: result.ExitCode}
+	}
+
+	raw := string(logData)
+
+	switch {
+	case result.ExitCode != 0:
+		_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", cli, result.ExitCode))
+	case executor.IsQuotaExhausted(raw):
+		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", cli))
+	default:
+		_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
 	}
 
 	return cliResult{
 		CLI:       cli,
 		Model:     model,
 		Role:      role,
-		RawOutput: string(logData),
+		RawOutput: raw,
 		ExitCode:  result.ExitCode,
 	}
+}
+
+// formatSkipped renders skipped reviewers as "cli: reason" pairs for error messages.
+func formatSkipped(skipped []SkippedCLI) string {
+	if len(skipped) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(skipped))
+	for _, s := range skipped {
+		parts = append(parts, fmt.Sprintf("%s: %s", s.CLI, s.Reason))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, scope, effort, workdir, groupID string, threshold int) (*ConsiliumOutput, error) {
@@ -232,12 +263,18 @@ func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, sc
 		return nil, fmt.Errorf("consilium exited with code %d", result.ExitCode)
 	}
 
-	_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
-
 	logData, err := os.ReadFile(sess.LogFile)
 	if err != nil {
+		_ = sess.Fail(1, "read consilium log failed")
 		return nil, fmt.Errorf("read consilium log: %w", err)
 	}
+
+	if executor.IsQuotaExhausted(string(logData)) {
+		_ = sess.Fail(1, fmt.Sprintf("consilium judge (%s) hit provider quota/rate limit (429)", judgeCLI))
+		return nil, fmt.Errorf("consilium judge (%s) hit provider quota/rate limit (429) — authenticate to a quota-bearing account or wait for reset", judgeCLI)
+	}
+
+	_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
 
 	output, err := ParseConsiliumOutput(string(logData))
 	if err != nil {
