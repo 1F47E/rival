@@ -7,6 +7,11 @@ set -euo pipefail
 VERSION="${1:?Usage: $0 <version>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Source of truth: the embedded skills compiled into the binary. The repo-root
+# .claude/skills/ copies were removed — `rival install` copies these out to
+# ~/.claude/skills/ on install/update, so there is no second copy to keep in sync.
+# gemini-only/claude-only are deprecated (removed on install) but still embedded,
+# so their version stays synced too.
 SKILL_DIRS=(
   "$ROOT/rival/internal/skills/rival-codex-only"
   "$ROOT/rival/internal/skills/rival-gemini-only"
@@ -14,12 +19,6 @@ SKILL_DIRS=(
   "$ROOT/rival/internal/skills/rival-antigravity-only"
   "$ROOT/rival/internal/skills/rival-plan"
   "$ROOT/rival/internal/skills/rival-review"
-  "$ROOT/.claude/skills/rival-codex-only"
-  "$ROOT/.claude/skills/rival-gemini-only"
-  "$ROOT/.claude/skills/rival-claude-only"
-  "$ROOT/.claude/skills/rival-antigravity-only"
-  "$ROOT/.claude/skills/rival-plan"
-  "$ROOT/.claude/skills/rival-review"
 )
 
 for dir in "${SKILL_DIRS[@]}"; do
