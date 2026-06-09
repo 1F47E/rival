@@ -7,7 +7,7 @@ import (
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a CLI executor directly (terminal use)",
-	Long:  "Execute Codex or Gemini with explicit flags. Streams output to stdout.",
+	Long:  "Execute a CLI executor (codex, antigravity, gemini, claude) with explicit flags. Streams output to stdout.",
 }
 
 func init() {
