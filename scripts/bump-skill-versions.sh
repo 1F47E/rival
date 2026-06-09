@@ -12,11 +12,13 @@ SKILL_DIRS=(
   "$ROOT/rival/internal/skills/rival-gemini-only"
   "$ROOT/rival/internal/skills/rival-claude-only"
   "$ROOT/rival/internal/skills/rival-antigravity-only"
+  "$ROOT/rival/internal/skills/rival-plan"
   "$ROOT/rival/internal/skills/rival-review"
   "$ROOT/.claude/skills/rival-codex-only"
   "$ROOT/.claude/skills/rival-gemini-only"
   "$ROOT/.claude/skills/rival-claude-only"
   "$ROOT/.claude/skills/rival-antigravity-only"
+  "$ROOT/.claude/skills/rival-plan"
   "$ROOT/.claude/skills/rival-review"
 )
 
