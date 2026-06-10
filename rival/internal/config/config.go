@@ -11,7 +11,7 @@ import (
 const (
 	CodexModel  = "gpt-5.5"
 	GeminiModel = "gemini-3.1-pro-preview"
-	ClaudeModel          = "claude-opus-4-6[1m]"
+	ClaudeModel          = "claude-opus-4-8[1m]"
 	AntigravityModel     = "gemini-3.5-flash"
 	ClaudeDockerImage    = "rival-claude"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
