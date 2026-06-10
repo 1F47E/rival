@@ -1,6 +1,6 @@
 ---
 name: rival-claude-only
-version: 3.11.0
+version: 3.12.0
 description: Run Claude through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-claude.
 argument-hint: "[-re level] [review [scope] | prompt]"
 context: fork
