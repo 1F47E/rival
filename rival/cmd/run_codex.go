@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -25,6 +27,7 @@ func init() {
 	runCodexCmd.Flags().String("workdir", ".", "working directory")
 	runCodexCmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
 	runCodexCmd.Flags().String("review", "", "review scope (enables review mode)")
+	runCodexCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	runCmd.AddCommand(runCodexCmd)
 }
 
@@ -33,6 +36,7 @@ func runCodexAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	promptStdin, _ := cmd.Flags().GetBool("prompt-stdin")
 	reviewScope, _ := cmd.Flags().GetString("review")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	if !config.IsValidEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
@@ -66,20 +70,29 @@ func runCodexAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("empty prompt")
 	}
 
-	sess, err := session.New("codex", mode, config.CodexModel, effort, workdir, prompt, reviewScope, "")
+	sess, err := session.NewQueued("codex", mode, config.CodexModel, effort, workdir, prompt, reviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting codex")
 
-	result, err := executor.RunCodex(context.Background(), sess, prompt, effort, workdir, os.Stdout)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, mode, workdir)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	result, err := executor.RunCodex(ctx, sess, prompt, effort, workdir, os.Stdout)
 	if err != nil {
 		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")

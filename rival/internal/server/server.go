@@ -34,6 +34,7 @@ type sessionGroup struct {
 
 type stats struct {
 	Running   int `json:"running"`
+	Queued    int `json:"queued"`
 	Completed int `json:"completed"`
 	Failed    int `json:"failed"`
 	Total     int `json:"total"`
@@ -72,6 +73,8 @@ func New(version string) *http.ServeMux {
 			switch s.Status {
 			case "running":
 				st.Running++
+			case "queued":
+				st.Queued++
 			case "completed":
 				st.Completed++
 			case "failed":
@@ -165,9 +168,15 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 }
 
 func groupStatus(sessions []*session.Session) string {
+	// Tier: running > queued > failed > completed.
 	for _, s := range sessions {
 		if s.Status == "running" {
 			return "running"
+		}
+	}
+	for _, s := range sessions {
+		if s.Status == "queued" {
+			return "queued"
 		}
 	}
 	for _, s := range sessions {
@@ -194,9 +203,12 @@ func groupElapsed(sessions []*session.Session) string {
 	var maxDur time.Duration
 	for _, s := range sessions {
 		var d time.Duration
-		if s.Status == "running" {
+		switch {
+		case s.Status == "running":
 			d = time.Since(s.StartTime)
-		} else if s.EndTime != nil {
+		case s.Status == "queued" && s.QueuedAt != nil:
+			d = time.Since(*s.QueuedAt) // show how long it has been waiting
+		case s.EndTime != nil:
 			d = s.EndTime.Sub(s.StartTime)
 		}
 		if d > maxDur {

@@ -90,8 +90,9 @@ func buildClaudeDockerImage() error {
 	return nil
 }
 
-// RunClaudeDocker executes a prompt through the Claude Code CLI inside a Docker container.
-func RunClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort, workdir string, mirror io.Writer) (*Result, error) {
+// RunClaudeDocker executes a prompt through the Claude Code CLI inside a Docker container
+// using the given model id.
+func RunClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
 	token := os.Getenv(config.ClaudeDockerTokenEnv)
 	if token == "" {
 		return nil, fmt.Errorf("%s env var not set", config.ClaudeDockerTokenEnv)
@@ -120,7 +121,7 @@ func RunClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort,
 		claudeDockerImage,
 		// Claude args (entrypoint is "claude"):
 		"-p",
-		"--model", config.ClaudeModel,
+		"--model", model,
 		"--effort", claudeEffort,
 		"--output-format", "text",
 		"--no-session-persistence",

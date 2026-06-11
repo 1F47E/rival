@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -30,11 +32,13 @@ var commandPlanCmd = &cobra.Command{
 
 func init() {
 	commandPlanCmd.Flags().String("workdir", ".", "working directory")
+	commandPlanCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	commandCmd.AddCommand(commandPlanCmd)
 }
 
 func commandPlanAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	// If stdin is a terminal, show usage instead of hanging. Guard against a nil
 	// stat (stdin closed/invalid) so we don't panic dereferencing it.
@@ -66,20 +70,30 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sess, err := session.New("codex", "plan", config.CodexModel, config.DefaultEffort, workdir, prompt, absPath, "")
+	sess, err := session.NewQueued("codex", "plan", config.CodexModel, config.DefaultEffort, workdir, prompt, absPath, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("file", absPath).Msg("starting plan review (command mode)")
 
-	result, err := executor.RunCodex(context.Background(), sess, prompt, config.DefaultEffort, workdir, nil)
+	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, "plan", workdir)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	result, err := executor.RunCodex(ctx, sess, prompt, config.DefaultEffort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
@@ -106,11 +120,14 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 	// Parse the structured plan output; on failure, fall back to the raw codex
 	// output so nothing the model produced is lost.
 	parsed, parseErr := review.ParsePlanOutput(rawLog)
+	out := rawLog
 	if parseErr != nil {
 		log.Warn().Err(parseErr).Str("session", sess.ID).Msg("failed to parse plan output, returning raw")
-		_, _ = fmt.Fprint(os.Stdout, rawLog)
 	} else {
-		_, _ = fmt.Fprint(os.Stdout, review.FormatPlanConsole(parsed, absPath))
+		out = review.FormatPlanConsole(parsed, absPath)
+	}
+	if _, err := io.WriteString(os.Stdout, out); err != nil {
+		return fmt.Errorf("write stdout: %w", err)
 	}
 
 	if result.ExitCode != 0 {

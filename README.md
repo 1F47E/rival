@@ -193,6 +193,40 @@ rival sessions              # all sessions as JSON
 rival version               # show version
 ```
 
+### Review Queue
+
+Multiple Claude Code clients (or terminals) invoke `rival` as independent
+processes. Without coordination they launch their provider CLIs at once and hit
+rate limits. rival serializes them through a **cross-process FIFO queue** — by
+default one review runs at a time; the rest wait their turn.
+
+- Each waiting review prints its position to stderr while it waits:
+  `rival queue: position 2/3 (1 running), waiting 1m12s`. Skills relay this to you.
+- Queued sessions show up in the TUI and web dashboard with a `◌ queued #N` row
+  and a growing wait time, alongside a queued counter.
+- No daemon: coordination is via ticket files in `~/.rival/queue/` guarded by an
+  flock. A crashed holder is reaped automatically (its slot frees when both the
+  rival process and any surviving provider CLI child are gone).
+
+```bash
+rival queue                 # list tickets (position, state, mode, wait, workdir)
+rival queue clear           # remove dead tickets
+rival queue clear --force   # remove ALL tickets (live waiters re-queue at the tail)
+```
+
+**Config (env vars):**
+
+| Var | Default | Effect |
+|-----|---------|--------|
+| `RIVAL_MAX_CONCURRENT` | `1` | How many reviews may run at once |
+| `RIVAL_QUEUE_TIMEOUT` | `30m` | Max wait for a slot before the review fails |
+| `RIVAL_NO_QUEUE` | unset | Set to bypass the queue entirely |
+
+Every command also accepts `--no-queue` to skip the queue for that invocation.
+
+> **NFS note:** the queue relies on `flock`, which is unreliable over NFS-mounted
+> home directories. On such hosts set `RIVAL_NO_QUEUE=1`.
+
 ## Architecture
 
 ```

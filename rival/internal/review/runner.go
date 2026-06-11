@@ -2,13 +2,16 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
+	"github.com/1F47E/rival/internal/queue"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/rs/zerolog/log"
 )
@@ -38,11 +41,20 @@ type cliResult struct {
 	Err       error
 }
 
-// RunMegaReview runs the full pipeline: spawn reviewers → parse → consilium → filter.
-func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) (*RunResult, error) {
+// reviewerPlan pairs a pre-created session with the CLI it will run.
+type reviewerPlan struct {
+	cli  string
+	sess *session.Session
+}
+
+// RunMegaReview runs the full pipeline: enqueue → spawn reviewers → parse → consilium → filter.
+// One queue ticket covers the whole pipeline (both reviewers + consilium run
+// under the single held slot). Pass noQueue to bypass the queue.
+func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, noQueue bool) (*RunResult, error) {
 	threshold := DefaultConfidenceThreshold
 
-	// Preflight — megareview uses Codex + Antigravity only.
+	// Preflight — megareview uses Codex + Antigravity only. Runs BEFORE
+	// enqueue so a doomed review never occupies a slot.
 	codexOK := true
 	antigravityOK := true
 	var skipped []SkippedCLI
@@ -66,23 +78,72 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 		judgeCLI = "antigravity"
 	}
 
-	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
-	var wg sync.WaitGroup
-	results := make(chan cliResult, 2)
-
+	// Create reviewer sessions up front (status "queued") so they appear in
+	// the TUI/web while waiting, and so the queue ticket can reference them.
+	var plans []reviewerPlan
 	if codexOK {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results <- runReviewer(ctx, "codex", groupID, scope, effort, workdir)
-		}()
+		sess, err := newReviewerSession("codex", scope, effort, workdir, groupID)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, reviewerPlan{cli: "codex", sess: sess})
 	}
 	if antigravityOK {
+		sess, err := newReviewerSession("antigravity", scope, effort, workdir, groupID)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, reviewerPlan{cli: "antigravity", sess: sess})
+	}
+
+	// Pre-create the consilium judge session too, so the queue ticket covers
+	// the WHOLE pipeline. If rival is SIGKILL'd during consilium and the judge
+	// child survives, the ticket's liveness check sees that running session and
+	// keeps the slot held instead of letting another process double-promote.
+	consiliumSess, err := newConsiliumSession(judgeCLI, scope, effort, workdir, groupID)
+	if err != nil {
+		return nil, err
+	}
+
+	// sessions = the queue ticket's covered sessions (both reviewers + judge).
+	sessions := make([]*session.Session, 0, len(plans)+1)
+	for _, p := range plans {
+		sessions = append(sessions, p.sess)
+	}
+	sessions = append(sessions, consiliumSess)
+
+	// Fail any session still left "queued" (never started) when we return —
+	// covers bail-before-run and the error paths below. MarkRunning flips a
+	// session to "running" only once it is actually about to execute, so a
+	// session stuck "queued" here genuinely never ran.
+	defer func() {
+		for _, s := range sessions {
+			if s.Status == "queued" {
+				_ = s.Fail(1, "interrupted")
+			}
+		}
+	}()
+
+	// Acquire one queue slot covering the whole pipeline. Only the reviewer
+	// sessions are marked running on promotion; the consilium session stays
+	// queued until its phase, but is already in the ticket for liveness.
+	reviewerSessions := sessions[:len(plans)]
+	release, err := waitForMegaSlot(ctx, noQueue, sessions, reviewerSessions, workdir, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
+	var wg sync.WaitGroup
+	results := make(chan cliResult, len(plans))
+
+	for _, p := range plans {
 		wg.Add(1)
-		go func() {
+		go func(pl reviewerPlan) {
 			defer wg.Done()
-			results <- runReviewer(ctx, "antigravity", groupID, scope, effort, workdir)
-		}()
+			results <- runReviewer(ctx, pl.sess, pl.cli, scope, effort, workdir)
+		}(p)
 	}
 
 	wg.Wait()
@@ -130,8 +191,8 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 
 	log.Info().Int("successful", len(inputs)).Str("judge", judgeCLI).Msg("reviewers complete, running consilium")
 
-	// Phase 2: Run consilium judge.
-	consiliumOutput, err := runConsilium(ctx, judgeCLI, inputs, scope, effort, workdir, groupID, threshold)
+	// Phase 2: Run consilium judge (under the same held slot).
+	consiliumOutput, err := runConsilium(ctx, consiliumSess, judgeCLI, inputs, scope, effort, workdir, threshold)
 	if err != nil {
 		return nil, fmt.Errorf("consilium: %w", err)
 	}
@@ -150,25 +211,108 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string) 
 	}, nil
 }
 
-func runReviewer(ctx context.Context, cli, groupID, scope, effort, workdir string) cliResult {
+// newReviewerSession creates a queued session for one reviewer CLI.
+func newReviewerSession(cli, scope, effort, workdir, groupID string) (*session.Session, error) {
 	role := RoleForCLI(cli)
 	model := modelForCLI(cli)
-
 	prompt := BuildRolePrompt(role, scope)
-
-	sess, err := session.New(cli, "megareview", model, effort, workdir, prompt, scope, groupID)
+	sess, err := session.NewQueued(cli, "megareview", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
-		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("create session: %w", err)}
+		return nil, fmt.Errorf("create %s session: %w", cli, err)
+	}
+	return sess, nil
+}
+
+// newConsiliumSession creates a queued session for the consilium judge. The
+// prompt is finalized later (it depends on reviewer output), so we store a
+// placeholder; runConsilium does not re-create the session.
+func newConsiliumSession(judgeCLI, scope, effort, workdir, groupID string) (*session.Session, error) {
+	model := modelForCLI(judgeCLI)
+	sess, err := session.NewQueued(judgeCLI, "consilium", model, effort, workdir, "", scope, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("create consilium session: %w", err)
+	}
+	return sess, nil
+}
+
+// waitForMegaSlot enqueues one ticket covering ticketSessions (both reviewers +
+// the consilium judge, for liveness) and blocks until promoted, then marks only
+// runSessions (the reviewers) running. The consilium session stays queued until
+// its phase. Mirrors cmd.waitForQueueSlot but lives here to avoid an import cycle.
+func waitForMegaSlot(ctx context.Context, noQueue bool, ticketSessions, runSessions []*session.Session, workdir, groupID string) (release func(), err error) {
+	markRunning := func() error {
+		for i, s := range runSessions {
+			if err := s.MarkRunning(); err != nil {
+				// Roll back any session already flipped to running, so a partial
+				// failure never strands a session "running" with no process.
+				for _, prev := range runSessions[:i] {
+					_ = prev.Fail(1, "aborted: failed to start review batch")
+				}
+				return fmt.Errorf("mark session running: %w", err)
+			}
+		}
+		return nil
 	}
 
+	if noQueue || config.QueueDisabled() {
+		return func() {}, markRunning()
+	}
+
+	ids := make([]string, len(ticketSessions))
+	for i, s := range ticketSessions {
+		ids[i] = s.ID
+	}
+
+	m := queue.New()
+	if _, enqErr := m.Enqueue(groupID, ids, "megareview", workdir); enqErr != nil {
+		log.Warn().Err(enqErr).Msg("queue unavailable — running megareview without queueing")
+		return func() {}, markRunning()
+	}
+
+	start := time.Now()
+	waitErr := m.WaitForSlot(ctx, func(pos, total, running int) {
+		_, _ = fmt.Fprintf(os.Stderr, "rival queue: position %d/%d (%d running), waiting %s\n",
+			pos, total, running, time.Since(start).Round(time.Second))
+		for _, s := range ticketSessions {
+			_ = s.SetQueuePosition(pos)
+		}
+	})
+	if waitErr != nil {
+		m.Release()
+		msg := "cancelled while queued"
+		if errors.Is(waitErr, queue.ErrQueueTimeout) {
+			msg = fmt.Sprintf("queue timeout after %s — queue may be wedged; inspect with 'rival queue', purge with 'rival queue clear'", m.Timeout)
+		}
+		for _, s := range ticketSessions {
+			_ = s.Fail(1, msg)
+		}
+		return nil, fmt.Errorf("rival queue: %s", msg)
+	}
+
+	if err := markRunning(); err != nil {
+		m.Release()
+		return nil, err
+	}
+	if waited := time.Since(start); waited >= time.Second {
+		_, _ = fmt.Fprintf(os.Stderr, "rival queue: slot acquired after %s\n", waited.Round(time.Second))
+	}
+	return m.Release, nil
+}
+
+func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort, workdir string) cliResult {
+	role := RoleForCLI(cli)
+	model := modelForCLI(cli)
+	prompt := BuildRolePrompt(role, scope)
+
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("cli", cli).Str("role", string(role)).Msg("starting reviewer")
 
+	var err error
 	var result *executor.Result
 	switch cli {
 	case "codex":
@@ -226,24 +370,24 @@ func formatSkipped(skipped []SkippedCLI) string {
 	return strings.Join(parts, "; ")
 }
 
-func runConsilium(ctx context.Context, judgeCLI string, inputs []ReviewInput, scope, effort, workdir, groupID string, threshold int) (*ConsiliumOutput, error) {
+// runConsilium runs the judge on a pre-created session (already in the queue
+// ticket). The prompt is finalized here since it depends on reviewer output;
+// MarkRunning flips the session from queued→running just before execution.
+func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, inputs []ReviewInput, scope, effort, workdir string, threshold int) (*ConsiliumOutput, error) {
 	prompt := BuildConsiliumPrompt(inputs, scope, threshold)
-
-	model := modelForCLI(judgeCLI)
-
-	sess, err := session.New(judgeCLI, "consilium", model, effort, workdir, prompt, scope, groupID)
-	if err != nil {
-		return nil, fmt.Errorf("create consilium session: %w", err)
+	if err := sess.MarkRunning(); err != nil {
+		return nil, fmt.Errorf("start consilium session: %w", err)
 	}
 
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("cli", judgeCLI).Msg("starting consilium judge")
 
+	var err error
 	var result *executor.Result
 	switch judgeCLI {
 	case "codex":

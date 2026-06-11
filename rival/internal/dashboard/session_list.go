@@ -79,6 +79,7 @@ const (
 	iconCodex        = "◈" // OpenAI / Codex
 	iconGemini       = "✦" // Google / Gemini
 	iconClaude       = "⬡" // Anthropic / Claude
+	iconFable        = "✺" // Anthropic / Claude Fable
 	iconAntigravity  = "△" // Google / Antigravity
 	iconMega         = "◈△" // Codex + Antigravity
 	iconPlan         = "▤" // Plan/spec review (codex under the hood)
@@ -99,6 +100,8 @@ func cliLabel(cli, mode string) string {
 			return iconClaude + " claude/dk"
 		}
 		return iconClaude + " claude"
+	case "fable":
+		return iconFable + " fable"
 	case "antigravity":
 		return iconAntigravity + " antigravity"
 	default:
@@ -152,9 +155,15 @@ func groupModels(item *displayItem) string {
 }
 
 func groupStatus(item *displayItem) string {
+	// Tier: running > queued > failed > completed.
 	for _, s := range item.Sessions {
 		if s.Status == "running" {
 			return "running"
+		}
+	}
+	for _, s := range item.Sessions {
+		if s.Status == "queued" {
+			return "queued"
 		}
 	}
 	for _, s := range item.Sessions {
@@ -185,6 +194,20 @@ func groupElapsed(item *displayItem) string {
 	if anyRunning {
 		return maxDur.Round(time.Second).String()
 	}
+	// No running session yet — show the longest queue wait if any are queued.
+	if maxDur == 0 {
+		var maxWait time.Duration
+		for _, s := range item.Sessions {
+			if s.Status == "queued" && s.QueuedAt != nil {
+				if w := time.Since(*s.QueuedAt); w > maxWait {
+					maxWait = w
+				}
+			}
+		}
+		if maxWait > 0 {
+			return maxWait.Round(time.Second).String()
+		}
+	}
 	if maxDur > 0 {
 		return maxDur.Round(time.Second).String()
 	}
@@ -194,9 +217,12 @@ func groupElapsed(item *displayItem) string {
 func formatSessionRow(s *session.Session, width int) string {
 	cols := calcColumns(width)
 
-	// Status icon + text.
+	// Status icon + text. Queued rows show the position in line.
 	icon := statusIcon(s.Status)
 	statusText := fmt.Sprintf("%s %s", icon, s.Status)
+	if s.Status == "queued" && s.QueuePosition > 0 {
+		statusText = fmt.Sprintf("%s queued #%d", icon, s.QueuePosition)
+	}
 
 	// Elapsed time.
 	elapsed := formatElapsed(s)
@@ -265,6 +291,8 @@ func statusIcon(status string) string {
 		return "●"
 	case "failed":
 		return "●"
+	case "queued":
+		return "◌"
 	default:
 		return "○"
 	}
@@ -277,6 +305,10 @@ func formatElapsed(s *session.Session) string {
 	if s.Status == "running" {
 		d := time.Since(s.StartTime).Round(time.Second)
 		return d.String()
+	}
+	// Queued: show how long it has been waiting in line.
+	if s.Status == "queued" && s.QueuedAt != nil {
+		return time.Since(*s.QueuedAt).Round(time.Second).String()
 	}
 	return "-"
 }

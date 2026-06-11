@@ -34,12 +34,14 @@ With a scope argument, reviews exactly that scope.`,
 func init() {
 	reviewCmd.Flags().String("effort", config.DefaultEffort, "reasoning effort (low, medium, high, xhigh)")
 	reviewCmd.Flags().String("workdir", ".", "working directory")
+	reviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	rootCmd.AddCommand(reviewCmd)
 }
 
 func reviewAction(cmd *cobra.Command, args []string) error {
 	effort, _ := cmd.Flags().GetString("effort")
 	workdir, _ := cmd.Flags().GetString("workdir")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	if !config.IsValidEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
@@ -70,7 +72,7 @@ func reviewAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunMegaReview(ctx, scope, effort, workdir, groupID)
+	result, err := review.RunMegaReview(ctx, scope, effort, workdir, groupID, noQueue)
 	if err != nil {
 		return err
 	}

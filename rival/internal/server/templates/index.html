@@ -9,6 +9,7 @@
 <style>
   body { font-family: 'JetBrains Mono', 'Menlo', monospace; }
   .status-running { color: #f59e0b; }
+  .status-queued { color: #94a3b8; }
   .status-completed { color: #22c55e; }
   .status-failed { color: #ef4444; }
   tr.session-row:hover { background: #1e293b; cursor: pointer; }
@@ -31,6 +32,7 @@
     </div>
     <div class="flex gap-6 text-sm">
       <span>● <span id="stat-running" class="status-running font-bold">0</span> running</span>
+      <span>◌ <span id="stat-queued" class="status-queued font-bold">0</span> queued</span>
       <span>● <span id="stat-completed" class="status-completed font-bold">0</span> completed</span>
       <span>● <span id="stat-failed" class="status-failed font-bold">0</span> failed</span>
       <span class="text-gray-500">│ <span id="stat-total" class="font-bold">0</span> total</span>
@@ -73,7 +75,7 @@
 </div>
 
 <script>
-const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', antigravity: '△' };
+const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '✺', antigravity: '△' };
 const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
@@ -118,7 +120,13 @@ function buildRow(g) {
   tr.onclick = () => toggleDetail(id);
 
   const statusCls = 'status-' + g.status;
-  const statusIcons = { running: '●', completed: '●', failed: '●' };
+  const statusIcons = { running: '●', queued: '◌', completed: '●', failed: '●' };
+
+  // Queued rows show position in line when known.
+  let statusText = (statusIcons[g.status] || '○') + ' ' + g.status;
+  if (g.status === 'queued' && primary.queue_position > 0) {
+    statusText = '◌ queued #' + primary.queue_position;
+  }
 
   let cliText;
   if (g.is_group) {
@@ -132,7 +140,7 @@ function buildRow(g) {
   }
 
   const cells = [
-    { cls: statusCls, text: (statusIcons[g.status] || '○') + ' ' + g.status },
+    { cls: statusCls, text: statusText },
     { cls: '', text: cliText },
     { cls: 'text-gray-400', text: truncate(g.models, 30) },
     { cls: '', text: primary.effort },
@@ -159,7 +167,7 @@ async function fetchSessions() {
     lastGroups = data.groups;
     renderTable(data.groups);
     document.getElementById('version').textContent = data.version || '';
-    pollInterval = data.stats.running > 0 ? 2000 : 10000;
+    pollInterval = (data.stats.running > 0 || data.stats.queued > 0) ? 2000 : 10000;
   } catch (e) {
     console.error('fetch failed:', e);
   }
@@ -173,6 +181,7 @@ function schedulePoll() {
 
 function renderStats(stats) {
   document.getElementById('stat-running').textContent = stats.running;
+  document.getElementById('stat-queued').textContent = stats.queued || 0;
   document.getElementById('stat-completed').textContent = stats.completed;
   document.getElementById('stat-failed').textContent = stats.failed;
   document.getElementById('stat-total').textContent = stats.total;
