@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -25,6 +27,7 @@ func init() {
 	runClaudeCmd.Flags().String("workdir", ".", "working directory")
 	runClaudeCmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
 	runClaudeCmd.Flags().String("review", "", "review scope (enables review mode)")
+	runClaudeCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	runCmd.AddCommand(runClaudeCmd)
 }
 
@@ -33,6 +36,7 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	promptStdin, _ := cmd.Flags().GetBool("prompt-stdin")
 	reviewScope, _ := cmd.Flags().GetString("review")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	if !config.IsValidEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
@@ -66,21 +70,30 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("empty prompt")
 	}
 
-	sess, err := session.New("claude", mode, config.ClaudeModel, effort, workdir, prompt, reviewScope, "")
+	sess, err := session.NewQueued("claude", mode, config.ClaudeModel, effort, workdir, prompt, reviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 	sess.Account = config.ClaudeSubscription()
 
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting claude")
 
-	result, err := executor.RunClaude(context.Background(), sess, prompt, effort, workdir, os.Stdout)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, mode, workdir)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	result, err := executor.RunClaude(ctx, sess, prompt, effort, workdir, os.Stdout)
 	if err != nil {
 		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")

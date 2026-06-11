@@ -11,8 +11,15 @@ import (
 	"time"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/procinfo"
 	"github.com/google/uuid"
 )
+
+// pidStartNanos returns the start time of pid, or 0 if unavailable.
+func pidStartNanos(pid int) int64 {
+	n, _ := procinfo.StartNanos(pid)
+	return n
+}
 
 type Session struct {
 	ID            string     `json:"id"`
@@ -27,6 +34,8 @@ type Session struct {
 	PromptHash    string     `json:"prompt_hash,omitempty"`
 	Status        string     `json:"status"`
 	StartTime     time.Time  `json:"start_time"`
+	QueuedAt      *time.Time `json:"queued_at,omitempty"`
+	QueuePosition int        `json:"queue_position,omitempty"`
 	EndTime       *time.Time `json:"end_time,omitempty"`
 	ExitCode      *int       `json:"exit_code,omitempty"`
 	Duration      string     `json:"duration,omitempty"`
@@ -37,11 +46,22 @@ type Session struct {
 	ErrorMsg      string     `json:"error,omitempty"`
 	Account       string     `json:"account,omitempty"`
 	PID           int        `json:"pid"`
+	PIDStart      int64      `json:"pid_start,omitempty"` // start time of PID (Unix ns); guards against PID reuse
 }
 
-// New creates a new session and writes the initial JSON file.
+// New creates a new session in "running" state and writes the initial JSON file.
 // groupID links sessions that belong together (e.g. megareview); pass "" for standalone.
 func New(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string) (*Session, error) {
+	return create(cli, mode, model, effort, workdir, prompt, reviewScope, groupID, "running")
+}
+
+// NewQueued creates a session in "queued" state — visible in the TUI/web while
+// the process waits for a queue slot. Call MarkRunning when the slot is acquired.
+func NewQueued(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string) (*Session, error) {
+	return create(cli, mode, model, effort, workdir, prompt, reviewScope, groupID, "queued")
+}
+
+func create(cli, mode, model, effort, workdir, prompt, reviewScope, groupID, status string) (*Session, error) {
 	dir := config.SessionDirPath()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
@@ -57,6 +77,7 @@ func New(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string)
 
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(prompt)))
 
+	now := time.Now()
 	s := &Session{
 		ID:            id,
 		GroupID:       groupID,
@@ -68,16 +89,44 @@ func New(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string)
 		Prompt:        prompt,
 		PromptPreview: preview,
 		PromptHash:    hash,
-		Status:        "running",
-		StartTime:     time.Now(),
+		Status:        status,
+		StartTime:     now,
 		WorkDir:       workdir,
 		LogFile:       logFile,
+		// The rival process's own PID until the subprocess starts — keeps the
+		// reaper accurate during a potentially long queue wait (PID 0 would be
+		// treated as dead and the session insta-failed). PIDStart guards the PID
+		// against reuse after this process dies.
+		PID:      os.Getpid(),
+		PIDStart: pidStartNanos(os.Getpid()),
+	}
+	if status == "queued" {
+		s.QueuedAt = &now
 	}
 
 	if err := s.Save(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// MarkRunning transitions a queued session to running. StartTime is reset so
+// Duration measures runtime, not queue wait; QueuedAt preserves the wait.
+func (s *Session) MarkRunning() error {
+	s.Status = "running"
+	s.StartTime = time.Now()
+	s.QueuePosition = 0
+	return s.Save()
+}
+
+// SetQueuePosition updates the displayed queue position. No-op (and no file
+// write / fsnotify event) when unchanged.
+func (s *Session) SetQueuePosition(pos int) error {
+	if s.QueuePosition == pos {
+		return nil
+	}
+	s.QueuePosition = pos
+	return s.Save()
 }
 
 // Save writes the session JSON atomically (tmp file + rename).

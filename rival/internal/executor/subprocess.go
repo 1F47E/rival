@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/1F47E/rival/internal/procinfo"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/rs/zerolog/log"
 )
@@ -94,8 +95,11 @@ func RunSubprocess(ctx context.Context, sess *session.Session, binary string, ar
 		return nil, fmt.Errorf("start %s: %w", binary, err)
 	}
 
-	// Record PID.
+	// Record the child PID + its start time (the latter guards the PID against
+	// reuse: the queue's liveness check holds a slot while a SIGKILL-orphaned
+	// provider child still runs, and must not be fooled by a recycled PID).
 	sess.PID = cmd.Process.Pid
+	sess.PIDStart, _ = procinfo.StartNanos(cmd.Process.Pid)
 	if saveErr := sess.Save(); saveErr != nil {
 		log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session with PID")
 	}

@@ -44,6 +44,9 @@ var (
 	failedStyle = lipgloss.NewStyle().
 			Foreground(colorError)
 
+	queuedStyle = lipgloss.NewStyle().
+			Foreground(colorSecondary) // slate — waiting in line
+
 	// Detail view.
 	labelStyle = lipgloss.NewStyle().
 			Foreground(colorSecondary)
@@ -65,6 +68,8 @@ func statusStyle(status string) lipgloss.Style {
 		return completedStyle
 	case "failed":
 		return failedStyle
+	case "queued":
+		return queuedStyle
 	default:
 		return normalItemStyle
 	}

@@ -34,11 +34,13 @@ var commandMegareviewCmd = &cobra.Command{
 
 func init() {
 	commandMegareviewCmd.Flags().String("workdir", ".", "working directory")
+	commandMegareviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	commandCmd.AddCommand(commandMegareviewCmd)
 }
 
 func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) != 0 {
 		_, _ = fmt.Fprintln(os.Stdout, megareviewUsage)
@@ -85,7 +87,7 @@ func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunMegaReview(ctx, scope, parsed.Effort, workdir, groupID)
+	result, err := review.RunMegaReview(ctx, scope, parsed.Effort, workdir, groupID, noQueue)
 	if err != nil {
 		return err
 	}

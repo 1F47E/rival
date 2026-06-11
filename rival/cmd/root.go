@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/1F47E/rival/internal/queue"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/1F47E/rival/internal/telemetry"
 	"github.com/1F47E/rival/internal/update"
@@ -37,7 +38,9 @@ var rootCmd = &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Sessions first: queue ticket liveness reads session state.
 		session.ReapOrphans()
+		queue.New().ReapDead()
 		update.Check(Version)
 	},
 	Run: func(cmd *cobra.Command, args []string) {

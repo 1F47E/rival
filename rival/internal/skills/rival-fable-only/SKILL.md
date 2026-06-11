@@ -1,15 +1,15 @@
 ---
-name: rival-plan
+name: rival-fable-only
 version: 3.13.0
-description: Review a plan/spec markdown document with Codex via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan.
-argument-hint: "<path-to-plan.md>"
+description: Run claude-fable-5 at max effort through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-fable.
+argument-hint: "[-re level] [review [scope] | prompt]"
 context: fork
 allowed-tools: Bash, Read, KillShell
 ---
 
-# Plan Reviewer (rival binary)
+# Fable Runner (rival binary)
 
-Review a single plan/spec markdown file with OpenAI Codex via the `rival` Go binary. Codex rates the plan 1-10 and returns numbered findings (crit/high/med/low). All work happens in a forked subagent.
+Run the `claude-fable-5` model via the `rival` Go binary (through the Claude Code CLI). Defaults to max reasoning effort. All work happens in a forked subagent.
 
 ## Instructions
 
@@ -20,10 +20,14 @@ Review a single plan/spec markdown file with OpenAI Codex via the `rival` Go bin
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-plan path/to/plan.md` — review a plan/spec doc with codex (rate 1-10, find bugs + gaps)
-> - `/rival-plan` — show this usage info
+> - `/rival-fable 'explain the auth flow'` — run any prompt via claude-fable-5 (max effort)
+> - `/rival-fable -re medium 'find bugs in src/main.go'` — run with a lower reasoning effort
+> - `/rival-fable review` — code review (auto-detects changed files via git)
+> - `/rival-fable review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-fable -re medium review src/api/` — review with medium reasoning
+> - `/rival-fable` — show this usage info
 >
-> Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.
+> **Model:** `claude-fable-5`. **Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` — default maps to max.
 
 ### Execute
 
@@ -35,7 +39,7 @@ so the wait never trips a foreground timeout. Launch with `run_in_background: tr
 DELIM="RIVAL_INPUT_$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n' | head -c 16)"
 RIVAL_OUT="$(mktemp -t rival_out.XXXXXX)"; RIVAL_ERR="$(mktemp -t rival_err.XXXXXX)"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
-cat <<"$DELIM" | rival command plan --workdir "$(pwd)" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+cat <<"$DELIM" | rival command fable --workdir "$(pwd)" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 $ARGUMENTS
 $DELIM
 ```

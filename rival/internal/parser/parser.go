@@ -39,6 +39,12 @@ func ParseAntigravityArgs(raw string) (*ParseResult, error) {
 	return parseArgs(raw)
 }
 
+// ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
+// Identical grammar to claude.
+func ParseFableArgs(raw string) (*ParseResult, error) {
+	return parseArgs(raw)
+}
+
 func parseArgs(raw string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {

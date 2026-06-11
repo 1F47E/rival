@@ -16,35 +16,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const claudeUsage = `Usage:
-  /rival-claude 'explain the auth flow' — run any prompt via claude
-  /rival-claude -re xhigh 'find bugs in src/main.go' — run with xhigh reasoning effort
-  /rival-claude review — ruthless code review of the entire project
-  /rival-claude review src/api/ — review specific scope
-  /rival-claude -re xhigh review src/api/ — review with xhigh reasoning
-  /rival-claude — show this usage info
+const fableUsage = `Usage:
+  /rival-fable 'explain the auth flow' — run any prompt via claude-fable-5 (max effort)
+  /rival-fable -re medium 'find bugs in src/main.go' — run with a lower reasoning effort
+  /rival-fable review — ruthless code review of the entire project
+  /rival-fable review src/api/ — review specific scope
+  /rival-fable -re medium review src/api/ — review with medium reasoning
+  /rival-fable — show this usage info
 
-Reasoning effort (-re): low, medium (default), high, xhigh`
+Model: claude-fable-5. Reasoning effort (-re): low, medium, high, xhigh — default maps to max.`
 
-var commandClaudeCmd = &cobra.Command{
-	Use:   "claude",
-	Short: "Skill-facing claude executor",
-	RunE:  commandClaudeAction,
+var commandFableCmd = &cobra.Command{
+	Use:   "fable",
+	Short: "Skill-facing claude-fable-5 executor",
+	RunE:  commandFableAction,
 }
 
 func init() {
-	commandClaudeCmd.Flags().String("workdir", ".", "working directory")
-	commandClaudeCmd.Flags().Bool("no-queue", false, "bypass the review queue")
-	commandCmd.AddCommand(commandClaudeCmd)
+	commandFableCmd.Flags().String("workdir", ".", "working directory")
+	commandFableCmd.Flags().Bool("no-queue", false, "bypass the review queue")
+	commandCmd.AddCommand(commandFableCmd)
 }
 
-func commandClaudeAction(cmd *cobra.Command, args []string) error {
+func commandFableAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	// If stdin is a terminal, show usage instead of hanging.
 	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-		_, _ = fmt.Fprintln(os.Stdout, claudeUsage)
+		_, _ = fmt.Fprintln(os.Stdout, fableUsage)
 		return nil
 	}
 
@@ -54,14 +54,14 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read stdin: %w", err)
 	}
 
-	parsed, err := parser.ParseClaudeArgs(string(raw))
+	parsed, err := parser.ParseFableArgs(string(raw))
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 
 	if parsed.IsEmpty {
-		_, _ = fmt.Fprintln(os.Stdout, claudeUsage)
+		_, _ = fmt.Fprintln(os.Stdout, fableUsage)
 		return nil
 	}
 
@@ -70,6 +70,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		resolveGitScope(parsed, workdir)
 	}
 
+	// Fable runs through the claude binary (native or docker) and the same auth.
 	if err := executor.ClaudePreflight(); err != nil {
 		return err
 	}
@@ -79,7 +80,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		mode = "review"
 	}
 
-	sess, err := session.NewQueued("claude", mode, config.ClaudeModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	sess, err := session.NewQueued("fable", mode, config.FableModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err == nil {
 		sess.Account = config.ClaudeSubscription()
 	}
@@ -93,7 +94,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting claude (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting fable (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -106,7 +107,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	defer release()
 
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunClaude(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunFable(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
@@ -115,7 +116,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, fmt.Sprintf("claude exited with code %d", result.ExitCode)); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, fmt.Sprintf("fable exited with code %d", result.ExitCode)); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {
@@ -134,7 +135,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("claude exited with code %d", result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("fable exited with code %d", result.ExitCode)}
 	}
 
 	return nil

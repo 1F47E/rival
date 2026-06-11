@@ -3,7 +3,9 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,6 +14,7 @@ const (
 	CodexModel  = "gpt-5.5"
 	GeminiModel = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-8[1m]"
+	FableModel           = "claude-fable-5"
 	AntigravityModel     = "gemini-3.5-flash"
 	ClaudeDockerImage    = "rival-claude"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
@@ -19,8 +22,13 @@ const (
 	DefaultEffort              = "xhigh"
 	DefaultConfidenceThreshold = 6
 	SessionDir                 = ".rival/sessions"
+	QueueDir                   = ".rival/queue"
 	PromptPreviewLen           = 100
 	PromptDetailMaxLines       = 10
+
+	DefaultMaxConcurrent = 1
+	DefaultQueueTimeout  = 30 * time.Minute
+	QueuePollInterval    = 2 * time.Second
 )
 
 var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
@@ -146,6 +154,41 @@ func SessionDirPath() string {
 		return filepath.Join(".", SessionDir)
 	}
 	return filepath.Join(home, SessionDir)
+}
+
+// QueueDirPath returns the absolute path to ~/.rival/queue.
+func QueueDirPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", QueueDir)
+	}
+	return filepath.Join(home, QueueDir)
+}
+
+// MaxConcurrent returns how many reviews may run at once (RIVAL_MAX_CONCURRENT, default 1).
+func MaxConcurrent() int {
+	if v := os.Getenv("RIVAL_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return DefaultMaxConcurrent
+}
+
+// QueueTimeout returns the max time to wait for a queue slot (RIVAL_QUEUE_TIMEOUT, default 30m).
+func QueueTimeout() time.Duration {
+	if v := os.Getenv("RIVAL_QUEUE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return DefaultQueueTimeout
+}
+
+// QueueDisabled reports whether queueing is bypassed via RIVAL_NO_QUEUE.
+func QueueDisabled() bool {
+	v := os.Getenv("RIVAL_NO_QUEUE")
+	return v != "" && v != "0" && !strings.EqualFold(v, "false")
 }
 
 // ClaudeConfig holds claude-specific settings.

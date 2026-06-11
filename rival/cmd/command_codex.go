@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
@@ -32,14 +34,16 @@ var commandCodexCmd = &cobra.Command{
 
 func init() {
 	commandCodexCmd.Flags().String("workdir", ".", "working directory")
+	commandCodexCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	commandCmd.AddCommand(commandCodexCmd)
 }
 
 func commandCodexAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
+	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	// If stdin is a terminal, show usage instead of hanging.
-	if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) != 0 {
+	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
 		_, _ = fmt.Fprintln(os.Stdout, codexUsage)
 		return nil
 	}
@@ -75,21 +79,31 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		mode = "review"
 	}
 
-	sess, err := session.New("codex", mode, config.CodexModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	sess, err := session.NewQueued("codex", mode, config.CodexModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
 	defer func() {
-		if sess.Status == "running" {
+		if sess.Status == "running" || sess.Status == "queued" {
 			_ = sess.Fail(1, "interrupted")
 		}
 	}()
 
 	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting codex (command mode)")
 
+	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, mode, workdir)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunCodex(context.Background(), sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunCodex(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
@@ -112,7 +126,9 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read log file: %w", err)
 	}
-	_, _ = fmt.Fprint(os.Stdout, string(logData))
+	if _, err := os.Stdout.Write(logData); err != nil {
+		return fmt.Errorf("write stdout: %w", err)
+	}
 
 	if result.ExitCode != 0 {
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("codex exited with code %d", result.ExitCode)}

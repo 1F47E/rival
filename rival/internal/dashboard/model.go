@@ -145,11 +145,12 @@ func waitForEvent(events chan SessionEvent) tea.Cmd {
 	}
 }
 
-// hasRunning returns true if any session in the items is still running.
+// hasRunning returns true if any session is running or queued, so the live
+// timer keeps ticking (queued rows show a growing wait time).
 func hasRunning(items []displayItem) bool {
 	for _, item := range items {
 		for _, s := range item.Sessions {
-			if s.Status == "running" {
+			if s.Status == "running" || s.Status == "queued" {
 				return true
 			}
 		}
@@ -228,7 +229,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode == viewDetail && m.selected < len(m.items) {
 				item := m.items[m.selected]
 				for _, s := range item.Sessions {
-					if s.Status != "running" || s.PID <= 0 {
+					// Queued sessions carry the waiting rival process's PID, so
+					// SIGTERM cancels the queue wait (the process's signal handler
+					// removes its ticket and fails the session).
+					if (s.Status != "running" && s.Status != "queued") || s.PID <= 0 {
 						continue
 					}
 					if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
@@ -295,12 +299,14 @@ var bannerWidth = func() int {
 // renderBanner returns the header block: logo left, stats right (if width >= 70).
 func (m Model) renderBanner() string {
 	// Count stats.
-	running, completed, failed := 0, 0, 0
+	running, queued, completed, failed := 0, 0, 0, 0
 	for _, item := range m.allItems {
 		for _, s := range item.Sessions {
 			switch s.Status {
 			case "running":
 				running++
+			case "queued":
+				queued++
 			case "completed":
 				completed++
 			case "failed":
@@ -322,6 +328,9 @@ func (m Model) renderBanner() string {
 	stats.WriteString(labelStyle.Render(Version))
 	stats.WriteString("\n")
 	stats.WriteString(fmt.Sprintf("  %s %d", runningStyle.Render("●"), running))
+	if queued > 0 {
+		stats.WriteString(fmt.Sprintf("  %s %d", queuedStyle.Render("◌"), queued))
+	}
 	stats.WriteString(fmt.Sprintf("  %s %d", completedStyle.Render("●"), completed))
 	stats.WriteString(fmt.Sprintf("  %s %d", failedStyle.Render("●"), failed))
 	stats.WriteString("\n")

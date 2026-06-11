@@ -80,6 +80,9 @@ func TestGroupStatus(t *testing.T) {
 		{"any running wins", []string{"completed", "running", "failed"}, "running"},
 		{"failed over completed", []string{"completed", "failed"}, "failed"},
 		{"single failed", []string{"failed"}, "failed"},
+		{"queued over failed and completed", []string{"completed", "queued", "failed"}, "queued"},
+		{"running over queued", []string{"queued", "running"}, "running"},
+		{"single queued", []string{"queued"}, "queued"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
