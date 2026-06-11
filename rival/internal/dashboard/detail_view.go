@@ -54,10 +54,8 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 	if s.ReviewScope != "" {
 		addField(&meta, "Review", s.ReviewScope, width)
 	}
-	if s.ErrorMsg != "" {
-		addStyledField(&meta, "Error", s.ErrorMsg, failedStyle, width)
-	}
 
+	renderErrorSection(&meta, s, width)
 	renderPromptSection(&meta, s, width, promptExpanded)
 	meta.WriteString("\n")
 
@@ -120,6 +118,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 		addField(&meta, "Review", s.ReviewScope, width)
 	}
 
+	renderErrorSection(&meta, s, width)
 	renderPromptSection(&meta, s, width, promptExpanded)
 	meta.WriteString("\n")
 
@@ -143,8 +142,10 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 		logSections.WriteString("\n")
 
 		if sess.Status == "failed" && sess.ErrorMsg != "" {
-			logSections.WriteString(failedStyle.Render(sess.ErrorMsg))
-			logSections.WriteString("\n")
+			for _, line := range wrapText(sess.ErrorMsg, width) {
+				logSections.WriteString(failedStyle.Render(line))
+				logSections.WriteString("\n")
+			}
 		}
 
 		perLogHeight := remaining/len(item.Sessions) - 2 // title + gap
@@ -169,6 +170,23 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 		result = result[:height]
 	}
 	return strings.Join(result, "\n")
+}
+
+// renderErrorSection renders the full error message wrapped across as many
+// lines as needed, in the failed (red) style. Unlike a single-line field it is
+// never truncated, so long errors like "codex exited with code -1" plus any
+// trailing detail stay fully readable.
+func renderErrorSection(b *strings.Builder, s *session.Session, width int) {
+	if s.ErrorMsg == "" {
+		return
+	}
+	b.WriteString("\n")
+	b.WriteString(titleStyle.Render("Error"))
+	b.WriteString("\n")
+	for _, line := range wrapText(s.ErrorMsg, width) {
+		b.WriteString(failedStyle.Render(line))
+		b.WriteString("\n")
+	}
 }
 
 func renderPromptSection(b *strings.Builder, s *session.Session, width int, promptExpanded bool) {
