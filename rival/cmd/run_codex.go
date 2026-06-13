@@ -92,16 +92,20 @@ func runCodexAction(cmd *cobra.Command, args []string) error {
 	}
 	defer release()
 
-	result, err := executor.RunCodex(ctx, sess, prompt, effort, workdir, os.Stdout)
+	// Bound the run so a hung provider CLI cannot wait forever.
+	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
+	defer cancelRun()
+
+	result, err := executor.RunCodex(runCtx, sess, prompt, effort, workdir, os.Stdout)
 	if err != nil {
-		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
+		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		return err
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, fmt.Sprintf("codex exited with code %d", result.ExitCode)); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("codex exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("codex exited with code %d", result.ExitCode)}

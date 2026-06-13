@@ -220,9 +220,29 @@ rival queue clear --force   # remove ALL tickets (live waiters re-queue at the t
 |-----|---------|--------|
 | `RIVAL_MAX_CONCURRENT` | `1` | How many reviews may run at once |
 | `RIVAL_QUEUE_TIMEOUT` | `30m` | Max wait for a slot before the review fails |
+| `RIVAL_RUN_TIMEOUT` | `30m` | Max run time once a slot is held; kills a hung provider CLI (`0` disables) |
 | `RIVAL_NO_QUEUE` | unset | Set to bypass the queue entirely |
 
 Every command also accepts `--no-queue` to skip the queue for that invocation.
+
+**`--detach`** — `rival command …` re-execs itself into its own process session
+(`setsid`), prints `rival: detached pid=N` to stderr, and the parent exits
+immediately. The launching shell returns at once and the run survives the
+caller's teardown (Claude Code kills a skill's shells with a process-group kill
+when it ends, which used to SIGTERM a running or queued review).
+
+**`rival wait`** — blocks until a run reaches a terminal state. Skills arm it as
+a background watcher; it's also usable from scripts/CI:
+
+```bash
+rival wait --log <stderr-file>   # parse detached pid + session IDs, wait, summarize
+rival wait <session-id>...       # terminal-status-only mode
+# exit: 0 completed · 2 failed · 3 rival crashed · 4 timed out
+```
+
+**Never hangs:** a run is bounded by `RIVAL_RUN_TIMEOUT`; `rival wait` detects a
+crashed rival (process dead, sessions unfinalized) and its own `--timeout`. The
+skills launch detached, watch in the background, and never block your session.
 
 > **NFS note:** the queue relies on `flock`, which is unreliable over NFS-mounted
 > home directories. On such hosts set `RIVAL_NO_QUEUE=1`.
@@ -234,17 +254,22 @@ Claude Code main session
     │
     │ /rival-review
     ▼
-Claude skill (context: fork)
-    │
-    │ stdin heredoc → rival command megareview --workdir $(pwd)
+Claude skill (async — does not block the session)
+    │ 1. prompt tempfile → rival command megareview --detach --workdir $(pwd)
+    │    (parent prints "rival: detached pid=N" and exits in seconds)
+    │ 2. arm background watcher:  rival wait --log <err> --timeout 100m
+    │ 3. hand back to the session and END the turn
     ▼
-rival binary
+rival binary (own process session — survives the skill/fork teardown)
     ├─ parses arguments (-re flag, review/prompt mode)
     ├─ builds review prompt with scope injection
+    ├─ waits for a queue slot, then bounds the run by RIVAL_RUN_TIMEOUT
     ├─ spawns codex/antigravity via subprocess
     ├─ pipes prompt to stdin, tees stdout to log file
-    ├─ writes session JSON + live log to ~/.rival/sessions/
-    └─ returns output to skill → back to Claude Code
+    └─ writes session JSON + live log to ~/.rival/sessions/
+         │
+         ▼  (rival exits → background `rival wait` exits → harness wakes session)
+    Claude reads the output file and presents the review verbatim
 
 Megareview (roles + consilium):
     rival binary
@@ -271,7 +296,7 @@ Second terminal:
 ### Key design decisions
 
 - **Full project access**: reviewers run as AI CLI tools with tool use — they explore your codebase, not just diffs
-- **Isolated execution**: skills use `context: fork` — runs in subagent, zero impact on your Claude context
+- **Async, non-blocking**: skills launch rival detached and watch it in the background — your session is never blocked for the run, and a hung run can never hang the session (`RIVAL_RUN_TIMEOUT` + `rival wait` crash/timeout detection)
 - **Stdin piping**: prompts passed via heredoc, never shell-quoted into argv (prevents injection)
 - **Env filtering**: child processes get a sanitized environment (blocks proxy/preload vars from .env)
 - **Fault tolerant**: megareview continues if one CLI fails, reports the error inline
@@ -283,6 +308,24 @@ Claude auto-detects its execution mode:
 
 - **Native** (default): if `claude` CLI is on PATH, uses it directly. No extra config needed.
 - **Docker**: if `claude` CLI is not available, runs inside a Docker container with a separate Anthropic subscription.
+
+### Auth: subscription by default, API key only if explicit
+
+Native claude/fable runs bill your **claude CLI subscription login** (Pro/Max)
+by default. An `ANTHROPIC_API_KEY` exported in your shell is **stripped from
+the child environment** — without this, the claude CLI silently prefers the env
+key and bills API credits even though you're logged in with a subscription.
+
+| `RIVAL_CLAUDE_AUTH` | Behavior |
+|---------------------|----------|
+| unset / `subscription` / `sub` | Use the CLI's `/login` auth; `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` are stripped from the subprocess env |
+| `api` | Bill the API key; **requires** `ANTHROPIC_API_KEY` to be set, hard error if empty |
+| anything else | Hard error — auth is never guessed |
+
+The active mode is logged per run (`auth=subscription`) and shown in the TUI
+detail view (Account field). If a run fails on auth/billing, rival appends an
+actionable hint: not logged in → run `claude` and `/login`; api mode → check
+the key and its credit balance.
 
 ### Docker Setup
 

@@ -61,9 +61,29 @@ func (sw *syncWriter) Write(p []byte) (int, error) {
 }
 
 // RunSubprocess executes a command, pipes prompt to stdin, tees stdout to log + optional mirror.
-func RunSubprocess(ctx context.Context, sess *session.Session, binary string, args []string, env []string, prompt string, mirror io.Writer) (*Result, error) {
+// dropEnv names vars to remove from the inherited environment before `env` is
+// appended — used e.g. to keep ANTHROPIC_API_KEY away from a subscription-authed
+// claude CLI, which would silently prefer the key.
+func RunSubprocess(ctx context.Context, sess *session.Session, binary string, args []string, env []string, prompt string, mirror io.Writer, dropEnv ...string) (*Result, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = append(safeEnv(), env...)
+	base := safeEnv()
+	if len(dropEnv) > 0 {
+		kept := base[:0]
+		for _, kv := range base {
+			dropped := false
+			for _, name := range dropEnv {
+				if strings.HasPrefix(kv, name+"=") {
+					dropped = true
+					break
+				}
+			}
+			if !dropped {
+				kept = append(kept, kv)
+			}
+		}
+		base = kept
+	}
+	cmd.Env = append(base, env...)
 	cmd.Dir = sess.WorkDir
 
 	stdin, err := cmd.StdinPipe()

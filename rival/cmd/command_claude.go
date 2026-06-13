@@ -105,17 +105,22 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 	defer release()
 
+	// Bound the run itself: a hung provider CLI must not keep the slot (and the
+	// detached rival) alive forever. Clock starts now, after slot promotion.
+	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
+	defer cancelRun()
+
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunClaude(ctx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunClaude(runCtx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
 	if err != nil {
-		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
+		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		return err
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, fmt.Sprintf("claude exited with code %d", result.ExitCode)); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("claude exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {
@@ -134,6 +139,9 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
+		if hint := executor.ClaudeAuthHint(sess.LogFile); hint != "" {
+			_, _ = fmt.Fprintln(os.Stdout, "\n"+hint)
+		}
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("claude exited with code %d", result.ExitCode)}
 	}
 

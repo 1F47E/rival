@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,6 +30,7 @@ const (
 
 	DefaultMaxConcurrent = 1
 	DefaultQueueTimeout  = 30 * time.Minute
+	DefaultRunTimeout    = 30 * time.Minute
 	QueuePollInterval    = 2 * time.Second
 )
 
@@ -165,6 +168,32 @@ func QueueDirPath() string {
 	return filepath.Join(home, QueueDir)
 }
 
+// Claude auth modes for native runs (RIVAL_CLAUDE_AUTH).
+const (
+	ClaudeAuthSubscription = "subscription" // CLI's own /login (Pro/Max) — the default
+	ClaudeAuthAPI          = "api"          // explicit ANTHROPIC_API_KEY billing
+)
+
+// ClaudeAuth returns the auth mode for native claude/fable runs.
+// Default is subscription: the claude CLI is already authed via /login, and an
+// inherited ANTHROPIC_API_KEY must never silently switch billing to API
+// credits. API billing is opt-in via RIVAL_CLAUDE_AUTH=api and then requires
+// ANTHROPIC_API_KEY to be set. Any other value is a hard error — auth must be
+// explicit, never guessed.
+func ClaudeAuth() (string, error) {
+	switch v := os.Getenv("RIVAL_CLAUDE_AUTH"); v {
+	case "", ClaudeAuthSubscription, "sub":
+		return ClaudeAuthSubscription, nil
+	case ClaudeAuthAPI:
+		if os.Getenv("ANTHROPIC_API_KEY") == "" {
+			return "", fmt.Errorf("RIVAL_CLAUDE_AUTH=api but ANTHROPIC_API_KEY is empty — set the key or unset RIVAL_CLAUDE_AUTH to use the claude CLI subscription login")
+		}
+		return ClaudeAuthAPI, nil
+	default:
+		return "", fmt.Errorf("invalid RIVAL_CLAUDE_AUTH=%q — use %q (default) or %q", v, ClaudeAuthSubscription, ClaudeAuthAPI)
+	}
+}
+
 // MaxConcurrent returns how many reviews may run at once (RIVAL_MAX_CONCURRENT, default 1).
 func MaxConcurrent() int {
 	if v := os.Getenv("RIVAL_MAX_CONCURRENT"); v != "" {
@@ -183,6 +212,38 @@ func QueueTimeout() time.Duration {
 		}
 	}
 	return DefaultQueueTimeout
+}
+
+// RunTimeout returns the max wall-clock a single provider run may take once it
+// holds a queue slot (RIVAL_RUN_TIMEOUT, default 30m). This is the hard
+// guarantee that a detached rival always terminates even if the provider CLI
+// hangs. The clock starts after slot promotion, so queue wait does not eat it.
+// Set RIVAL_RUN_TIMEOUT=0 to disable (no timeout — returns 0); an unset or
+// unparseable value falls back to the default.
+func RunTimeout() time.Duration {
+	v := os.Getenv("RIVAL_RUN_TIMEOUT")
+	if v == "" {
+		return DefaultRunTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return DefaultRunTimeout
+	}
+	if d < 0 {
+		return DefaultRunTimeout
+	}
+	return d // d == 0 → caller treats as "no timeout"
+}
+
+// WithRunTimeout derives a context bounded by mult×RunTimeout(). mult scales the
+// budget for multi-phase pipelines (e.g. megareview = 2: reviewers + judge).
+// When RunTimeout() is 0 (disabled) it returns ctx with a no-op cancel.
+func WithRunTimeout(ctx context.Context, mult int) (context.Context, context.CancelFunc) {
+	d := RunTimeout()
+	if d <= 0 || mult <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, time.Duration(mult)*d)
 }
 
 // QueueDisabled reports whether queueing is bypassed via RIVAL_NO_QUEUE.

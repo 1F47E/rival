@@ -93,17 +93,24 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 	defer release()
 
-	result, err := executor.RunClaude(ctx, sess, prompt, effort, workdir, os.Stdout)
+	// Bound the run so a hung provider CLI cannot wait forever.
+	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
+	defer cancelRun()
+
+	result, err := executor.RunClaude(runCtx, sess, prompt, effort, workdir, os.Stdout)
 	if err != nil {
-		if saveErr := sess.Fail(1, err.Error()); saveErr != nil {
+		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		return err
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, fmt.Sprintf("claude exited with code %d", result.ExitCode)); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("claude exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
+		}
+		if hint := executor.ClaudeAuthHint(sess.LogFile); hint != "" {
+			_, _ = fmt.Fprintln(os.Stderr, hint)
 		}
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("claude exited with code %d", result.ExitCode)}
 	}

@@ -2,6 +2,82 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.14.0] — 2026-06-13
+
+### Fixed — reviews no longer die when the launching context ends
+The v3.13.0 background-shell skill pattern had a fatal flaw: when a Claude Code
+skill's forked context completed, Claude Code tore down the fork's background
+shells with a **process-group kill**, SIGTERM-ing the rival process underneath —
+mid-review or while waiting in the queue (`cancelled while queued`). The review
+died even though the queue itself behaved correctly.
+
+### Added — `rival command … --detach`
+- New `--detach` flag on all `rival command` subcommands: rival **re-execs
+  itself into its own process session** (`setsid`), prints
+  `rival: detached pid=N` to stderr, and the parent exits immediately. The
+  launching shell returns at once; no process-group kill can reach the review.
+- Stdin/stdout/stderr redirections are inherited by the detached child, so the
+  `< prompt > out 2> err` contract is unchanged.
+- `RIVAL_DETACHED=1` guards against re-exec loops.
+
+### Added — `RIVAL_RUN_TIMEOUT` (no run can hang forever)
+Previously nothing bounded the provider run itself: a hung CLI (network stall,
+deadlock) meant the detached rival never exited and any waiter blocked forever.
+Now every run is bounded by `RIVAL_RUN_TIMEOUT` (default **30m**), and the clock
+starts **after** the queue slot is acquired so queue wait never eats the budget.
+On deadline the provider child is killed, the session fails with
+`run timeout after <d> (RIVAL_RUN_TIMEOUT) — provider CLI did not finish`, and
+the queue slot is freed. `RIVAL_RUN_TIMEOUT=0` disables it. The megareview
+pipeline gets 2× the budget (reviewers phase + judge phase).
+
+### Added — `rival wait` subcommand
+One clean primitive that blocks until a run reaches a terminal state, used by
+the skills' background watcher and available to any script/CI:
+
+- `rival wait --log <stderr-file>` — parse the detached rival PID + session IDs
+  from a run's stderr, poll the **rival process** for liveness (PID-reuse-proof
+  via `procinfo` start-time pinning), then summarize the sessions when it exits.
+  Detects a crashed rival (process dead, sessions not finalized).
+- `rival wait <session-id>...` — terminal-status-only mode.
+- Exit codes: `0` all completed · `2` some failed · `3` rival crashed · `4`
+  timed out. Default `--timeout` 75m.
+
+### Changed — skills are now async (launch + background watch, never block)
+All active skills (`rival-review`, `rival-codex-only`, `rival-antigravity-only`,
+`rival-fable-only`, `rival-plan`) rewritten to **not block the session**. They
+drop `context: fork`, launch rival `--detach` (foreground, returns in seconds),
+arm a **background `rival wait --log …` watcher** (`run_in_background: true`),
+then hand control back immediately and end the turn. When the watcher exits, the
+harness wakes the session and the skill presents the output verbatim — possibly
+several turns later. This removes the previous design's two hang paths (no
+provider-run timeout, bare-PID polling with "never stop polling") and frees the
+session for the whole review. Cancel = `kill <pid>`; status on demand =
+`tail <err>`. The detached run + result files survive the context ending, so a
+lost watcher can be resumed with `rival wait --log <err>`.
+
+### Fixed — claude/fable bills the subscription, not API credits
+The claude CLI silently prefers an inherited `ANTHROPIC_API_KEY` over its own
+`/login` (Pro/Max) auth, so rival runs were billed to API credits whenever the
+shell exported the key. Auth is now **explicit**:
+
+- Default (`RIVAL_CLAUDE_AUTH` unset / `subscription`): `ANTHROPIC_API_KEY` and
+  `ANTHROPIC_AUTH_TOKEN` are stripped from the subprocess env — the CLI uses
+  its subscription login.
+- `RIVAL_CLAUDE_AUTH=api`: opt-in API billing; requires `ANTHROPIC_API_KEY`,
+  hard error when empty. Any other value is a hard error.
+- Auth mode is logged per run and shown in the TUI detail view (Account field).
+- Auth/billing failures (`Credit balance is too low`, `Please run /login`,
+  invalid key, expired OAuth) now append an actionable, mode-specific hint to
+  the output instead of a bare CLI error.
+
+### TUI
+- Detail view shows the full error message word-wrapped (was a single truncated
+  line); applied to single and group views.
+- Fable sessions store `cli: "claude"` (fable is a model inside the Claude Code
+  CLI, not a CLI) — TUI/web/`rival sessions` show `⬡ claude` + model
+  `claude-fable-5`. Old sessions with `cli: "fable"` still render as claude via
+  a read-compat fallback.
+
 ## [v3.13.0] — 2026-06-11
 
 ### Added — cross-process review queue

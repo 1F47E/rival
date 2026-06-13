@@ -134,6 +134,12 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	}
 	defer release()
 
+	// Bound the whole pipeline once a slot is held: a hung reviewer or judge must
+	// not keep the slot (and the detached rival) alive forever. 2× the per-run
+	// budget covers the two sequential phases (concurrent reviewers, then judge).
+	ctx, cancelRun := config.WithRunTimeout(ctx, 2)
+	defer cancelRun()
+
 	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
 	var wg sync.WaitGroup
 	results := make(chan cliResult, len(plans))

@@ -75,7 +75,7 @@
 </div>
 
 <script>
-const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '✺', antigravity: '△' };
+const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '⬡', antigravity: '△' };
 const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
@@ -134,7 +134,9 @@ function buildRow(g) {
   } else {
     let icon = CLI_ICONS[primary.cli] || '';
     let label = primary.cli;
-    if (primary.cli === 'claude' && primary.mode === 'docker') label = 'claude/dk';
+    // Legacy read-compat: sessions written before v3.14.0 stored the fable model as the CLI.
+    if (primary.cli === 'fable') label = 'claude';
+    if ((primary.cli === 'claude' || primary.cli === 'fable') && primary.mode === 'docker') label = 'claude/dk';
     if (primary.cli === 'codex' && primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
     cliText = icon + ' ' + label;
   }
