@@ -2,6 +2,16 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.14.1] — 2026-06-13
+
+### Changed — `/rival-fable` skill disabled
+The `rival-fable-only` skill is removed on install (added to `Deprecated`, no
+longer embedded) — Claude Fable 5 is currently unavailable upstream. The
+`rival command fable` executor and `FableModel` stay in the binary, so the skill
+can be re-enabled later by re-adding it to `Names` + the embed list. The default
+Claude model is unchanged: `claude-opus-4-8[1m]` (`ClaudeModel`); nothing
+defaulted to fable.
+
 ## [v3.14.0] — 2026-06-13
 
 ### Fixed — reviews no longer die when the launching context ends
