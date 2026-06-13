@@ -1,6 +1,6 @@
 ---
 name: rival-plan
-version: 3.14.1
+version: 3.14.2
 description: Review a plan/spec markdown document with Codex via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
@@ -53,7 +53,7 @@ RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | hea
 **Step 2 — arm the background watcher (`run_in_background: true`):**
 
 ```bash
-rival wait --log <rival_err> --timeout 75m
+rival wait --log <rival_err>
 echo "RIVAL_DONE rc=$? out=<rival_out> err=<rival_err>"
 ```
 

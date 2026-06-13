@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
 )
 
 // detachedEnv marks the re-exec'd child so it doesn't detach again.
@@ -41,7 +40,9 @@ func detachIfRequested(detach bool) {
 	child.Stdout = os.Stdout
 	child.Stderr = os.Stderr
 	child.Env = append(os.Environ(), detachedEnv+"=1")
-	child.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// Setsid (own session/process group) is Unix-only; setDetachAttr is a
+	// build-tagged no-op on platforms without it.
+	setDetachAttr(child)
 	if err := child.Start(); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "rival: detach failed: %v\n", err)
 		os.Exit(1)
