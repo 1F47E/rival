@@ -1,6 +1,6 @@
 ---
 name: rival-plan
-version: 3.14.0
+version: 3.14.1
 description: Review a plan/spec markdown document with Codex via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
