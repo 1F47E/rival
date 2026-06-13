@@ -79,7 +79,6 @@ const (
 	iconCodex        = "◈" // OpenAI / Codex
 	iconGemini       = "✦" // Google / Gemini
 	iconClaude       = "⬡" // Anthropic / Claude
-	iconFable        = "✺" // Anthropic / Claude Fable
 	iconAntigravity  = "△" // Google / Antigravity
 	iconMega         = "◈△" // Codex + Antigravity
 	iconPlan         = "▤" // Plan/spec review (codex under the hood)
@@ -95,13 +94,13 @@ func cliLabel(cli, mode string) string {
 		return iconCodex + " codex"
 	case "gemini":
 		return iconGemini + " gemini"
-	case "claude":
+	case "claude", "fable":
+		// "fable" is legacy read-compat only: sessions written before v3.14.0
+		// stored the fable model as the CLI. New sessions always say "claude".
 		if mode == "docker" {
 			return iconClaude + " claude/dk"
 		}
 		return iconClaude + " claude"
-	case "fable":
-		return iconFable + " fable"
 	case "antigravity":
 		return iconAntigravity + " antigravity"
 	default:

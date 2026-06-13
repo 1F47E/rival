@@ -38,6 +38,11 @@ var rootCmd = &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Detach before any side effects: the re-exec'd child redoes this hook.
+		// GetBool errors (flag absent on non-command subcommands) → false.
+		if detach, _ := cmd.Flags().GetBool("detach"); detach {
+			detachIfRequested(true)
+		}
 		// Sessions first: queue ticket liveness reads session state.
 		session.ReapOrphans()
 		queue.New().ReapDead()
