@@ -23,27 +23,38 @@ func TestParseLogFile(t *testing.T) {
 	}{
 		{
 			name:    "single CLI",
-			content: "rival: detached pid=4242\n" + `{"level":"info","session":"` + id1 + `","msg":"starting codex"}` + "\n",
+			content: "rival: detached pid=4242\n" + `{"level":"info","session":"` + id1 + `","effort":"low","mode":"review","message":"starting codex (command mode)"}` + "\n",
 			wantPID: 4242,
 			wantIDs: []string{id1},
 		},
 		{
 			name: "megareview multi-id deduped",
 			content: "rival: detached pid=99\n" +
-				`{"session":"` + id1 + `"}` + "\n" +
-				`{"session":"` + id2 + `"}` + "\n" +
-				`{"session":"` + id1 + `"}` + "\n", // dup reviewer line
+				`{"session":"` + id1 + `","cli":"codex","role":"bug_hunter","message":"starting reviewer"}` + "\n" +
+				`{"session":"` + id2 + `","cli":"antigravity","role":"bug_hunter","message":"starting reviewer"}` + "\n" +
+				`{"session":"` + id1 + `","cli":"codex","message":"starting reviewer"}` + "\n", // dup
 			wantPID: 99,
 			wantIDs: []string{id1, id2},
 		},
 		{
-			name:    "no pid no id is error",
-			content: "some unrelated output\n",
-			wantErr: true,
+			// THE regression: a ReapOrphans line carries an old session ID but
+			// message:"reaping …" — it must be ignored, only the run's
+			// "starting" session counted.
+			name: "ignores reaper session IDs",
+			content: "rival: detached pid=7\n" +
+				`{"session":"` + id2 + `","pid":111,"status":"running","message":"reaping orphaned session"}` + "\n" +
+				`{"session":"` + id1 + `","effort":"low","message":"starting codex (command mode)"}` + "\n",
+			wantPID: 7,
+			wantIDs: []string{id1}, // NOT id2
+		},
+		{
+			name:    "no pid no run session is error",
+			content: "some unrelated output\n" + `{"session":"` + id2 + `","message":"reaping orphaned session"}` + "\n",
+			wantErr: true, // only a reaper line → no current-run session, no pid
 		},
 		{
 			name:    "ids without pid (non-detached) still parse",
-			content: `{"session":"` + id1 + `"}` + "\n",
+			content: `{"session":"` + id1 + `","message":"starting codex (command mode)"}` + "\n",
 			wantPID: 0,
 			wantIDs: []string{id1},
 		},
@@ -186,7 +197,7 @@ func TestWaiterRun_SessionIDModeMissingFailsFast(t *testing.T) {
 		pid:         0,
 		ids:         []string{"11111111-1111-1111-1111-111111111111"},
 		poll:        time.Millisecond,
-		timeout:     time.Hour, // would hang for an hour without the fast-fail
+		timeout:     time.Hour,                                             // would hang for an hour without the fast-fail
 		loadSession: func(string) sessionStatus { return sessionStatus{} }, // found=false
 		ralive:      func(int, int64) bool { return false },
 		now:         time.Now,
@@ -194,6 +205,33 @@ func TestWaiterRun_SessionIDModeMissingFailsFast(t *testing.T) {
 	}
 	if code := w.run(context.Background()); code != waitExitUsage {
 		t.Errorf("exit=%d, want %d (out: %q)", code, waitExitUsage, buf.String())
+	}
+}
+
+func TestWaiterRun_NoFalseCrashOnFinalizeRace(t *testing.T) {
+	// rival is dead, and the session is non-terminal on the first read but
+	// terminal on the re-read (it finalized + exited between our reads). The
+	// re-read must turn this into a clean summary, NOT a false crash.
+	var buf bytes.Buffer
+	reads := 0
+	w := &waiter{
+		pid:     7,
+		ids:     []string{"a"},
+		poll:    time.Millisecond,
+		timeout: 2 * time.Second,
+		loadSession: func(string) sessionStatus {
+			reads++
+			if reads == 1 {
+				return sessionStatus{Status: "running", found: true} // stale
+			}
+			return sessionStatus{Status: "completed", ExitCode: ptr(0), Duration: "5s", found: true}
+		},
+		ralive: func(int, int64) bool { return false }, // process already gone
+		now:    time.Now,
+		out:    &buf,
+	}
+	if code := w.run(context.Background()); code != waitExitCompleted {
+		t.Errorf("exit=%d, want %d (false crash not avoided) — out: %q", code, waitExitCompleted, buf.String())
 	}
 }
 

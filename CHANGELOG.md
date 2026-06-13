@@ -2,6 +2,28 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.14.2] — 2026-06-13
+
+### Fixed — `rival wait` / `detach` review findings
+A megareview of the v3.14.0 wait/detach code surfaced four real issues, all fixed:
+
+- **`rival wait --log` no longer tracks stale sessions.** `parseLogFile` matched
+  every `"session"` field in the stderr, including ones that startup maintenance
+  (`ReapOrphans`, queue reaper) logs there — so wait could watch old sessions and
+  mis-report a healthy run as failed/crashed. It now only collects IDs from this
+  run's `"message":"starting …"` lines.
+- **No false "crashed" on a finalize race.** When the rival process is detected
+  dead, wait now re-reads the session JSON once before declaring a crash — the
+  process can finalize the session and exit between the status read and the
+  liveness check.
+- **`rival wait` default timeout derived from config.** Was a fixed 75m, below a
+  legitimate worst-case megareview (queue wait + 2× run). New `config.MaxRunWait()`
+  = `RIVAL_QUEUE_TIMEOUT + 2×RIVAL_RUN_TIMEOUT + 5m` (95m by default), used as the
+  default and inherited by the skills (they no longer hardcode `--timeout`).
+- **Windows build fixed.** `detach.go`'s `syscall.SysProcAttr{Setsid}` is Unix-only;
+  split into build-tagged `detach_unix.go` / `detach_other.go` so the package
+  compiles for `GOOS=windows`. (Releases remain darwin+linux.)
+
 ## [v3.14.1] — 2026-06-13
 
 ### Changed — `/rival-fable` skill disabled

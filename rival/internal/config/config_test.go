@@ -30,6 +30,32 @@ func TestRunTimeout(t *testing.T) {
 	}
 }
 
+func TestMaxRunWait(t *testing.T) {
+	// queue 30m + 2*run 30m + 5m margin = 95m by default.
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("RIVAL_QUEUE_TIMEOUT", "")
+		t.Setenv("RIVAL_RUN_TIMEOUT", "")
+		if got, want := MaxRunWait(), 95*time.Minute; got != want {
+			t.Errorf("MaxRunWait()=%v, want %v", got, want)
+		}
+	})
+	t.Run("scales with configured timeouts", func(t *testing.T) {
+		t.Setenv("RIVAL_QUEUE_TIMEOUT", "10m")
+		t.Setenv("RIVAL_RUN_TIMEOUT", "20m")
+		// 10 + 2*20 + 5 = 55m
+		if got, want := MaxRunWait(), 55*time.Minute; got != want {
+			t.Errorf("MaxRunWait()=%v, want %v", got, want)
+		}
+	})
+	t.Run("run timeout disabled → queue + margin only", func(t *testing.T) {
+		t.Setenv("RIVAL_QUEUE_TIMEOUT", "30m")
+		t.Setenv("RIVAL_RUN_TIMEOUT", "0")
+		if got, want := MaxRunWait(), 35*time.Minute; got != want {
+			t.Errorf("MaxRunWait()=%v, want %v", got, want)
+		}
+	})
+}
+
 func TestWithRunTimeout(t *testing.T) {
 	t.Run("disabled returns no deadline", func(t *testing.T) {
 		t.Setenv("RIVAL_RUN_TIMEOUT", "0")

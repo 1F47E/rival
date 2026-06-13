@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	CodexModel  = "gpt-5.5"
-	GeminiModel = "gemini-3.1-pro-preview"
+	CodexModel           = "gpt-5.5"
+	GeminiModel          = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	AntigravityModel     = "gemini-3.5-flash"
@@ -212,6 +212,17 @@ func QueueTimeout() time.Duration {
 		}
 	}
 	return DefaultQueueTimeout
+}
+
+// MaxRunWait returns a safe upper bound on how long a detached run can legitimately
+// take end-to-end: the full queue wait plus the worst-case run budget (megareview
+// runs two phases, so 2× RunTimeout), plus a small margin for process startup,
+// stdout flush, and reaper cycles. `rival wait` uses this as its default timeout
+// so it never gives up on a run that is still within its configured limits.
+// When RunTimeout is disabled (0), only the queue wait + margin is bounded.
+func MaxRunWait() time.Duration {
+	margin := 5 * time.Minute
+	return QueueTimeout() + 2*RunTimeout() + margin
 }
 
 // RunTimeout returns the max wall-clock a single provider run may take once it

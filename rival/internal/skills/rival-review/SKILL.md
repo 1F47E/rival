@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.14.1
+version: 3.14.2
 description: Run Codex + Antigravity code reviews with consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-re level] [scope]"
 allowed-tools: Bash, Read
@@ -55,7 +55,7 @@ RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | hea
 **Step 2 — arm the background watcher (`run_in_background: true`):**
 
 ```bash
-rival wait --log <rival_err> --timeout 100m
+rival wait --log <rival_err>
 echo "RIVAL_DONE rc=$? out=<rival_out> err=<rival_err>"
 ```
 

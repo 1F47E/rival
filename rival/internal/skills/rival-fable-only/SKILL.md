@@ -1,6 +1,6 @@
 ---
 name: rival-fable-only
-version: 3.14.1
+version: 3.14.2
 description: Run claude-fable-5 at max effort through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-fable.
 argument-hint: "[-re level] [review [scope] | prompt]"
 allowed-tools: Bash, Read
@@ -57,7 +57,7 @@ RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | hea
 **Step 2 — arm the background watcher (`run_in_background: true`):**
 
 ```bash
-rival wait --log <rival_err> --timeout 75m
+rival wait --log <rival_err>
 echo "RIVAL_DONE rc=$? out=<rival_out> err=<rival_err>"
 ```
 

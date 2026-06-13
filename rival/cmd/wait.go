@@ -30,6 +30,9 @@ var (
 	detachedPIDRe = regexp.MustCompile(`rival: detached pid=(\d+)`)
 	// zerolog: ..."session":"<uuid>"...
 	sessionIDRe = regexp.MustCompile(`"session":"([0-9a-fA-F-]{36})"`)
+	// Only THIS run's start lines (message:"starting codex|reviewer|consilium
+	// judge|…"); excludes reaper/maintenance lines that carry old session IDs.
+	startingMarkerRe = regexp.MustCompile(`"message":"starting `)
 	// A bare UUID — used to validate user-supplied positional IDs so they can
 	// never escape the session dir via path separators (`rival wait ../x`).
 	sessionIDOnlyRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -60,7 +63,9 @@ Exit codes: 0 all completed · 2 some failed · 3 rival crashed · 4 timed out.`
 
 func init() {
 	waitCmd.Flags().String("log", "", "stderr file of a detached run to parse pid + session IDs from")
-	waitCmd.Flags().Duration("timeout", 75*time.Minute, "give up waiting after this long")
+	// Default derived from the queue + run timeouts so it can't expire while a
+	// run is still within its configured budget (megareview = queue wait + 2× run).
+	waitCmd.Flags().Duration("timeout", config.MaxRunWait(), "give up waiting after this long")
 	waitCmd.Flags().Duration("poll", config.QueuePollInterval, "poll interval")
 	rootCmd.AddCommand(waitCmd)
 }
@@ -161,20 +166,7 @@ func (w *waiter) run(ctx context.Context) int {
 			}
 		}
 
-		statuses := make([]sessionStatus, len(w.ids))
-		allTerminal := true
-		anyMissing := false
-		for i, id := range w.ids {
-			st := w.loadSession(id)
-			st.ID = id
-			statuses[i] = st
-			if !st.found {
-				anyMissing = true
-			}
-			if !st.terminal() {
-				allTerminal = false
-			}
-		}
+		statuses, allTerminal, anyMissing := w.loadStatuses()
 
 		// session-ID mode has no rival PID to watch, so a never-appearing file
 		// would otherwise hang until --timeout. A session JSON is created before
@@ -193,7 +185,10 @@ func (w *waiter) run(ctx context.Context) int {
 
 		switch {
 		case havePID && !ralive:
-			// rival is gone. If sessions are finalized → report; otherwise crash.
+			// rival is gone. Re-read once before deciding: the process can
+			// finalize the session JSON and then exit between our status read
+			// and this liveness check, which would otherwise look like a crash.
+			statuses, allTerminal, _ = w.loadStatuses()
 			if allTerminal && len(w.ids) > 0 {
 				return w.summarize(statuses)
 			}
@@ -216,6 +211,25 @@ func (w *waiter) run(ctx context.Context) int {
 		case <-time.After(w.poll):
 		}
 	}
+}
+
+// loadStatuses reads the current status of every watched session. Returns the
+// statuses, whether all are terminal, and whether any session file is missing.
+func (w *waiter) loadStatuses() (statuses []sessionStatus, allTerminal, anyMissing bool) {
+	statuses = make([]sessionStatus, len(w.ids))
+	allTerminal = true
+	for i, id := range w.ids {
+		st := w.loadSession(id)
+		st.ID = id
+		statuses[i] = st
+		if !st.found {
+			anyMissing = true
+		}
+		if !st.terminal() {
+			allTerminal = false
+		}
+	}
+	return statuses, allTerminal, anyMissing
 }
 
 // summarize prints one line per session and returns 0 if all completed, else 2.
@@ -285,16 +299,27 @@ func parseLogFile(path string) (pid int, pidStart int64, ids []string, err error
 		pidStart, _ = procinfo.StartNanos(pid)
 	}
 
+	// Only collect session IDs from THIS run's "starting …" markers. Startup
+	// maintenance (ReapOrphans, queue ReapDead) logs old session IDs into the
+	// same detached stderr; matching every "session" field would make wait
+	// track stale sessions and mis-report a healthy run as failed/crashed.
+	// The run's own start lines carry message:"starting …"; reaper lines carry
+	// message:"reaping …". Require both fields on the same line.
 	seen := map[string]bool{}
-	for _, m := range sessionIDRe.FindAllStringSubmatch(text, -1) {
-		if !seen[m[1]] {
-			seen[m[1]] = true
-			ids = append(ids, m[1])
+	for _, line := range splitLines(text) {
+		if !startingMarkerRe.MatchString(line) {
+			continue
 		}
+		m := sessionIDRe.FindStringSubmatch(line)
+		if m == nil || seen[m[1]] {
+			continue
+		}
+		seen[m[1]] = true
+		ids = append(ids, m[1])
 	}
 
 	if pid == 0 && len(ids) == 0 {
-		return 0, 0, nil, fmt.Errorf("no detached pid or session id found in %q (run may have failed before launch)", path)
+		return 0, 0, nil, fmt.Errorf("no detached pid or run session found in %q (run may have failed before launch)", path)
 	}
 	return pid, pidStart, ids, nil
 }

@@ -1,6 +1,6 @@
 ---
 name: rival-gemini-only
-version: 3.14.1
+version: 3.14.2
 description: Run Gemini through the rival binary in an isolated subagent. Use only when the user explicitly invokes /rival-gemini.
 argument-hint: "[-re level] [review [scope] | prompt]"
 context: fork
