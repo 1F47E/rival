@@ -6,10 +6,12 @@ import "embed"
 //go:embed all:rival-antigravity-only
 //go:embed all:rival-review
 //go:embed all:rival-plan
+//go:embed all:rival-plan-codex
+//go:embed all:rival-plan-fable
 var Files embed.FS
 
 // Names lists all embedded skill directory names.
-var Names = []string{"rival-codex-only", "rival-antigravity-only", "rival-review", "rival-plan"}
+var Names = []string{"rival-codex-only", "rival-antigravity-only", "rival-review", "rival-plan", "rival-plan-codex", "rival-plan-fable"}
 
 // Deprecated lists skills that should be removed on install (superseded or
 // disabled). rival-fable-only is disabled temporarily — the `rival command

@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 )
 
@@ -13,6 +14,7 @@ func TestGroupSessions(t *testing.T) {
 		wantGroups  int
 		wantIsGroup []bool // per resulting group, in order
 		wantCLI     []string
+		wantKind    []string // "" for solo groups
 	}{
 		{
 			name:     "empty",
@@ -28,27 +30,41 @@ func TestGroupSessions(t *testing.T) {
 			wantGroups:  2,
 			wantIsGroup: []bool{false, false},
 			wantCLI:     []string{"codex", "gemini"},
+			wantKind:    []string{"", ""},
 		},
 		{
 			name: "shared GroupID collapses into one mega row",
 			sessions: []*session.Session{
-				{ID: "a", GroupID: "g1", CLI: "codex", Model: "gpt-5.5", Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "antigravity", Model: "gemini-3.1", Status: "completed"},
+				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: "gpt-5.5", Status: "completed"},
+				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{"mega"},
+			wantCLI:     []string{"codex+antigravity"},
+			wantKind:    []string{"megareview"},
+		},
+		{
+			name: "plan group is labelled plan with codex+claude-fable",
+			sessions: []*session.Session{
+				{ID: "a", GroupID: "gp", CLI: "codex", Mode: "plan", Model: config.CodexModel, Status: "completed"},
+				{ID: "b", GroupID: "gp", CLI: "fable", Mode: "plan", Model: config.FableModel, Status: "completed"},
+			},
+			wantGroups:  1,
+			wantIsGroup: []bool{true},
+			wantCLI:     []string{"codex+claude-fable"},
+			wantKind:    []string{"plan"},
 		},
 		{
 			name: "mixed: one mega group + one solo",
 			sessions: []*session.Session{
-				{ID: "a", GroupID: "g1", CLI: "codex", Model: "gpt-5.5", Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "antigravity", Model: "gemini-3.1", Status: "completed"},
+				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: "gpt-5.5", Status: "completed"},
+				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
 				{ID: "c", CLI: "claude", Model: "opus", Status: "running"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{true, false},
-			wantCLI:     []string{"mega", "claude"},
+			wantCLI:     []string{"codex+antigravity", "claude"},
+			wantKind:    []string{"megareview", ""},
 		},
 	}
 
@@ -64,6 +80,9 @@ func TestGroupSessions(t *testing.T) {
 				}
 				if got[i].CLI != tt.wantCLI[i] {
 					t.Errorf("group %d CLI = %q, want %q", i, got[i].CLI, tt.wantCLI[i])
+				}
+				if tt.wantKind != nil && got[i].Kind != tt.wantKind[i] {
+					t.Errorf("group %d Kind = %q, want %q", i, got[i].Kind, tt.wantKind[i])
 				}
 			}
 		})

@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.14.2
+version: 3.14.3
 description: Run Codex + Antigravity code reviews with consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-re level] [scope]"
 allowed-tools: Bash, Read

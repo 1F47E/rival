@@ -95,3 +95,38 @@ func TestResolvePlanPath_NonMdAllowed(t *testing.T) {
 		t.Fatalf("non-.md file should be allowed, got error: %v", err)
 	}
 }
+
+func TestParsePlanCLIs(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      []string
+		want    []string
+		wantErr bool
+	}{
+		{"default both", []string{"codex", "fable"}, []string{"codex", "fable"}, false},
+		{"codex only", []string{"codex"}, []string{"codex"}, false},
+		{"fable only", []string{"fable"}, []string{"fable"}, false},
+		{"dedup + order", []string{"fable", "codex", "fable"}, []string{"fable", "codex"}, false},
+		{"trims + lowercases", []string{" Codex ", "FABLE"}, []string{"codex", "fable"}, false},
+		{"drops empties", []string{"codex", ""}, []string{"codex"}, false},
+		{"unknown value errors", []string{"codex", "gemini"}, nil, true},
+		{"all empty errors", []string{"", "  "}, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parsePlanCLIs(tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parsePlanCLIs(%v) = %v, want error", tc.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parsePlanCLIs(%v): %v", tc.in, err)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("parsePlanCLIs(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

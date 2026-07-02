@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/1F47E/rival/internal/config"
 )
 
 // PlanOutput is the structured JSON emitted by `rival command plan`. It mirrors
@@ -73,17 +75,25 @@ func displaySeverity(canonical string) string {
 	}
 }
 
-// FormatPlanConsole renders a PlanOutput for the caller: the 1-10 rating, the
-// summary, then every finding grouped by severity bucket (crit→high→med→low) and
-// numbered globally 1..N. No confidence filtering — all findings are returned.
+// FormatPlanConsole renders a single-CLI PlanOutput for the caller: the header,
+// the file, the 1-10 rating, the summary, then every finding grouped by severity
+// bucket (crit→high→med→low) and numbered globally 1..N. No confidence filtering —
+// all findings are returned.
 func FormatPlanConsole(out *PlanOutput, file string) string {
 	var sb strings.Builder
-
 	sb.WriteString("\n═══ RIVAL PLAN REVIEW ═══\n\n")
-	sb.WriteString(fmt.Sprintf("File: %s\n", file))
-	sb.WriteString(fmt.Sprintf("Rating: %d/10\n\n", out.Rating))
+	fmt.Fprintf(&sb, "File: %s\n", file)
+	formatPlanBody(out, &sb)
+	return sb.String()
+}
+
+// formatPlanBody writes the rating/summary/findings/tally for one PlanOutput into
+// sb. It carries no header or File line, so it is shared by both the single-CLI
+// (FormatPlanConsole) and multi-CLI (FormatPlanMultiConsole) renderers.
+func formatPlanBody(out *PlanOutput, sb *strings.Builder) {
+	fmt.Fprintf(sb, "Rating: %d/10\n\n", out.Rating)
 	if s := strings.TrimSpace(out.Summary); s != "" {
-		sb.WriteString(fmt.Sprintf("Summary: %s\n\n", s))
+		fmt.Fprintf(sb, "Summary: %s\n\n", s)
 	}
 
 	// Stable sort by severity (crit first), then confidence (highest first), so
@@ -100,7 +110,7 @@ func FormatPlanConsole(out *PlanOutput, file string) string {
 
 	if len(findings) == 0 {
 		sb.WriteString("No bugs or gaps found.\n")
-		return sb.String()
+		return
 	}
 
 	for i, f := range findings {
@@ -108,21 +118,21 @@ func FormatPlanConsole(out *PlanOutput, file string) string {
 		if f.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
 		}
-		sb.WriteString(fmt.Sprintf("%d. [%s] %s", i+1, displaySeverity(f.Severity), f.Title))
+		fmt.Fprintf(sb, "%d. [%s] %s", i+1, displaySeverity(f.Severity), f.Title)
 		if loc != "" {
-			sb.WriteString(fmt.Sprintf(" — %s", loc))
+			fmt.Fprintf(sb, " — %s", loc)
 		}
 		sb.WriteString("\n")
 		if b := strings.TrimSpace(f.Body); b != "" {
-			sb.WriteString(fmt.Sprintf("   %s\n", b))
+			fmt.Fprintf(sb, "   %s\n", b)
 		}
 		if s := strings.TrimSpace(f.Suggestion); s != "" {
-			sb.WriteString(fmt.Sprintf("   Fix: %s\n", s))
+			fmt.Fprintf(sb, "   Fix: %s\n", s)
 		}
 		if f.Category != "" {
-			sb.WriteString(fmt.Sprintf("   (%s, confidence %d)\n", f.Category, f.Confidence))
+			fmt.Fprintf(sb, "   (%s, confidence %d)\n", f.Category, f.Confidence)
 		} else {
-			sb.WriteString(fmt.Sprintf("   (confidence %d)\n", f.Confidence))
+			fmt.Fprintf(sb, "   (confidence %d)\n", f.Confidence)
 		}
 		sb.WriteString("\n")
 	}
@@ -141,8 +151,84 @@ func FormatPlanConsole(out *PlanOutput, file string) string {
 			low++
 		}
 	}
-	sb.WriteString(fmt.Sprintf("Findings: %d total — %d crit, %d high, %d med, %d low\n",
-		len(findings), crit, high, med, low))
+	fmt.Fprintf(sb, "Findings: %d total — %d crit, %d high, %d med, %d low\n",
+		len(findings), crit, high, med, low)
+}
+
+// FormatPlanResult renders a PlanRunResult for the caller. A single successful
+// CLI reuses the original single-CLI layout (FormatPlanConsole when parsed, else
+// the raw output — preserving the codex-only command's raw fallback). Two or more
+// CLIs use the multi-block layout. Any skipped CLIs are surfaced.
+func FormatPlanResult(result *PlanRunResult, file string) string {
+	if result == nil || len(result.Results) == 0 {
+		return "No plan review output.\n"
+	}
+	if len(result.Results) == 1 && len(result.Skipped) == 0 {
+		r := result.Results[0]
+		if r.Parsed != nil {
+			return FormatPlanConsole(r.Parsed, file)
+		}
+		// Parse failed — return the raw CLI output, matching the prior behaviour.
+		return r.Raw
+	}
+	return FormatPlanMultiConsole(result.Results, result.Skipped, file)
+}
+
+// PlanCLIResult is one CLI's plan-review outcome. Parsed is nil when the CLI's
+// output could not be parsed into structured JSON, in which case Raw holds the
+// unparsed CLI output so nothing the model produced is lost.
+type PlanCLIResult struct {
+	CLI    string
+	Model  string
+	Parsed *PlanOutput
+	Raw    string
+}
+
+// planEngineLabel is the human-facing engine name for a plan block. Fable runs
+// through the Claude CLI (session CLI == "claude"), so it is distinguished by its
+// model id and shown as "claude-fable" rather than the generic "claude".
+func planEngineLabel(cli, model string) string {
+	if model == config.FableModel {
+		return "claude-fable"
+	}
+	return cli
+}
+
+// FormatPlanMultiConsole renders 2+ CLIs' plan reviews as separate labelled
+// blocks under one header, followed by any skipped CLIs. A result whose Parsed is
+// nil falls back to printing its Raw output so a parse failure never drops the
+// model's work.
+func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file string) string {
+	var sb strings.Builder
+
+	labels := make([]string, 0, len(results))
+	for _, r := range results {
+		labels = append(labels, planEngineLabel(r.CLI, r.Model))
+	}
+	fmt.Fprintf(&sb, "\n═══ RIVAL PLAN REVIEW (%s) ═══\n\n", strings.Join(labels, " + "))
+	fmt.Fprintf(&sb, "File: %s\n", file)
+
+	for i, r := range results {
+		fmt.Fprintf(&sb, "\n── %s (%s) ──\n\n", planEngineLabel(r.CLI, r.Model), r.Model)
+		if r.Parsed != nil {
+			formatPlanBody(r.Parsed, &sb)
+		} else {
+			// Parse failed — emit the raw CLI output verbatim so nothing is lost.
+			sb.WriteString("(could not parse structured output — raw output below)\n\n")
+			sb.WriteString(strings.TrimSpace(r.Raw))
+			sb.WriteString("\n")
+		}
+		if i < len(results)-1 {
+			sb.WriteString("\n")
+		}
+	}
+
+	if len(skipped) > 0 {
+		sb.WriteString("\n")
+		for _, s := range skipped {
+			fmt.Fprintf(&sb, "Skipped: %s — %s\n", s.CLI, s.Reason)
+		}
+	}
 
 	return sb.String()
 }

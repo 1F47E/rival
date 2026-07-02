@@ -128,7 +128,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	// sessions are marked running on promotion; the consilium session stays
 	// queued until its phase, but is already in the ticket for liveness.
 	reviewerSessions := sessions[:len(plans)]
-	release, err := waitForMegaSlot(ctx, noQueue, sessions, reviewerSessions, workdir, groupID)
+	release, err := waitForGroupSlot(ctx, noQueue, sessions, reviewerSessions, workdir, groupID, "megareview")
 	if err != nil {
 		return nil, err
 	}
@@ -241,11 +241,13 @@ func newConsiliumSession(judgeCLI, scope, effort, workdir, groupID string) (*ses
 	return sess, nil
 }
 
-// waitForMegaSlot enqueues one ticket covering ticketSessions (both reviewers +
-// the consilium judge, for liveness) and blocks until promoted, then marks only
-// runSessions (the reviewers) running. The consilium session stays queued until
-// its phase. Mirrors cmd.waitForQueueSlot but lives here to avoid an import cycle.
-func waitForMegaSlot(ctx context.Context, noQueue bool, ticketSessions, runSessions []*session.Session, workdir, groupID string) (release func(), err error) {
+// waitForGroupSlot enqueues one ticket (with the given mode label, e.g.
+// "megareview" or "plan") covering ticketSessions and blocks until promoted, then
+// marks only runSessions running. Any ticketSessions not in runSessions (e.g. a
+// megareview's consilium judge) stay queued until their own phase but are already
+// in the ticket for liveness. Mirrors cmd.waitForQueueSlot but lives here to
+// avoid an import cycle.
+func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSessions []*session.Session, workdir, groupID, mode string) (release func(), err error) {
 	markRunning := func() error {
 		for i, s := range runSessions {
 			if err := s.MarkRunning(); err != nil {
@@ -270,8 +272,8 @@ func waitForMegaSlot(ctx context.Context, noQueue bool, ticketSessions, runSessi
 	}
 
 	m := queue.New()
-	if _, enqErr := m.Enqueue(groupID, ids, "megareview", workdir); enqErr != nil {
-		log.Warn().Err(enqErr).Msg("queue unavailable — running megareview without queueing")
+	if _, enqErr := m.Enqueue(groupID, ids, mode, workdir); enqErr != nil {
+		log.Warn().Err(enqErr).Str("mode", mode).Msg("queue unavailable — running without queueing")
 		return func() {}, markRunning()
 	}
 
