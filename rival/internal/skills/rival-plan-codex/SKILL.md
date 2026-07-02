@@ -1,6 +1,6 @@
 ---
 name: rival-plan-codex
-version: 3.14.4
+version: 3.15.0
 description: Review a plan/spec markdown document with Codex only via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan-codex.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
@@ -10,7 +10,7 @@ allowed-tools: Bash, Read
 
 Review a single plan/spec markdown file with OpenAI Codex via the `rival` Go binary. Codex rates the plan 1-10 and returns numbered findings (crit/high/med/low). The run is detached and watched in the background — this skill does not block your session.
 
-For a dual codex + claude-fable review use `/rival-plan`; for claude-fable only use `/rival-plan-fable`.
+For a claude-fable review instead, use `/rival-plan-fable`.
 
 ## Instructions
 

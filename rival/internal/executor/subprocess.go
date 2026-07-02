@@ -16,10 +16,14 @@ import (
 )
 
 // blockedEnvPrefixes are env var prefixes that should not leak from .env to child CLIs.
+// OPENCODE_ is blocked because a reviewed repo's .env could otherwise set
+// OPENCODE_PERMISSION (or OPENCODE_CONFIG*) to defeat the read-only reviewer
+// sandbox — the reviewer must never take permission/config from the code it reviews.
 var blockedEnvPrefixes = []string{
 	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 	"http_proxy", "https_proxy", "all_proxy", "no_proxy",
 	"NODE_OPTIONS", "LD_PRELOAD", "DYLD_",
+	"OPENCODE_",
 }
 
 // safeEnv returns os.Environ() filtered to block dangerous overrides

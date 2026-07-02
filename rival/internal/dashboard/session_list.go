@@ -81,7 +81,8 @@ const (
 	iconGemini       = "✦" // Google / Gemini
 	iconClaude       = "⬡" // Anthropic / Claude
 	iconAntigravity  = "△" // Google / Antigravity
-	iconMega         = "◈△" // Codex + Antigravity
+	iconOpencode     = "❯" // opencode / GLM
+	iconMega         = "◈△❯" // Codex + Antigravity + Opencode
 	iconPlan         = "▤" // Plan/spec review (codex under the hood)
 )
 
@@ -104,6 +105,8 @@ func cliLabel(cli, mode string) string {
 		return iconClaude + " claude"
 	case "antigravity":
 		return iconAntigravity + " antigravity"
+	case "opencode":
+		return iconOpencode + " opencode"
 	default:
 		return cli
 	}

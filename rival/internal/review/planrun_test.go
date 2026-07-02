@@ -98,6 +98,25 @@ func TestAssemblePlanResults_ParseFailKeepsRaw(t *testing.T) {
 	}
 }
 
+func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
+	// An exit-0 run that wrote nothing must be skipped, not treated as a
+	// successful (but empty) plan review. (Found by opencode/GLM in review.)
+	batch := []planCLIRun{
+		{CLI: "fable", Model: config.FableModel, Raw: "   \n  ", ExitCode: 0},
+		{CLI: "codex", Model: config.CodexModel, Raw: realPlanJSON, ExitCode: 0},
+	}
+	res, err := assemblePlanResults(batch, nil)
+	if err != nil {
+		t.Fatalf("assemblePlanResults: %v", err)
+	}
+	if len(res.Results) != 1 || res.Results[0].CLI != "codex" {
+		t.Fatalf("want only codex kept (fable empty), got %+v", res.Results)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].CLI != "fable" {
+		t.Fatalf("want fable skipped for empty output, got %+v", res.Skipped)
+	}
+}
+
 func TestPlanEngineLabel(t *testing.T) {
 	if got := planEngineLabel("codex", config.CodexModel); got != "codex" {
 		t.Errorf("codex label = %q, want codex", got)

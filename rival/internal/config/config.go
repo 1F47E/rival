@@ -18,6 +18,7 @@ const (
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	AntigravityModel     = "gemini-3.5-flash"
+	OpencodeModel        = "opencode-go/glm-5.2"
 	ClaudeDockerImage    = "rival-claude"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
@@ -41,6 +42,15 @@ var ClaudeEffortLevel = map[string]string{
 	"low":    "low",
 	"medium": "medium",
 	"high":   "max",
+	"xhigh":  "max",
+}
+
+// OpencodeVariantLevel maps rival effort levels to opencode's --variant
+// (provider-specific reasoning level: minimal | high | max).
+var OpencodeVariantLevel = map[string]string{
+	"low":    "minimal",
+	"medium": "minimal",
+	"high":   "high",
 	"xhigh":  "max",
 }
 
