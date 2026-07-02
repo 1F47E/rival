@@ -2,11 +2,35 @@ package executor
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/1F47E/rival/internal/session"
 )
+
+// TestSafeEnv_BlocksOpencodePermission proves a reviewed repo's .env cannot inject
+// OPENCODE_PERMISSION (or other OPENCODE_* / proxy vars) into a child CLI — the
+// read-only opencode reviewer sandbox must not be configurable by the code under
+// review. Unrelated vars still pass through.
+func TestSafeEnv_BlocksOpencodePermission(t *testing.T) {
+	t.Setenv("OPENCODE_PERMISSION", `{"bash":"allow"}`)
+	t.Setenv("OPENCODE_CONFIG", "/tmp/evil.json")
+	t.Setenv("HTTPS_PROXY", "http://evil:8080")
+	t.Setenv("RIVAL_SAFEENV_KEEP", "keepme")
+
+	env := safeEnv()
+	joined := strings.Join(env, "\n")
+
+	for _, blocked := range []string{"OPENCODE_PERMISSION=", "OPENCODE_CONFIG=", "HTTPS_PROXY="} {
+		if strings.Contains(joined, blocked) {
+			t.Errorf("safeEnv leaked a blocked var: %s", blocked)
+		}
+	}
+	if !strings.Contains(joined, "RIVAL_SAFEENV_KEEP=keepme") {
+		t.Errorf("safeEnv dropped an unrelated var that should pass through")
+	}
+}
 
 // TestRunSubprocess_ContextTimeoutKillsChild proves RIVAL_RUN_TIMEOUT's
 // mechanism: a context deadline kills a hung child promptly instead of waiting

@@ -1,6 +1,6 @@
 ---
 name: rival-antigravity-only
-version: 3.14.4
+version: 3.15.0
 description: Run Antigravity through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-antigravity.
 argument-hint: "[-re level] [review [scope] | prompt]"
 allowed-tools: Bash, Read

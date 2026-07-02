@@ -234,6 +234,11 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 		_ = sess.Fail(exitCode, fmt.Sprintf("%s exited with code %d", cli, exitCode))
 	case executor.IsQuotaExhausted(raw):
 		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", cli))
+	case strings.TrimSpace(raw) == "":
+		// Exited 0 but wrote nothing — a silent no-op (e.g. an auth/session
+		// failure). Fail it so it is reported as skipped, not a "successful" plan
+		// review that formats to an empty string while the command exits 0.
+		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", cli))
 	default:
 		_ = sess.Complete(exitCode, int64(len(raw)), 0)
 	}
@@ -264,6 +269,11 @@ func assemblePlanResults(batch []planCLIRun, skipped []SkippedCLI) (*PlanRunResu
 			continue
 		case executor.IsQuotaExhausted(r.Raw):
 			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
+			continue
+		case strings.TrimSpace(r.Raw) == "":
+			// Defensive: an exit-0 run that wrote nothing is not a review. Skip it
+			// so a single-CLI run never formats to an empty string with exit 0.
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
 			continue
 		}
 

@@ -53,10 +53,11 @@ type reviewerPlan struct {
 func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, noQueue bool) (*RunResult, error) {
 	threshold := DefaultConfidenceThreshold
 
-	// Preflight — megareview uses Codex + Antigravity only. Runs BEFORE
-	// enqueue so a doomed review never occupies a slot.
+	// Preflight — megareview uses Codex + Antigravity + Opencode (GLM). Runs
+	// BEFORE enqueue so a doomed review never occupies a slot.
 	codexOK := true
 	antigravityOK := true
+	opencodeOK := true
 	var skipped []SkippedCLI
 	if err := executor.CodexPreflight(); err != nil {
 		log.Warn().Err(err).Msg("codex unavailable")
@@ -68,32 +69,70 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 		antigravityOK = false
 		skipped = append(skipped, SkippedCLI{CLI: "antigravity", Reason: err.Error()})
 	}
-	if !codexOK && !antigravityOK {
+	if err := executor.OpencodePreflight(); err != nil {
+		log.Warn().Err(err).Msg("opencode unavailable")
+		opencodeOK = false
+		skipped = append(skipped, SkippedCLI{CLI: "opencode", Reason: err.Error()})
+	}
+	if !codexOK && !antigravityOK && !opencodeOK {
 		return nil, fmt.Errorf("no CLI reviewers available")
 	}
 
-	// Determine which CLI to use for the consilium judge.
-	judgeCLI := "codex"
-	if !codexOK {
+	// Determine which CLI to use for the consilium judge. Prefer codex, then
+	// antigravity, then opencode — whichever is available (at least one is, per
+	// the guard above).
+	var judgeCLI string
+	switch {
+	case codexOK:
+		judgeCLI = "codex"
+	case antigravityOK:
 		judgeCLI = "antigravity"
+	default:
+		judgeCLI = "opencode"
 	}
+
+	// Fail any created session still left "queued" (never started) when we
+	// return — covers bail-before-run, the creation error paths below, and the
+	// error paths further down. Registered BEFORE session creation and closing
+	// over `sessions` (appended as each is made), so a failure part-way through
+	// creation still cleans up the sessions already created rather than orphaning
+	// them. MarkRunning flips a session to "running" only once it is actually
+	// about to execute, so a session stuck "queued" here genuinely never ran.
+	var sessions []*session.Session
+	defer func() {
+		for _, s := range sessions {
+			if s.Status == "queued" {
+				_ = s.Fail(1, "interrupted")
+			}
+		}
+	}()
 
 	// Create reviewer sessions up front (status "queued") so they appear in
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
-	if codexOK {
-		sess, err := newReviewerSession("codex", scope, effort, workdir, groupID)
+	addReviewer := func(cli string) error {
+		sess, err := newReviewerSession(cli, scope, effort, workdir, groupID)
 		if err != nil {
+			return err
+		}
+		plans = append(plans, reviewerPlan{cli: cli, sess: sess})
+		sessions = append(sessions, sess)
+		return nil
+	}
+	if codexOK {
+		if err := addReviewer("codex"); err != nil {
 			return nil, err
 		}
-		plans = append(plans, reviewerPlan{cli: "codex", sess: sess})
 	}
 	if antigravityOK {
-		sess, err := newReviewerSession("antigravity", scope, effort, workdir, groupID)
-		if err != nil {
+		if err := addReviewer("antigravity"); err != nil {
 			return nil, err
 		}
-		plans = append(plans, reviewerPlan{cli: "antigravity", sess: sess})
+	}
+	if opencodeOK {
+		if err := addReviewer("opencode"); err != nil {
+			return nil, err
+		}
 	}
 
 	// Pre-create the consilium judge session too, so the queue ticket covers
@@ -104,25 +143,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	if err != nil {
 		return nil, err
 	}
-
-	// sessions = the queue ticket's covered sessions (both reviewers + judge).
-	sessions := make([]*session.Session, 0, len(plans)+1)
-	for _, p := range plans {
-		sessions = append(sessions, p.sess)
-	}
 	sessions = append(sessions, consiliumSess)
-
-	// Fail any session still left "queued" (never started) when we return —
-	// covers bail-before-run and the error paths below. MarkRunning flips a
-	// session to "running" only once it is actually about to execute, so a
-	// session stuck "queued" here genuinely never ran.
-	defer func() {
-		for _, s := range sessions {
-			if s.Status == "queued" {
-				_ = s.Fail(1, "interrupted")
-			}
-		}
-	}()
 
 	// Acquire one queue slot covering the whole pipeline. Only the reviewer
 	// sessions are marked running on promotion; the consilium session stays
@@ -202,6 +223,19 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("all reviewers failed or hit quota limits (see skipped reasons): %s", formatSkipped(skipped))
+	}
+
+	// Re-select the judge from the CLIs that ACTUALLY produced a review. The
+	// preflight-time choice above can be stale: a reviewer that preflighted OK
+	// can still 429 or fail at runtime, and judging with a quota-dead CLI would
+	// fail the whole review even though another reviewer succeeded. Prefer
+	// codex → antigravity → opencode among the successful inputs; fall back to
+	// the preflight choice only if none of the preferred CLIs succeeded.
+	if picked := pickJudge(inputs); picked != "" && picked != judgeCLI {
+		log.Info().Str("from", judgeCLI).Str("to", picked).Msg("re-selecting consilium judge to a CLI that produced a review")
+		judgeCLI = picked
+		consiliumSess.CLI = picked
+		consiliumSess.Model = modelForCLI(picked)
 	}
 
 	log.Info().Int("successful", len(inputs)).Str("judge", judgeCLI).Msg("reviewers complete, running consilium")
@@ -336,6 +370,8 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort,
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
 	case "antigravity":
 		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
+	case "opencode":
+		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
@@ -416,6 +452,8 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 		result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
 	case "antigravity":
 		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
+	case "opencode":
+		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, nil)
 	default:
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
@@ -440,16 +478,36 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 		return nil, fmt.Errorf("consilium judge (%s) hit provider quota/rate limit (429) — authenticate to a quota-bearing account or wait for reset", judgeCLI)
 	}
 
-	_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
-
+	// Parse BEFORE marking the session complete: an empty or unparseable judge
+	// output is a failure, and marking it "completed" first would leave the
+	// dashboard showing a successful session for a run that produced no verdict.
 	output, err := ParseConsiliumOutput(string(logData))
 	if err != nil {
 		// Dump raw for debugging.
 		log.Error().Str("raw", truncate(string(logData), 500)).Msg("consilium parse failed")
+		_ = sess.Fail(1, fmt.Sprintf("consilium judge (%s) output could not be parsed", judgeCLI))
 		return nil, fmt.Errorf("parse consilium output: %w", err)
 	}
 
+	_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
 	return output, nil
+}
+
+// pickJudge chooses a consilium judge from the CLIs that produced a successful
+// review, in preference order codex → antigravity → opencode. It returns "" if
+// none of the preferred CLIs are among the successful inputs, letting the caller
+// keep its earlier (preflight-time) choice.
+func pickJudge(inputs []ReviewInput) string {
+	succeeded := make(map[string]bool, len(inputs))
+	for _, in := range inputs {
+		succeeded[in.CLI] = true
+	}
+	for _, cli := range []string{"codex", "antigravity", "opencode"} {
+		if succeeded[cli] {
+			return cli
+		}
+	}
+	return ""
 }
 
 func modelForCLI(cli string) string {
@@ -462,6 +520,8 @@ func modelForCLI(cli string) string {
 		return config.ClaudeModel
 	case "antigravity":
 		return config.AntigravityModel
+	case "opencode":
+		return config.OpencodeModel
 	default:
 		return cli
 	}

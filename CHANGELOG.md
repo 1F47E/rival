@@ -2,6 +2,46 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.15.0] — 2026-07-02
+
+### Added — opencode / GLM-5.2 as a third megareview reviewer
+
+Megareview now runs **three reviewers in parallel — Codex + Antigravity + opencode
+(GLM-5.2)** — and merges all of them through the consilium judge. opencode is wired
+the same way as antigravity: a preflight, a reviewer session, and a run adapter.
+
+- New `internal/executor/opencode.go`: `OpencodePreflight` (LookPath `opencode`) +
+  `RunOpencode` → `opencode run -m opencode-go/glm-5.2 --variant <effort> --dir
+  <workdir> --dangerously-skip-permissions` (the skip-permissions flag is required —
+  without it opencode auto-rejects file reads and produces nothing).
+- `config.OpencodeModel = "opencode-go/glm-5.2"` + `OpencodeVariantLevel` effort→variant
+  map (low/medium→minimal, high→high, xhigh→max).
+- Runner: `opencodeOK` preflight, a reviewer plan, and `case "opencode"` in the run and
+  judge switches + `modelForCLI`. Any reviewer that is unavailable is skipped, not fatal.
+  The consilium judge preference is now codex → antigravity → opencode.
+- Role: opencode gets the `arch_security` lens (codex + antigravity are both bug hunters),
+  diversifying the three-reviewer roster.
+- TUI/web: `❯ opencode` icon + label; the grouped megareview glyph is now `◈△❯`, and group
+  CLI reads `codex+antigravity+opencode`.
+
+opencode runs **read-only** (via `OPENCODE_PERMISSION` — read/grep/glob/list allowed,
+edit/bash/task/web denied) rather than `--dangerously-skip-permissions`, matching codex's
+`--sandbox read-only` posture so a prompt-injected repo cannot make the reviewer write files
+or run commands. rival loads the reviewed repo's `.env`, so `OPENCODE_*` is now stripped from
+the child environment (`safeEnv` blocklist + a targeted `dropEnv`) — a malicious repo cannot
+ship a permissive `OPENCODE_PERMISSION`/`OPENCODE_CONFIG` in its `.env` to escape the sandbox.
+
+### Fixed — megareview robustness (from the review of this change)
+
+- **Judge is re-selected from reviewers that actually produced output.** The consilium judge
+  was chosen from preflight availability, so a reviewer that preflighted OK but then 429'd at
+  runtime could fail the whole review; the judge is now picked (codex → antigravity → opencode)
+  from the successful reviewers.
+- **Consilium judge session is marked complete only after its output parses** — an empty or
+  unparseable verdict now fails the session instead of showing "completed" in the dashboard.
+- **Reviewer/judge session cleanup is registered before creation**, so a mid-creation failure
+  no longer orphans the sessions already created.
+
 ## [v3.14.4] — 2026-07-02
 
 ### Fixed — megareview reviewer that produces no output

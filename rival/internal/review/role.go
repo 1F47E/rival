@@ -20,6 +20,10 @@ func RoleForCLI(cli string) Role {
 		return RoleCodeQuality
 	case "antigravity":
 		return RoleBugHunter
+	case "opencode":
+		// codex + antigravity both hunt bugs; give opencode (GLM) the
+		// architecture/security lens to diversify the 3-reviewer roster.
+		return RoleArchSecurity
 	default:
 		return RoleBugHunter
 	}

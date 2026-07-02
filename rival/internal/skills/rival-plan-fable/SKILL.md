@@ -1,6 +1,6 @@
 ---
 name: rival-plan-fable
-version: 3.14.4
+version: 3.15.0
 description: Review a plan/spec markdown document with claude-fable only via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan-fable.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
@@ -10,7 +10,7 @@ allowed-tools: Bash, Read
 
 Review a single plan/spec markdown file with Anthropic claude-fable (the `claude-fable-5` model, run through the Claude Code CLI) via the `rival` Go binary. It rates the plan 1-10 and returns numbered findings (crit/high/med/low). The run is detached and watched in the background — this skill does not block your session.
 
-For a dual codex + claude-fable review use `/rival-plan`; for codex only use `/rival-plan-codex`.
+For a codex review instead, use `/rival-plan-codex`.
 
 ## Instructions
 

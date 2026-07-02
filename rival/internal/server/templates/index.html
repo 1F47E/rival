@@ -75,7 +75,7 @@
 </div>
 
 <script>
-const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '⬡', antigravity: '△' };
+const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '⬡', antigravity: '△', opencode: '❯' };
 const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
@@ -131,7 +131,7 @@ function buildRow(g) {
   let cliText;
   if (g.is_group) {
     // Plan groups run codex + claude-fable; everything else grouped is a megareview.
-    cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : '◈△ mega';
+    cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : '◈△❯ mega';
   } else {
     let icon = CLI_ICONS[primary.cli] || '';
     let label = primary.cli;
