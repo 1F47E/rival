@@ -176,6 +176,15 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
 			continue
 		}
+		// agy can exit 0 having produced nothing at all (empty stdout + empty log,
+		// no 429 envelope) — e.g. a silent auth/session failure. An empty review is
+		// not a successful one: count it as skipped so the consilium isn't fed a
+		// no-op input and the TUI shows why instead of a blank "(empty log)".
+		if strings.TrimSpace(r.RawOutput) == "" {
+			log.Error().Str("cli", r.CLI).Msg("reviewer produced empty output — skipping")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
+			continue
+		}
 
 		parsed, parseErr := ParseReviewerOutput(r.RawOutput)
 		if parseErr != nil {
@@ -353,6 +362,11 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort,
 		_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", cli, result.ExitCode))
 	case executor.IsQuotaExhausted(raw):
 		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", cli))
+	case strings.TrimSpace(raw) == "":
+		// Exited 0 but wrote nothing — a silent no-op (e.g. agy auth/session
+		// failure). Record it as failed so the TUI shows the reason instead of a
+		// blank "(empty log)", and so it is not counted as a successful review.
+		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", cli))
 	default:
 		_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
 	}

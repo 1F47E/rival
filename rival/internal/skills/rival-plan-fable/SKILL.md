@@ -1,6 +1,6 @@
 ---
 name: rival-plan-fable
-version: 3.14.3
+version: 3.14.4
 description: Review a plan/spec markdown document with claude-fable only via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan-fable.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read

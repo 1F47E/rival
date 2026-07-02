@@ -176,6 +176,10 @@ func TestAssemblePlanResults_ErrUsesReason(t *testing.T) {
 }
 
 func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
+	// Isolate the sessions dir (SessionDirPath uses $HOME) so this test never
+	// writes into the user's real ~/.rival/sessions.
+	t.Setenv("HOME", t.TempDir())
+
 	// The fable executor overwrites sess.Mode to the transport ("native"); the
 	// terminal session must be recorded as a plan session regardless.
 	sess, err := session.NewQueued("fable", "plan", config.FableModel, "xhigh", t.TempDir(), "p", "/tmp/plan.md", "g")
