@@ -2,6 +2,25 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.14.4] — 2026-07-02
+
+### Fixed — megareview reviewer that produces no output
+
+A reviewer CLI can exit 0 while writing nothing at all (empty stdout + empty log,
+no 429 envelope) — e.g. `agy` on a silent auth/session failure. rival previously
+marked that session `completed` and fed the empty result to the consilium, so the
+TUI detail view showed only a blank `(empty log)` block ("no results"). An
+empty-output reviewer is now marked **failed** with the reason
+"produced no output (empty result) — likely an auth/session failure" and reported
+in the review's `Skipped:` list, so the TUI shows why and the consilium isn't fed
+a no-op input.
+
+### Fixed — test no longer writes to the real session store
+
+`TestRunPlanCLI_RestoresPlanMode` created sessions via `session.NewQueued`, which
+persists to `~/.rival/sessions`; it now isolates `$HOME` to a temp dir so the
+suite never pollutes the user's real session history.
+
 ## [v3.14.3] — 2026-07-02
 
 ### Added — dual-engine plan review
