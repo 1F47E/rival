@@ -11,34 +11,70 @@ import (
 	"syscall"
 
 	"github.com/1F47E/rival/internal/config"
-	"github.com/1F47E/rival/internal/executor"
 	"github.com/1F47E/rival/internal/review"
-	"github.com/1F47E/rival/internal/session"
-	"github.com/rs/zerolog/log"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
 const planUsage = `Usage:
-  /rival-plan path/to/plan.md — review a plan/spec document with codex (rate 1-10, find bugs + gaps)
+  /rival-plan path/to/plan.md — review a plan/spec document with codex + claude-fable (rate 1-10, find bugs + gaps)
   /rival-plan — show this usage info
 
-Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.`
+Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.
+The --cli flag (codex,fable — default both) selects the review engine(s); the codex-only
+and fable-only skills pass a single value. An engine that is unavailable is skipped, not fatal.`
+
+// defaultPlanCLIs is the engine set used when --cli is not narrowed (the dual
+// /rival-plan skill): both codex and fable.
+var defaultPlanCLIs = []string{"codex", "fable"}
 
 var commandPlanCmd = &cobra.Command{
 	Use:   "plan",
-	Short: "Skill-facing plan/spec reviewer (codex only)",
+	Short: "Skill-facing plan/spec reviewer (codex + claude-fable)",
 	RunE:  commandPlanAction,
 }
 
 func init() {
 	commandPlanCmd.Flags().String("workdir", ".", "working directory")
 	commandPlanCmd.Flags().Bool("no-queue", false, "bypass the review queue")
+	commandPlanCmd.Flags().StringSlice("cli", defaultPlanCLIs, "plan review engine(s): codex, fable (comma-separated)")
 	commandCmd.AddCommand(commandPlanCmd)
+}
+
+// parsePlanCLIs validates and de-duplicates the --cli values, preserving order.
+func parsePlanCLIs(raw []string) ([]string, error) {
+	seen := make(map[string]bool)
+	var out []string
+	for _, v := range raw {
+		c := strings.ToLower(strings.TrimSpace(v))
+		switch c {
+		case "codex", "fable":
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		case "":
+			continue
+		default:
+			return nil, fmt.Errorf("unknown --cli value %q (valid: codex, fable)", c)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no valid --cli values (valid: codex, fable)")
+	}
+	return out, nil
 }
 
 func commandPlanAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
+	rawCLIs, _ := cmd.Flags().GetStringSlice("cli")
+
+	clis, err := parsePlanCLIs(rawCLIs)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stdout, err.Error())
+		return &ExitCodeError{Code: 1, Err: err}
+	}
 
 	// If stdin is a terminal, show usage instead of hanging. Guard against a nil
 	// stat (stdin closed/invalid) so we don't panic dereferencing it.
@@ -64,81 +100,21 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 
-	prompt := strings.ReplaceAll(config.PlanReviewPrompt, "{FILE}", absPath)
-
-	if err := executor.CodexPreflight(); err != nil {
-		return err
-	}
-
-	sess, err := session.NewQueued("codex", "plan", config.CodexModel, config.DefaultEffort, workdir, prompt, absPath, "")
-	if err != nil {
-		return fmt.Errorf("create session: %w", err)
-	}
-
-	defer func() {
-		if sess.Status == "running" || sess.Status == "queued" {
-			_ = sess.Fail(1, "interrupted")
-		}
-	}()
-
-	log.Info().Str("session", sess.ID).Str("file", absPath).Msg("starting plan review (command mode)")
-
-	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
+	// Cancel the queue wait / child processes on SIGINT/SIGTERM.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, "plan", workdir)
+	groupID := uuid.New().String()
+
+	result, err := review.RunPlanReview(ctx, absPath, config.DefaultEffort, workdir, groupID, noQueue, clis)
 	if err != nil {
 		return err
 	}
-	defer release()
 
-	// Bound the run itself: a hung provider CLI must not keep the slot (and the
-	// detached rival) alive forever. Clock starts now, after slot promotion.
-	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
-	defer cancelRun()
-
-	result, err := executor.RunCodex(runCtx, sess, prompt, config.DefaultEffort, workdir, nil)
-	if err != nil {
-		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
-			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
-		}
-		return err
-	}
-
-	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("codex exited with code %d", result.ExitCode))); saveErr != nil {
-			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
-		}
-	} else {
-		if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {
-			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session completion")
-		}
-	}
-
-	logData, err := os.ReadFile(sess.LogFile)
-	if err != nil {
-		return fmt.Errorf("read log file: %w", err)
-	}
-	rawLog := string(logData)
-
-	// Parse the structured plan output; on failure, fall back to the raw codex
-	// output so nothing the model produced is lost.
-	parsed, parseErr := review.ParsePlanOutput(rawLog)
-	out := rawLog
-	if parseErr != nil {
-		log.Warn().Err(parseErr).Str("session", sess.ID).Msg("failed to parse plan output, returning raw")
-	} else {
-		out = review.FormatPlanConsole(parsed, absPath)
-	}
+	out := review.FormatPlanResult(result, absPath)
 	if _, err := io.WriteString(os.Stdout, out); err != nil {
 		return fmt.Errorf("write stdout: %w", err)
 	}
-
-	if result.ExitCode != 0 {
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("codex exited with code %d", result.ExitCode)}
-	}
-
 	return nil
 }
 

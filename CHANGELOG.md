@@ -2,6 +2,47 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.14.3] — 2026-07-02
+
+### Added — dual-engine plan review
+
+`/rival-plan` now reviews a plan/spec with **Codex and claude-fable in parallel** and prints
+each engine's independent 1-10 rating + findings side by side (no judge/merge). Two
+single-engine variants ship alongside it:
+
+- `/rival-plan` — codex + claude-fable, both results shown; an unavailable engine is
+  skipped, not fatal.
+- `/rival-plan-codex` — codex only (the previous `/rival-plan` behavior).
+- `/rival-plan-fable` — claude-fable only.
+
+All three back the same command via `rival command plan --cli codex,fable` (default both);
+the skills pass the engine set. Implemented as `review.RunPlanReview` (mirrors megareview's
+reviewer phase — one queue ticket, parallel runners — with no consilium), split into an
+injectable executor plus a pure, unit-tested `assemblePlanResults`.
+
+### Changed — TUI/web group labels derived from sessions
+
+Grouped rows/detail panels previously hardcoded `Megareview` / `codex+antigravity` /
+`megareview` for **any** multi-session group. They now derive the kind, engines, and mode
+from the sessions, so a dual plan group renders as `Plan Review` / `codex+claude-fable` /
+mode `plan`. Megareview output is unchanged. The web API group object gains a `kind` field.
+
+### Fixed — review findings on the new code
+
+A `/rival-codex` review found 0 critical/high and 4 medium issues, all fixed:
+
+- **Fable plan sessions kept their `plan` mode.** `executor.RunClaudeModel` overwrites
+  `sess.Mode` with the transport (`native`/`docker`); `runPlanCLI` now restores
+  `sess.Mode = "plan"` before the session is persisted, so the TUI/web (which classify on
+  `Mode == "plan"`) render fable plan reviews correctly.
+- **Run-timeout diagnostics preserved.** A timed-out engine now reports a
+  `RIVAL_RUN_TIMEOUT` reason (via `runTimeoutReason`) in the skipped list instead of a bare
+  exit code.
+- **Partial session-creation cleanup.** The queued-session cleanup defer is registered
+  before the creation loop, so a mid-loop failure still fails the sessions already created.
+- **Web detail Mode field** uses `group.kind` for grouped rows instead of the primary
+  session's transport mode.
+
 ## [v3.14.2] — 2026-06-13
 
 ### Fixed — `rival wait` / `detach` review findings

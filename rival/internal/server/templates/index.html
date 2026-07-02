@@ -130,7 +130,8 @@ function buildRow(g) {
 
   let cliText;
   if (g.is_group) {
-    cliText = '◈△ mega';
+    // Plan groups run codex + claude-fable; everything else grouped is a megareview.
+    cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : '◈△ mega';
   } else {
     let icon = CLI_ICONS[primary.cli] || '';
     let label = primary.cli;
@@ -204,14 +205,15 @@ async function toggleDetail(id) {
   if (!group) return;
 
   const primary = group.sessions[0];
+  const groupTitle = group.kind === 'plan' ? 'Plan Review ' : 'Megareview ';
   document.getElementById('detail-title').textContent =
-    group.is_group ? 'Megareview ' + id.substring(0, 8) : 'Session ' + id.substring(0, 8);
+    group.is_group ? groupTitle + id.substring(0, 8) : 'Session ' + id.substring(0, 8);
 
   const meta = document.getElementById('detail-meta');
   meta.replaceChildren();
   const fields = [
     ['CLI', group.cli], ['Model', group.models], ['Effort', primary.effort],
-    ['Mode', primary.mode || 'native'], ['Status', group.status], ['WorkDir', primary.work_dir],
+    ['Mode', group.is_group ? group.kind : (primary.mode || 'native')], ['Status', group.status], ['WorkDir', primary.work_dir],
     ['Started', new Date(primary.start_time).toLocaleTimeString()],
     ['Duration', group.elapsed || elapsed(group)],
   ];

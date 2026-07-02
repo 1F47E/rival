@@ -100,13 +100,18 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	if len(id) > 8 {
 		id = id[:8]
 	}
-	meta.WriteString(titleStyle.Render(fmt.Sprintf("Megareview %s", id)))
+	title := "Megareview"
+	if groupIsPlan(item) {
+		title = "Plan Review"
+	}
+	meta.WriteString(titleStyle.Render(fmt.Sprintf("%s %s", title, id)))
 	meta.WriteString("\n\n")
 
-	// Shared metadata from primary session.
-	addField(&meta, "CLI", "codex+antigravity", width)
+	// Shared metadata from primary session — derived from the group's sessions so
+	// a plan group ("codex+claude-fable", mode "plan") is not mislabelled a megareview.
+	addField(&meta, "CLI", groupCLIs(item), width)
 	addField(&meta, "Effort", s.Effort, width)
-	addField(&meta, "Mode", "megareview", width)
+	addField(&meta, "Mode", groupKindLabel(item), width)
 	addStyledField(&meta, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)
 	addField(&meta, "WorkDir", s.WorkDir, width)
 	addField(&meta, "Started", s.StartTime.Format("15:04:05"), width)

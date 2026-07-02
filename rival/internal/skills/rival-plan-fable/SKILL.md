@@ -1,14 +1,16 @@
 ---
-name: rival-fable-only
+name: rival-plan-fable
 version: 3.14.3
-description: Run claude-fable-5 at max effort through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-fable.
-argument-hint: "[-re level] [review [scope] | prompt]"
+description: Review a plan/spec markdown document with claude-fable only via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan-fable.
+argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
 ---
 
-# Fable Runner (rival binary)
+# Plan Reviewer (rival binary) — claude-fable only
 
-Run the `claude-fable-5` model via the `rival` Go binary (through the Claude Code CLI). Defaults to max reasoning effort. The run is detached and watched in the background — this skill does not block your session.
+Review a single plan/spec markdown file with Anthropic claude-fable (the `claude-fable-5` model, run through the Claude Code CLI) via the `rival` Go binary. It rates the plan 1-10 and returns numbered findings (crit/high/med/low). The run is detached and watched in the background — this skill does not block your session.
+
+For a dual codex + claude-fable review use `/rival-plan`; for codex only use `/rival-plan-codex`.
 
 ## Instructions
 
@@ -19,14 +21,10 @@ Run the `claude-fable-5` model via the `rival` Go binary (through the Claude Cod
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-fable 'explain the auth flow'` — run any prompt via claude-fable-5 (max effort)
-> - `/rival-fable -re medium 'find bugs in src/main.go'` — run with a lower reasoning effort
-> - `/rival-fable review` — code review (auto-detects changed files via git)
-> - `/rival-fable review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-fable -re medium review src/api/` — review with medium reasoning
-> - `/rival-fable` — show this usage info
+> - `/rival-plan-fable path/to/plan.md` — review a plan/spec doc with claude-fable (rate 1-10, find bugs + gaps)
+> - `/rival-plan-fable` — show this usage info
 >
-> **Model:** `claude-fable-5`. **Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` — default maps to max.
+> Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.
 
 ### Execute — launch detached, then watch in the background
 
@@ -44,7 +42,7 @@ RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX
 cat <<"$DELIM" >"$RIVAL_IN"
 $ARGUMENTS
 $DELIM
-rival command fable --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command plan --cli fable --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

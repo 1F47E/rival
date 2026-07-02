@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 )
 
@@ -131,13 +132,65 @@ func formatGroupRow(item *displayItem, width int) string {
 
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
-		cols.cli, iconMega+" mega",
+		cols.cli, groupIcon(item),
 		cols.model, truncate(groupModels(item), cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,
 		cols.workdir, wd,
 		prompt,
 	)
+}
+
+// groupIsPlan reports whether a group is a plan review (any session mode "plan").
+// Plan groups run codex + claude-fable; everything else grouped is a megareview.
+func groupIsPlan(item *displayItem) bool {
+	for _, s := range item.Sessions {
+		if s.Mode == "plan" {
+			return true
+		}
+	}
+	return false
+}
+
+// groupIcon returns the list-row icon+label for a group ("plan" vs "mega").
+func groupIcon(item *displayItem) string {
+	if groupIsPlan(item) {
+		return iconPlan + " plan"
+	}
+	return iconMega + " mega"
+}
+
+// groupKindLabel returns the human title/mode word for a group.
+func groupKindLabel(item *displayItem) string {
+	if groupIsPlan(item) {
+		return "plan"
+	}
+	return "megareview"
+}
+
+// groupEngineLabel names one session's engine for group display. Fable runs
+// through the Claude CLI (cli == "claude") but is distinguished by its model id
+// and shown as "claude-fable".
+func groupEngineLabel(s *session.Session) string {
+	if s.Model == config.FableModel {
+		return "claude-fable"
+	}
+	return s.CLI
+}
+
+// groupCLIs returns the group's distinct engines joined with "+", e.g.
+// "codex+antigravity" or "codex+claude-fable".
+func groupCLIs(item *displayItem) string {
+	var clis []string
+	seen := map[string]bool{}
+	for _, s := range item.Sessions {
+		label := groupEngineLabel(s)
+		if label != "" && !seen[label] {
+			seen[label] = true
+			clis = append(clis, label)
+		}
+	}
+	return strings.Join(clis, "+")
 }
 
 // groupModels returns a combined model string like "gpt-5.5 + gemini-3.1-pro".

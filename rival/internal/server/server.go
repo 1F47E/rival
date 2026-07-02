@@ -22,6 +22,7 @@ var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 type sessionGroup struct {
 	ID           string             `json:"id"`
 	IsGroup      bool               `json:"is_group"`
+	Kind         string             `json:"kind"` // group kind: "megareview" or "plan" ("" for solo)
 	Sessions     []*session.Session `json:"sessions"`
 	Status       string             `json:"status"`
 	CLI          string             `json:"cli"`
@@ -154,7 +155,10 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 		}
 
 		if g.IsGroup {
-			g.CLI = "mega"
+			// Derive the group kind + engines from the sessions so a plan group
+			// ("codex+claude-fable", kind "plan") is not mislabelled a megareview.
+			g.Kind = groupKind(b.sessions)
+			g.CLI = groupCLIs(b.sessions)
 			g.Models = groupModels(b.sessions)
 		} else {
 			g.CLI = primary.CLI
@@ -185,6 +189,42 @@ func groupStatus(sessions []*session.Session) string {
 		}
 	}
 	return "completed"
+}
+
+// groupKind returns the group kind: "plan" if any session is a plan review,
+// otherwise "megareview". Plan groups run codex + claude-fable.
+func groupKind(sessions []*session.Session) string {
+	for _, s := range sessions {
+		if s.Mode == "plan" {
+			return "plan"
+		}
+	}
+	return "megareview"
+}
+
+// groupEngineLabel names one session's engine for group display. Fable runs
+// through the Claude CLI (cli == "claude") but is distinguished by its model id
+// and shown as "claude-fable".
+func groupEngineLabel(s *session.Session) string {
+	if s.Model == config.FableModel {
+		return "claude-fable"
+	}
+	return s.CLI
+}
+
+// groupCLIs returns the group's distinct engines joined with "+", e.g.
+// "codex+antigravity" or "codex+claude-fable".
+func groupCLIs(sessions []*session.Session) string {
+	seen := map[string]bool{}
+	var clis []string
+	for _, s := range sessions {
+		label := groupEngineLabel(s)
+		if label != "" && !seen[label] {
+			seen[label] = true
+			clis = append(clis, label)
+		}
+	}
+	return strings.Join(clis, "+")
 }
 
 func groupModels(sessions []*session.Session) string {

@@ -1,14 +1,16 @@
 ---
 name: rival-plan
-version: 3.14.2
-description: Review a plan/spec markdown document with Codex via the rival binary — rates it 1-10 and finds bugs + gaps. Use only when the user explicitly invokes /rival-plan.
+version: 3.14.3
+description: Review a plan/spec markdown document with Codex AND claude-fable in parallel via the rival binary — each rates it 1-10 and finds bugs + gaps, both results shown. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
 ---
 
-# Plan Reviewer (rival binary)
+# Plan Reviewer (rival binary) — codex + claude-fable
 
-Review a single plan/spec markdown file with OpenAI Codex via the `rival` Go binary. Codex rates the plan 1-10 and returns numbered findings (crit/high/med/low). The run is detached and watched in the background — this skill does not block your session.
+Review a single plan/spec markdown file with **both** OpenAI Codex and Anthropic claude-fable via the `rival` Go binary, in parallel. Each engine rates the plan 1-10 and returns numbered findings (crit/high/med/low); both results are printed side by side. If one engine is unavailable, the other still runs and the missing one is reported as skipped. The run is detached and watched in the background — this skill does not block your session.
+
+For a single-engine review use `/rival-plan-codex` (codex only) or `/rival-plan-fable` (claude-fable only).
 
 ## Instructions
 
@@ -19,10 +21,11 @@ Review a single plan/spec markdown file with OpenAI Codex via the `rival` Go bin
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-plan path/to/plan.md` — review a plan/spec doc with codex (rate 1-10, find bugs + gaps)
+> - `/rival-plan path/to/plan.md` — review a plan/spec doc with codex + claude-fable (each rates 1-10, finds bugs + gaps)
 > - `/rival-plan` — show this usage info
 >
 > Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.
+> Both engines run in parallel; an unavailable engine is skipped, not fatal.
 
 ### Execute — launch detached, then watch in the background
 
