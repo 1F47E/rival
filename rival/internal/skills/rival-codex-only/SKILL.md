@@ -1,6 +1,6 @@
 ---
 name: rival-codex-only
-version: 3.15.0
+version: 3.16.0
 description: Run Codex through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-codex.
 argument-hint: "[-re level] [review [scope] | prompt]"
 allowed-tools: Bash, Read
