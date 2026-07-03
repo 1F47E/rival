@@ -139,7 +139,9 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	var logSections strings.Builder
 
 	for _, sess := range item.Sessions {
-		label := strings.ToUpper(sess.CLI) + " REVIEW"
+		// Label by engine (opencode's 3 models each get their short model name)
+		// so the per-reviewer log blocks are distinguishable, not 3× "OPENCODE".
+		label := strings.ToUpper(groupEngineLabel(sess)) + " REVIEW"
 		if sess.Status == "failed" && sess.ErrorMsg != "" {
 			label += " (FAILED)"
 		}

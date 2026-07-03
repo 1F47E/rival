@@ -123,3 +123,73 @@ func TestClaudeAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestOpencodeReviewerList_Default(t *testing.T) {
+	t.Setenv("RIVAL_OPENCODE_MODELS", "")
+	got := OpencodeReviewerList()
+	if len(got) != 3 {
+		t.Fatalf("default roster size = %d, want 3", len(got))
+	}
+	if got[0].Model != "opencode/glm-5.2" || got[0].Role != "arch_security" {
+		t.Errorf("first default reviewer = %+v", got[0])
+	}
+}
+
+func TestOpencodeProviderConfigKeyFromEnv(t *testing.T) {
+	t.Setenv("RIVAL_OPENCODE_API_KEY", "  sk-test-key  ")
+	if got := OpencodeAPIKey(); got != "sk-test-key" {
+		t.Errorf("OpencodeAPIKey() = %q, want trimmed sk-test-key", got)
+	}
+	t.Setenv("RIVAL_OPENCODE_API_KEY", "")
+	if got := OpencodeAPIKey(); got != "" {
+		t.Errorf("OpencodeAPIKey() with empty env = %q, want empty", got)
+	}
+}
+
+func TestOpencodeReviewerList_Override(t *testing.T) {
+	t.Setenv("RIVAL_OPENCODE_MODELS", " opencode-go/glm-5.2:bug_hunter , opencode-go/deepseek-v4-flash , opencode-go/glm-5.2 ")
+	got := OpencodeReviewerList()
+	// glm appears twice → deduped to one; flash gets default role.
+	if len(got) != 2 {
+		t.Fatalf("override roster size = %d, want 2 (deduped), got %+v", len(got), got)
+	}
+	if got[0].Model != "opencode-go/glm-5.2" || got[0].Role != "bug_hunter" {
+		t.Errorf("first override reviewer = %+v (want glm:bug_hunter)", got[0])
+	}
+	if got[1].Model != "opencode-go/deepseek-v4-flash" || got[1].Role != "code_quality" {
+		t.Errorf("second override reviewer = %+v (want flash:code_quality default)", got[1])
+	}
+}
+
+func TestOpencodeReviewerList_BlankOverrideFallsBackToDefault(t *testing.T) {
+	t.Setenv("RIVAL_OPENCODE_MODELS", "  , ,  ")
+	if got := OpencodeReviewerList(); len(got) != 3 {
+		t.Fatalf("blank override should fall back to default roster, got %d", len(got))
+	}
+}
+
+func TestEngineLabel(t *testing.T) {
+	cases := []struct{ cli, model, want string }{
+		{"codex", "gpt-5.5", "codex"},
+		{"antigravity", "gemini-3.5-flash", "antigravity"},
+		{"claude", FableModel, "claude-fable"},
+		{"opencode", "opencode-go/glm-5.2", "glm-5.2"},
+		{"opencode", "opencode-go/deepseek-v4-pro", "deepseek-v4-pro"},
+		{"opencode", "", "opencode"},
+	}
+	for _, c := range cases {
+		if got := EngineLabel(c.cli, c.model); got != c.want {
+			t.Errorf("EngineLabel(%q,%q) = %q, want %q", c.cli, c.model, got, c.want)
+		}
+	}
+}
+
+func TestOpencodeReviewerList_UnknownRoleFallsBackToBugHunter(t *testing.T) {
+	// A typo'd role would otherwise reach BuildRolePrompt (no default branch) and
+	// build a reviewer prompt with no role instructions.
+	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode-go/glm-5.2:bughunter")
+	got := OpencodeReviewerList()
+	if len(got) != 1 || got[0].Role != "bug_hunter" {
+		t.Fatalf("unknown role should normalize to bug_hunter, got %+v", got)
+	}
+}

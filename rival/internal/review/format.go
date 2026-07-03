@@ -3,6 +3,8 @@ package review
 import (
 	"fmt"
 	"strings"
+
+	"github.com/1F47E/rival/internal/config"
 )
 
 // FormatConsole formats the consilium output for terminal display.
@@ -32,16 +34,17 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 
 	sb.WriteString(fmt.Sprintf("Recommendation: %s — %s\n\n", output.Recommendation.Status, output.Recommendation.Summary))
 
-	// Reviewer info
+	// Reviewer info — label by engine so opencode's 3 models are distinct
+	// (glm-5.2, deepseek-v4-pro, …) instead of 3× "opencode".
 	var reviewers []string
 	for _, input := range inputs {
-		reviewers = append(reviewers, fmt.Sprintf("%s (%s)", input.CLI, input.Role))
+		reviewers = append(reviewers, fmt.Sprintf("%s (%s)", config.EngineLabel(input.CLI, input.Model), input.Role))
 	}
 	sb.WriteString(fmt.Sprintf("Reviewed by: %s\n", strings.Join(reviewers, ", ")))
 	if len(skipped) > 0 {
 		var parts []string
 		for _, s := range skipped {
-			parts = append(parts, fmt.Sprintf("%s (%s)", s.CLI, s.Reason))
+			parts = append(parts, fmt.Sprintf("%s (%s)", s.Label(), s.Reason))
 		}
 		sb.WriteString(fmt.Sprintf("Skipped: %s\n", strings.Join(parts, ", ")))
 	}

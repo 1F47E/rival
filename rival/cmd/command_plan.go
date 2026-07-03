@@ -39,6 +39,7 @@ func init() {
 	commandPlanCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	commandPlanCmd.Flags().StringSlice("cli", defaultPlanCLIs, "plan review engine(s): codex, fable (comma-separated)")
 	commandCmd.AddCommand(commandPlanCmd)
+	commandPlanCmd.Flags().String("effort", config.DefaultEffort, "reasoning effort: low, medium, high, xhigh")
 }
 
 // parsePlanCLIs validates and de-duplicates the --cli values, preserving order.
@@ -69,6 +70,13 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 	rawCLIs, _ := cmd.Flags().GetStringSlice("cli")
+	effort, _ := cmd.Flags().GetString("effort")
+
+	if !config.IsValidEffort(effort) {
+		err := fmt.Errorf("invalid effort %q, must be one of: %v", effort, config.ValidEfforts)
+		_, _ = fmt.Fprintln(os.Stdout, err.Error())
+		return &ExitCodeError{Code: 1, Err: err}
+	}
 
 	clis, err := parsePlanCLIs(rawCLIs)
 	if err != nil {
@@ -106,7 +114,7 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunPlanReview(ctx, absPath, config.DefaultEffort, workdir, groupID, noQueue, clis)
+	result, err := review.RunPlanReview(ctx, absPath, effort, workdir, groupID, noQueue, clis)
 	if err != nil {
 		return err
 	}
