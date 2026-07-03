@@ -2,6 +2,62 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [v3.16.0] — 2026-07-03
+
+### Added — OpenCode Zen provider + API key
+
+The opencode reviewer roster now targets the **OpenCode Zen** provider (`opencode/*` models:
+GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash). The Zen API key is supplied via
+`RIVAL_OPENCODE_API_KEY` — rival injects it into the opencode provider config per run (the
+opencode CLI's own Zen auth resolution is unreliable, so a provider-config override via
+`OPENCODE_CONFIG_CONTENT` is used instead). The key is read only from that env var, never
+from a repo file, and `OPENCODE_CONFIG_CONTENT` is stripped from the inherited env so a
+reviewed repo can't inject its own. Without the env var, opencode falls back to its own
+stored credential.
+
+### Added — multiple opencode models as parallel megareview reviewers
+
+Megareview now runs a **roster of opencode models** in parallel instead of a single one, so a
+default review is **five reviewers**: Codex + Antigravity + three opencode models —
+GLM-5.2 (arch/security), DeepSeek V4 Pro (bug hunter), DeepSeek V4 Flash (code quality) —
+all merged by the consilium judge. (No Docker: each `opencode run` is already an isolated
+process with its own server + session, so N models parallelize as goroutines.)
+
+- `config.OpencodeReviewerList()` — the roster, overridable via `RIVAL_OPENCODE_MODELS`
+  (comma list of `model[:role]`; role defaults to `code_quality`; duplicates dropped; a
+  blank value falls back to the default roster).
+- `executor.RunOpencode` takes the model as a parameter (was hardcoded to GLM-5.2).
+- Runner: one reviewer per roster model, all under the single `opencode` cli — the cli
+  string stays `"opencode"` (one dispatch case, one display branch) while the model + role
+  are carried per session. `pickJudge` returns the concrete model too, so an opencode judge
+  uses a model that actually produced a review (not a 429'd one).
+- Display: TUI, web, and the console "Reviewed by" line label opencode reviewers by their
+  short model name (`glm-5.2`, `deepseek-v4-pro`, …) so the three are distinguishable rather
+  than three identical `opencode` rows (`config.EngineLabel`).
+- Correlated-failure signal: all opencode models share one `opencode-go` credential/quota, so
+  a 429 tends to take out the whole family; when every opencode reviewer fails, that is logged
+  distinctly from losing a single reviewer.
+
+opencode reviewers run **workdir-scoped** now: `external_directory` is denied (was allowed),
+so a prompt-injected repo can no longer make a reviewer read host secrets outside the
+reviewed workdir (`~/.aws/credentials`, a sibling repo's `.env`) and exfiltrate them through
+the review output. `--pure` also disables reviewed-repo `.opencode` config so it can't weaken
+the sandbox. Both found by the megareview reviewing this change's own diff.
+
+### Fixed
+
+- `runConsilium` now dispatches an opencode judge with the correct concrete model (the
+  v3.15.0 plan generalized only the reviewer switch, so a re-selected opencode judge would
+  have hit the `unsupported judge CLI` path — exactly in the codex+antigravity-both-429
+  degradation case). Caught by opencode/GLM reviewing this change's plan.
+- Opencode judge selection is **deterministic** — the highest-priority successful model in
+  the roster order judges, not whichever model's goroutine finished first (that let the
+  fastest/weakest model judge over a preferred one).
+- An unknown role in `RIVAL_OPENCODE_MODELS` (a typo) is normalized to `bug_hunter` instead
+  of building a reviewer prompt with no role instructions.
+- Skipped opencode reviewers are labelled by model (`glm-5.2`, `deepseek-v4-pro`, …) so the
+  three failures are distinguishable rather than three identical `opencode` entries.
+
 ## [v3.15.0] — 2026-07-02
 
 ### Added — opencode / GLM-5.2 as a third megareview reviewer

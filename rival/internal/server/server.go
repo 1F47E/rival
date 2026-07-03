@@ -206,10 +206,7 @@ func groupKind(sessions []*session.Session) string {
 // through the Claude CLI (cli == "claude") but is distinguished by its model id
 // and shown as "claude-fable".
 func groupEngineLabel(s *session.Session) string {
-	if s.Model == config.FableModel {
-		return "claude-fable"
-	}
-	return s.CLI
+	return config.EngineLabel(s.CLI, s.Model)
 }
 
 // groupCLIs returns the group's distinct engines joined with "+", e.g.

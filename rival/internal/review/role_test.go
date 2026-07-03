@@ -36,20 +36,44 @@ func TestPickJudge(t *testing.T) {
 		return r
 	}
 	cases := []struct {
-		name   string
-		inputs []ReviewInput
-		want   string
+		name      string
+		inputs    []ReviewInput
+		wantCLI   string
+		wantModel string
 	}{
-		{"codex preferred", in("opencode", "antigravity", "codex"), "codex"},
-		{"antigravity when no codex", in("opencode", "antigravity"), "antigravity"},
-		{"opencode when it's the only one", in("opencode"), "opencode"},
-		{"empty when no preferred cli succeeded", in("gemini", "claude"), ""},
-		{"empty on no inputs", nil, ""},
+		{"codex preferred", in("opencode", "antigravity", "codex"), "codex", ""},
+		{"antigravity when no codex", in("opencode", "antigravity"), "antigravity", ""},
+		{"opencode when it's the only one", in("opencode"), "opencode", ""},
+		{"empty when no preferred cli succeeded", in("gemini", "claude"), "", ""},
+		{"empty on no inputs", nil, "", ""},
+		{
+			// Deterministic by ROSTER order (glm is first in the default roster),
+			// not by which goroutine finished first — here deepseek-pro is listed
+			// first in `inputs` (completion order) but glm must still win.
+			"opencode judge picks highest roster model, not first-completed",
+			[]ReviewInput{
+				{CLI: "opencode", Model: "opencode/deepseek-v4-pro"},
+				{CLI: "opencode", Model: "opencode/glm-5.2"},
+			},
+			"opencode", "opencode/glm-5.2",
+		},
+		{
+			// If glm 429'd and only deepseek-pro survived, judge with deepseek-pro.
+			"opencode judge falls to next roster model when top one failed",
+			[]ReviewInput{
+				{CLI: "opencode", Model: "opencode/deepseek-v4-pro"},
+			},
+			"opencode", "opencode/deepseek-v4-pro",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := pickJudge(tc.inputs); got != tc.want {
-				t.Errorf("pickJudge(%v) = %q, want %q", tc.inputs, got, tc.want)
+			gotCLI, gotModel := pickJudge(tc.inputs)
+			if gotCLI != tc.wantCLI {
+				t.Errorf("pickJudge(%v) cli = %q, want %q", tc.inputs, gotCLI, tc.wantCLI)
+			}
+			if gotModel != tc.wantModel {
+				t.Errorf("pickJudge(%v) model = %q, want %q", tc.inputs, gotModel, tc.wantModel)
 			}
 		})
 	}

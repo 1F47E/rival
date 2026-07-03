@@ -2,7 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, GLM-5.2 via opencode, or Claude Opus 4.8 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + Antigravity + opencode/GLM in parallel and merges their findings with a consilium judge.
+Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, GLM-5.2 / DeepSeek V4 via opencode, or Claude Opus 4.8 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + Antigravity + three opencode models (GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash) in parallel and merges their findings with a consilium judge.
 
 ## Install
 
@@ -30,17 +30,17 @@ Use `rival install --force` to overwrite without prompting.
 
 - [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login` — used by megareview, `/rival-codex-only`, and `/rival-plan-codex`
 - Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — used by megareview and `/rival-antigravity-only`
-- [opencode CLI](https://opencode.ai) (`opencode`): install + authenticate (provides GLM-5.2 via the "OpenCode Go" credential) — used by megareview
+- [opencode CLI](https://opencode.ai) (`opencode`): install + authenticate — used by megareview (3 OpenCode Zen models by default: GLM-5.2, DeepSeek V4 Pro/Flash). Set `RIVAL_OPENCODE_API_KEY` to an OpenCode Zen key for rival to bill Zen; otherwise opencode uses its own stored credential.
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below) — optional standalone
 
-You only need the CLIs for the commands you use. **Megareview uses Codex + Antigravity + opencode/GLM** (any that are unavailable are skipped).
+You only need the CLIs for the commands you use. **Megareview uses Codex + Antigravity + opencode (3 models)** — any that are unavailable are skipped. The opencode roster is overridable via `RIVAL_OPENCODE_MODELS` (comma list of `model[:role]`); the Zen API key comes from `RIVAL_OPENCODE_API_KEY`.
 
 ## Usage
 
 ### Claude Code Skills
 
-**Default review** (runs Codex + Antigravity + opencode/GLM + consilium judge):
+**Default review** (runs Codex + Antigravity + 3 opencode models + consilium judge):
 
 ```
 /rival-review                              — review with Codex + Antigravity + opencode (auto-detects changed files)
@@ -77,7 +77,7 @@ Each rates the plan 1-10 and returns numbered findings. (The underlying `rival c
 
 ### How Reviews Work
 
-When you run a review, Codex, Antigravity, and opencode/GLM get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
+When you run a review, Codex, Antigravity, and the opencode models get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
@@ -106,7 +106,11 @@ The reviewer will figure out what to look at, explore the relevant code, and giv
 Megareview assigns **specialized roles** to each reviewer:
 
 - **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
-- **Antigravity → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
+- **Antigravity → Bug Hunter** — a second bug-hunting pass from a different model.
+- **opencode / GLM-5.2 → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
+- **opencode / DeepSeek V4 Pro → Bug Hunter** and **opencode / DeepSeek V4 Flash → Code Quality** round out the roster.
+
+(The opencode model roster + roles are overridable via `RIVAL_OPENCODE_MODELS`; the OpenCode Zen key comes from `RIVAL_OPENCODE_API_KEY`. All three opencode models share one credential/quota, so under load they may hit a 429 together — rival skips whichever reviewers fail and proceeds with the rest.)
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
 
@@ -158,7 +162,7 @@ The consilium judge runs via Codex, falling back to Antigravity if Codex is unav
 echo 'explain the auth flow' | rival command codex --workdir .
 echo 'explain the auth flow' | rival command antigravity --workdir .
 
-# Review via megareview (Codex + Antigravity + opencode/GLM in parallel)
+# Review via megareview (Codex + Antigravity + 3 opencode models in parallel)
 echo 'src/api/' | rival command megareview --workdir .
 
 # Rate a plan/spec doc 1-10 (codex + claude-fable by default)
@@ -382,7 +386,7 @@ the key and its credit balance.
 |-----|-------|---------------|---------|
 | Codex | `gpt-5.5` | xhigh | megareview, consilium judge, `/rival-codex-only`, `/rival-plan-codex` |
 | Antigravity | `gemini-3.5-flash` | xhigh | megareview, judge fallback, `/rival-antigravity-only` |
-| opencode | `opencode-go/glm-5.2` | xhigh→max variant | megareview (arch/security role) |
+| opencode (Zen) | `opencode/glm-5.2` (arch/sec), `opencode/deepseek-v4-pro` (bugs), `opencode/deepseek-v4-flash` (quality) | xhigh→max variant | megareview — 3 models in parallel; roster via `RIVAL_OPENCODE_MODELS`, key via `RIVAL_OPENCODE_API_KEY` |
 | Gemini | `gemini-3.1-pro-preview` | xhigh | standalone `rival command gemini` only |
 | Claude | `claude-opus-4-8[1m]` | max | standalone only |
 | claude-fable | `claude-fable-5` | max | `/rival-plan-fable` |

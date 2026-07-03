@@ -16,10 +16,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// SkippedCLI records a CLI that was unavailable during megareview.
+// SkippedCLI records a reviewer that was unavailable/failed during megareview.
+// Model is the concrete model (set for runtime failures) so opencode's several
+// models are distinguishable in the skipped list rather than repeated "opencode".
 type SkippedCLI struct {
 	CLI    string
+	Model  string
 	Reason string
+}
+
+// Label returns the display label for a skipped reviewer, distinguishing
+// opencode models by their short model name.
+func (s SkippedCLI) Label() string {
+	return config.EngineLabel(s.CLI, s.Model)
 }
 
 // RunResult holds the outcome of the full mega review pipeline.
@@ -41,10 +50,15 @@ type cliResult struct {
 	Err       error
 }
 
-// reviewerPlan pairs a pre-created session with the CLI it will run.
+// reviewerPlan pairs a pre-created session with the CLI it will run. model and
+// role are carried explicitly so that a single cli ("opencode") can back several
+// reviewers, one per opencode model — the cli string stays "opencode" (one
+// dispatch case, one display branch) while model/role distinguish them.
 type reviewerPlan struct {
-	cli  string
-	sess *session.Session
+	cli   string
+	model string
+	role  Role
+	sess  *session.Session
 }
 
 // RunMegaReview runs the full pipeline: enqueue → spawn reviewers → parse → consilium → filter.
@@ -110,28 +124,32 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	// Create reviewer sessions up front (status "queued") so they appear in
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
-	addReviewer := func(cli string) error {
-		sess, err := newReviewerSession(cli, scope, effort, workdir, groupID)
+	addReviewer := func(cli, model string, role Role) error {
+		sess, err := newReviewerSession(cli, model, role, scope, effort, workdir, groupID)
 		if err != nil {
 			return err
 		}
-		plans = append(plans, reviewerPlan{cli: cli, sess: sess})
+		plans = append(plans, reviewerPlan{cli: cli, model: sess.Model, role: role, sess: sess})
 		sessions = append(sessions, sess)
 		return nil
 	}
 	if codexOK {
-		if err := addReviewer("codex"); err != nil {
+		if err := addReviewer("codex", "", ""); err != nil {
 			return nil, err
 		}
 	}
 	if antigravityOK {
-		if err := addReviewer("antigravity"); err != nil {
+		if err := addReviewer("antigravity", "", ""); err != nil {
 			return nil, err
 		}
 	}
+	// opencode: one reviewer per model in the roster (all share the single
+	// opencode CLI + credential), each with its own model + role.
 	if opencodeOK {
-		if err := addReviewer("opencode"); err != nil {
-			return nil, err
+		for _, r := range config.OpencodeReviewerList() {
+			if err := addReviewer("opencode", r.Model, Role(r.Role)); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -169,7 +187,7 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 		wg.Add(1)
 		go func(pl reviewerPlan) {
 			defer wg.Done()
-			results <- runReviewer(ctx, pl.sess, pl.cli, scope, effort, workdir)
+			results <- runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, effort, workdir)
 		}(p)
 	}
 
@@ -180,21 +198,21 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	var inputs []ReviewInput
 	for r := range results {
 		if r.Err != nil {
-			log.Error().Str("cli", r.CLI).Err(r.Err).Msg("reviewer failed")
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: r.Err.Error()})
+			log.Error().Str("cli", r.CLI).Str("model", r.Model).Err(r.Err).Msg("reviewer failed")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: r.Err.Error()})
 			continue
 		}
 		if r.ExitCode != 0 {
-			log.Error().Str("cli", r.CLI).Int("exit_code", r.ExitCode).Msg("reviewer exited with error")
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
+			log.Error().Str("cli", r.CLI).Str("model", r.Model).Int("exit_code", r.ExitCode).Msg("reviewer exited with error")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
 			continue
 		}
 		// agy exits 0 on a 429; detect quota exhaustion from the captured log so
 		// a quota-blocked reviewer is reported as skipped, not counted as a
 		// successful (but empty) review that silently degrades the consilium.
 		if executor.IsQuotaExhausted(r.RawOutput) {
-			log.Error().Str("cli", r.CLI).Msg("reviewer hit provider quota/rate limit (429) — skipping")
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
+			log.Error().Str("cli", r.CLI).Str("model", r.Model).Msg("reviewer hit provider quota/rate limit (429) — skipping")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
 			continue
 		}
 		// agy can exit 0 having produced nothing at all (empty stdout + empty log,
@@ -202,8 +220,8 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 		// not a successful one: count it as skipped so the consilium isn't fed a
 		// no-op input and the TUI shows why instead of a blank "(empty log)".
 		if strings.TrimSpace(r.RawOutput) == "" {
-			log.Error().Str("cli", r.CLI).Msg("reviewer produced empty output — skipping")
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
+			log.Error().Str("cli", r.CLI).Str("model", r.Model).Msg("reviewer produced empty output — skipping")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
 			continue
 		}
 
@@ -225,17 +243,44 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 		return nil, fmt.Errorf("all reviewers failed or hit quota limits (see skipped reasons): %s", formatSkipped(skipped))
 	}
 
+	// Correlated-failure signal: all opencode models share ONE opencode-go
+	// credential/quota bucket, so a 429 tends to take out the whole family at
+	// once. If we planned opencode reviewers but none produced a review, log it
+	// distinctly — the review silently degrading to codex+antigravity is worth
+	// surfacing separately from losing a single reviewer.
+	opencodePlanned, opencodeSucceeded := 0, 0
+	for _, p := range plans {
+		if p.cli == "opencode" {
+			opencodePlanned++
+		}
+	}
+	for _, in := range inputs {
+		if in.CLI == "opencode" {
+			opencodeSucceeded++
+		}
+	}
+	if opencodePlanned > 0 && opencodeSucceeded == 0 {
+		log.Warn().Int("planned", opencodePlanned).Msg("all opencode reviewers failed (they share one opencode-go credential/quota — likely a correlated 429); review degraded to the other CLIs")
+	}
+
 	// Re-select the judge from the CLIs that ACTUALLY produced a review. The
 	// preflight-time choice above can be stale: a reviewer that preflighted OK
 	// can still 429 or fail at runtime, and judging with a quota-dead CLI would
 	// fail the whole review even though another reviewer succeeded. Prefer
 	// codex → antigravity → opencode among the successful inputs; fall back to
 	// the preflight choice only if none of the preferred CLIs succeeded.
-	if picked := pickJudge(inputs); picked != "" && picked != judgeCLI {
-		log.Info().Str("from", judgeCLI).Str("to", picked).Msg("re-selecting consilium judge to a CLI that produced a review")
-		judgeCLI = picked
-		consiliumSess.CLI = picked
-		consiliumSess.Model = modelForCLI(picked)
+	if pickedCLI, pickedModel := pickJudge(inputs); pickedCLI != "" {
+		if pickedCLI != judgeCLI {
+			log.Info().Str("from", judgeCLI).Str("to", pickedCLI).Msg("re-selecting consilium judge to a CLI that produced a review")
+			judgeCLI = pickedCLI
+			consiliumSess.CLI = pickedCLI
+		}
+		// Always align the judge's model to one that actually produced a review —
+		// e.g. the pre-created opencode judge defaults to glm, but if only
+		// deepseek-pro succeeded, judge with deepseek-pro (glm may have 429'd).
+		if pickedModel != "" {
+			consiliumSess.Model = pickedModel
+		}
 	}
 
 	log.Info().Int("successful", len(inputs)).Str("judge", judgeCLI).Msg("reviewers complete, running consilium")
@@ -260,10 +305,16 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	}, nil
 }
 
-// newReviewerSession creates a queued session for one reviewer CLI.
-func newReviewerSession(cli, scope, effort, workdir, groupID string) (*session.Session, error) {
-	role := RoleForCLI(cli)
-	model := modelForCLI(cli)
+// newReviewerSession creates a queued session for one reviewer. model and role
+// may be given explicitly (for opencode, where the cli "opencode" backs several
+// models); an empty model/role is derived from the cli via modelForCLI/RoleForCLI.
+func newReviewerSession(cli, model string, role Role, scope, effort, workdir, groupID string) (*session.Session, error) {
+	if role == "" {
+		role = RoleForCLI(cli)
+	}
+	if model == "" {
+		model = modelForCLI(cli)
+	}
 	prompt := BuildRolePrompt(role, scope)
 	sess, err := session.NewQueued(cli, "megareview", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
@@ -350,9 +401,16 @@ func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSess
 	return m.Release, nil
 }
 
-func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort, workdir string) cliResult {
-	role := RoleForCLI(cli)
-	model := modelForCLI(cli)
+// runReviewer runs one reviewer. model and role are passed explicitly so a single
+// cli ("opencode") can back several models; an empty model/role falls back to the
+// cli-derived default.
+func runReviewer(ctx context.Context, sess *session.Session, cli, model string, role Role, scope, effort, workdir string) cliResult {
+	if role == "" {
+		role = RoleForCLI(cli)
+	}
+	if model == "" {
+		model = modelForCLI(cli)
+	}
 	prompt := BuildRolePrompt(role, scope)
 
 	defer func() {
@@ -361,7 +419,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort,
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("cli", cli).Str("role", string(role)).Msg("starting reviewer")
+	log.Info().Str("session", sess.ID).Str("cli", cli).Str("model", model).Str("role", string(role)).Msg("starting reviewer")
 
 	var err error
 	var result *executor.Result
@@ -371,7 +429,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, scope, effort,
 	case "antigravity":
 		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
 	case "opencode":
-		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, nil)
+		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, model, nil)
 	default:
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
@@ -453,7 +511,10 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 	case "antigravity":
 		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
 	case "opencode":
-		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, nil)
+		// The consilium session carries the concrete opencode model to judge with
+		// (set when the judge is selected/re-selected); RunOpencode falls back to
+		// the default model if it is somehow empty.
+		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, sess.Model, nil)
 	default:
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
@@ -494,20 +555,42 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 }
 
 // pickJudge chooses a consilium judge from the CLIs that produced a successful
-// review, in preference order codex → antigravity → opencode. It returns "" if
-// none of the preferred CLIs are among the successful inputs, letting the caller
-// keep its earlier (preflight-time) choice.
-func pickJudge(inputs []ReviewInput) string {
-	succeeded := make(map[string]bool, len(inputs))
+// review, in preference order codex → antigravity → opencode. It returns the cli
+// and the concrete model to judge with. For opencode it picks the successful
+// model highest in the roster order (config.OpencodeReviewerList), so the choice
+// is DETERMINISTIC — not whichever model's goroutine happened to finish first
+// (that let the fastest/weakest model, e.g. flash, judge over a preferred one).
+// Returns ("","") if none of the preferred CLIs are among the successful inputs,
+// letting the caller keep its earlier (preflight) choice.
+func pickJudge(inputs []ReviewInput) (cli, model string) {
+	succeeded := make(map[string]bool, len(inputs)) // opencode models that succeeded
+	haveCLI := make(map[string]string, len(inputs)) // cli → any successful model
 	for _, in := range inputs {
-		succeeded[in.CLI] = true
-	}
-	for _, cli := range []string{"codex", "antigravity", "opencode"} {
-		if succeeded[cli] {
-			return cli
+		if in.CLI == "opencode" {
+			succeeded[in.Model] = true
+		}
+		if _, ok := haveCLI[in.CLI]; !ok {
+			haveCLI[in.CLI] = in.Model
 		}
 	}
-	return ""
+	for _, c := range []string{"codex", "antigravity", "opencode"} {
+		if _, ok := haveCLI[c]; !ok {
+			continue
+		}
+		if c != "opencode" {
+			return c, haveCLI[c]
+		}
+		// Pick the highest-priority opencode model (roster order) that succeeded.
+		for _, r := range config.OpencodeReviewerList() {
+			if succeeded[r.Model] {
+				return "opencode", r.Model
+			}
+		}
+		// A successful opencode model not in the current roster (e.g. roster
+		// changed mid-run) — fall back to any successful one.
+		return "opencode", haveCLI["opencode"]
+	}
+	return "", ""
 }
 
 func modelForCLI(cli string) string {

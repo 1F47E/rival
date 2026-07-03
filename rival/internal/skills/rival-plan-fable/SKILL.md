@@ -8,7 +8,7 @@ allowed-tools: Bash, Read
 
 # Plan Reviewer (rival binary) — claude-fable only
 
-Review a single plan/spec markdown file with Anthropic claude-fable (the `claude-fable-5` model, run through the Claude Code CLI) via the `rival` Go binary. It rates the plan 1-10 and returns numbered findings (crit/high/med/low). The run is detached and watched in the background — this skill does not block your session.
+Review a single plan/spec markdown file with Anthropic claude-fable (the `claude-fable-5` model, run through the Claude Code CLI) via the `rival` Go binary. It rates the plan 1-10 and returns numbered findings (crit/high/med/low). Runs at **low** reasoning effort by default (fast/cheap). The run is detached and watched in the background — this skill does not block your session.
 
 For a codex review instead, use `/rival-plan-codex`.
 
@@ -24,7 +24,7 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 > - `/rival-plan-fable path/to/plan.md` — review a plan/spec doc with claude-fable (rate 1-10, find bugs + gaps)
 > - `/rival-plan-fable` — show this usage info
 >
-> Input is a single path to a markdown plan/spec file. Reasoning effort is fixed at xhigh.
+> Input is a single path to a markdown plan/spec file. Reasoning effort defaults to low.
 
 ### Execute — launch detached, then watch in the background
 
@@ -42,7 +42,7 @@ RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX
 cat <<"$DELIM" >"$RIVAL_IN"
 $ARGUMENTS
 $DELIM
-rival command plan --cli fable --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command plan --cli fable --effort low --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

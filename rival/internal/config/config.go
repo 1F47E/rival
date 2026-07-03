@@ -18,7 +18,7 @@ const (
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	AntigravityModel     = "gemini-3.5-flash"
-	OpencodeModel        = "opencode-go/glm-5.2"
+	OpencodeModel        = "opencode/glm-5.2"
 	ClaudeDockerImage    = "rival-claude"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
@@ -52,6 +52,128 @@ var OpencodeVariantLevel = map[string]string{
 	"medium": "minimal",
 	"high":   "high",
 	"xhigh":  "max",
+}
+
+// EngineLabel returns a short human label for a reviewer engine, given its cli
+// and model. opencode backs several models under the single cli "opencode", so
+// its label comes from the model (the provider prefix is stripped, e.g.
+// "opencode-go/glm-5.2" → "glm-5.2"). Fable (cli "claude"/"fable", model
+// claude-fable-5) shows as "claude-fable". Everything else is just the cli.
+func EngineLabel(cli, model string) string {
+	switch {
+	case cli == "opencode":
+		return OpencodeShortLabel(model)
+	case model == FableModel:
+		return "claude-fable"
+	default:
+		return cli
+	}
+}
+
+// OpencodeShortLabel strips the opencode provider prefix from a model id for
+// display, e.g. "opencode-go/glm-5.2" → "glm-5.2", "opencode/deepseek-v4-pro" →
+// "deepseek-v4-pro". An empty model falls back to "opencode".
+func OpencodeShortLabel(model string) string {
+	if model == "" {
+		return "opencode"
+	}
+	if i := strings.LastIndex(model, "/"); i >= 0 && i+1 < len(model) {
+		return model[i+1:]
+	}
+	return model
+}
+
+// OpencodeReviewer is one opencode-provided model run as a megareview reviewer.
+// Model is the opencode model id (e.g. "opencode-go/glm-5.2"); Role is the
+// review lens (a review.Role string) so the roster can diversify coverage across
+// the models.
+type OpencodeReviewer struct {
+	Model string
+	Role  string
+}
+
+// defaultOpencodeReviewers is the built-in opencode reviewer roster: three
+// models via the OpenCode Zen provider (the "opencode/" prefix), each with a
+// distinct role so they don't all hunt the same class of issue. Overridable via
+// RIVAL_OPENCODE_MODELS. Zen billing uses RIVAL_OPENCODE_API_KEY (see
+// OpencodeAPIKey); without a key opencode falls back to its own stored auth.
+var defaultOpencodeReviewers = []OpencodeReviewer{
+	{Model: "opencode/glm-5.2", Role: "arch_security"},
+	{Model: "opencode/deepseek-v4-pro", Role: "bug_hunter"},
+	{Model: "opencode/deepseek-v4-flash", Role: "code_quality"},
+}
+
+// OpencodeAPIKey returns the API key rival injects into the opencode provider
+// config for reviewer runs (via OPENCODE_CONFIG_CONTENT), from
+// RIVAL_OPENCODE_API_KEY. Empty means "let the opencode CLI use its own stored
+// credential". The key is NEVER read from a repo file — only this env var — so a
+// reviewed repo cannot supply it.
+func OpencodeAPIKey() string {
+	return strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_API_KEY"))
+}
+
+// validReviewerRoles are the roles BuildRolePrompt has instructions for. A role
+// from RIVAL_OPENCODE_MODELS that isn't one of these would build a reviewer
+// prompt with no role instructions, so unknown roles fall back to bug_hunter.
+var validReviewerRoles = map[string]bool{
+	"bug_hunter":    true,
+	"arch_security": true,
+	"code_quality":  true,
+}
+
+// validReviewerRole returns role if it is a known reviewer role, else
+// "bug_hunter". (A user-configured role-prompt override in ~/.rival/config.yaml
+// is honoured at prompt-build time regardless, so a custom role keyed there still
+// works even though this normalizes the roster default.)
+func validReviewerRole(role string) string {
+	if validReviewerRoles[role] {
+		return role
+	}
+	if _, ok := RolePromptOverride(role); ok {
+		return role
+	}
+	return "bug_hunter"
+}
+
+// OpencodeReviewerList returns the opencode reviewer roster for megareview.
+// RIVAL_OPENCODE_MODELS overrides the default: a comma-separated list of entries
+// `model[:role]` (role defaults to "code_quality" when omitted; unknown roles are
+// kept as-is and fall back to bug_hunter at prompt-build time). Duplicate models
+// are dropped, preserving first-seen order. An empty/whitespace override yields
+// the default roster (not an empty one), so a stray env value never disables
+// opencode entirely.
+func OpencodeReviewerList() []OpencodeReviewer {
+	raw := strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_MODELS"))
+	if raw == "" {
+		return defaultOpencodeReviewers
+	}
+	var out []OpencodeReviewer
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		model, role := part, "code_quality"
+		// Split off an optional trailing :role. The model id itself contains a
+		// slash (opencode-go/glm-5.2) but no colon, so the LAST colon (if any)
+		// separates the role.
+		if i := strings.LastIndex(part, ":"); i >= 0 {
+			model = strings.TrimSpace(part[:i])
+			if r := strings.TrimSpace(part[i+1:]); r != "" {
+				role = r
+			}
+		}
+		if model == "" || seen[model] {
+			continue
+		}
+		seen[model] = true
+		out = append(out, OpencodeReviewer{Model: model, Role: validReviewerRole(role)})
+	}
+	if len(out) == 0 {
+		return defaultOpencodeReviewers
+	}
+	return out
 }
 
 // SystemPrompt is prepended as a system instruction to all CLI invocations.
