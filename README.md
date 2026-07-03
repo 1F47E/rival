@@ -67,13 +67,13 @@ You only need the CLIs for the commands you use. **Megareview uses Codex + Antig
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
-/rival-plan-codex path/to/plan.md          — rate the plan 1-10 with codex, surface bugs + gaps
-/rival-plan-fable path/to/plan.md          — same, with claude-fable
+/rival-plan-codex path/to/plan.md          — rate the plan 1-10 with codex (xhigh effort), surface bugs + gaps
+/rival-plan-fable path/to/plan.md          — same, with claude-fable (low effort by default — fast/cheap)
 ```
 
-Each rates the plan 1-10 and returns numbered findings. (The underlying `rival command plan` can still run both engines at once via `--cli codex,fable`, but no dual skill ships.)
+Each rates the plan 1-10 and returns numbered findings. `/rival-plan-codex` runs at xhigh reasoning effort; `/rival-plan-fable` defaults to **low** effort (override with `rival command plan --cli fable --effort <level>`). The underlying `rival command plan` can still run both engines at once via `--cli codex,fable`, but no dual skill ships.
 
-**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default). Plan review is fixed at `xhigh`.
+**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default). `rival command plan` takes `--effort` (default `xhigh`); the `/rival-plan-fable` skill passes `--effort low`.
 
 ### How Reviews Work
 
@@ -165,10 +165,10 @@ echo 'explain the auth flow' | rival command antigravity --workdir .
 # Review via megareview (Codex + Antigravity + 3 opencode models in parallel)
 echo 'src/api/' | rival command megareview --workdir .
 
-# Rate a plan/spec doc 1-10 (codex + claude-fable by default)
+# Rate a plan/spec doc 1-10 (codex + claude-fable by default, xhigh effort)
 echo 'docs/plan.md' | rival command plan --workdir .
-echo 'docs/plan.md' | rival command plan --cli codex --workdir .   # codex only
-echo 'docs/plan.md' | rival command plan --cli fable --workdir .   # claude-fable only
+echo 'docs/plan.md' | rival command plan --cli codex --workdir .              # codex only
+echo 'docs/plan.md' | rival command plan --cli fable --effort low --workdir . # claude-fable, low effort (as /rival-plan-fable does)
 ```
 
 ### TUI Dashboard
@@ -389,7 +389,7 @@ the key and its credit balance.
 | opencode (Zen) | `opencode/glm-5.2` (arch/sec), `opencode/deepseek-v4-pro` (bugs), `opencode/deepseek-v4-flash` (quality) | xhigh→max variant | megareview — 3 models in parallel; roster via `RIVAL_OPENCODE_MODELS`, key via `RIVAL_OPENCODE_API_KEY` |
 | Gemini | `gemini-3.1-pro-preview` | xhigh | standalone `rival command gemini` only |
 | Claude | `claude-opus-4-8[1m]` | max | standalone only |
-| claude-fable | `claude-fable-5` | max | `/rival-plan-fable` |
+| claude-fable | `claude-fable-5` | low (via `/rival-plan-fable`) | `/rival-plan-fable` |
 
 ## Uninstall
 
