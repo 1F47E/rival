@@ -71,7 +71,15 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 		"--variant", variant,
 		"--dir", workdir,
 	}
-	env := []string{"OPENCODE_PERMISSION=" + opencodeReadOnlyPermission}
+	env := []string{
+		"OPENCODE_PERMISSION=" + opencodeReadOnlyPermission,
+		// Give each reviewer its OWN opencode session DB. The megareview runs
+		// several opencode processes at once and they otherwise share one SQLite
+		// DB (WAL + 5s busy_timeout), which intermittently loses the write lock —
+		// observed as a reviewer failing with "database is locked" (exit 1). A
+		// per-session DB (keyed on the unique session ID) removes all contention.
+		"OPENCODE_DB=rival-" + sess.ID + ".db",
+	}
 
 	// If a rival-managed opencode API key is set, inject it into the provider
 	// config for THIS model's provider (e.g. "opencode" = Zen, "opencode-go" =
@@ -90,7 +98,7 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 	// process env, so a malicious repo could otherwise ship a permissive
 	// OPENCODE_PERMISSION or a config that weakens the sandbox. (safeEnv already
 	// strips the OPENCODE_ prefix, so this is belt-and-suspenders.)
-	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, "OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT")
+	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, "OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT", "OPENCODE_DB")
 }
 
 // opencodeProviderConfig returns an OPENCODE_CONFIG_CONTENT JSON string that sets
