@@ -19,6 +19,7 @@ SKILL_DIRS=(
   "$ROOT/rival/internal/skills/rival-antigravity-only"
   "$ROOT/rival/internal/skills/rival-plan-codex"
   "$ROOT/rival/internal/skills/rival-plan-fable"
+  "$ROOT/rival/internal/skills/rival-claude-fable"
   "$ROOT/rival/internal/skills/rival-fable-only"
   "$ROOT/rival/internal/skills/rival-review"
 )

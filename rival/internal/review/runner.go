@@ -67,10 +67,10 @@ type reviewerPlan struct {
 func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, noQueue bool) (*RunResult, error) {
 	threshold := DefaultConfidenceThreshold
 
-	// Preflight — megareview uses Codex + Antigravity + Opencode (GLM). Runs
-	// BEFORE enqueue so a doomed review never occupies a slot.
+	// Preflight — megareview uses Codex + Opencode (GLM + DeepSeek). Antigravity
+	// was dropped from the roster. Runs BEFORE enqueue so a doomed review never
+	// occupies a slot.
 	codexOK := true
-	antigravityOK := true
 	opencodeOK := true
 	var skipped []SkippedCLI
 	if err := executor.CodexPreflight(); err != nil {
@@ -78,30 +78,21 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 		codexOK = false
 		skipped = append(skipped, SkippedCLI{CLI: "codex", Reason: err.Error()})
 	}
-	if err := executor.AntigravityPreflight(); err != nil {
-		log.Warn().Err(err).Msg("antigravity unavailable")
-		antigravityOK = false
-		skipped = append(skipped, SkippedCLI{CLI: "antigravity", Reason: err.Error()})
-	}
 	if err := executor.OpencodePreflight(); err != nil {
 		log.Warn().Err(err).Msg("opencode unavailable")
 		opencodeOK = false
 		skipped = append(skipped, SkippedCLI{CLI: "opencode", Reason: err.Error()})
 	}
-	if !codexOK && !antigravityOK && !opencodeOK {
+	if !codexOK && !opencodeOK {
 		return nil, fmt.Errorf("no CLI reviewers available")
 	}
 
 	// Determine which CLI to use for the consilium judge. Prefer codex, then
-	// antigravity, then opencode — whichever is available (at least one is, per
-	// the guard above).
+	// opencode — whichever is available (at least one is, per the guard above).
 	var judgeCLI string
-	switch {
-	case codexOK:
+	if codexOK {
 		judgeCLI = "codex"
-	case antigravityOK:
-		judgeCLI = "antigravity"
-	default:
+	} else {
 		judgeCLI = "opencode"
 	}
 
@@ -135,11 +126,6 @@ func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, 
 	}
 	if codexOK {
 		if err := addReviewer("codex", "", ""); err != nil {
-			return nil, err
-		}
-	}
-	if antigravityOK {
-		if err := addReviewer("antigravity", "", ""); err != nil {
 			return nil, err
 		}
 	}

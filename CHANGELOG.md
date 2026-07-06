@@ -2,6 +2,30 @@
 
 All notable changes to **rival** are documented here. Versions follow [semver](https://semver.org/); every release is git-tagged.
 
+## [Unreleased]
+
+### Changed — megareview roster: Antigravity dropped, Codex + opencode only
+
+Megareview no longer runs Antigravity. The default roster is **Codex + three opencode models**
+(GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash). The `agy` executor stays in the binary for the
+standalone `/rival-antigravity-only` skill; it is just no longer part of the megareview roster.
+The consilium judge preference is now codex → opencode.
+
+### Added — `/rival-claude-fable` code-review skill
+
+A new skill runs a **code review with claude-fable-5** via `rival command fable`, at **medium**
+reasoning effort by default (`/rival-claude-fable` reviews git-detected changes;
+`/rival-claude-fable src/api/` reviews a scope). The disabled `rival-fable-only` skill is
+superseded by it.
+
+### Fixed — clear preflight error when a Zen model has no API key
+
+If the opencode roster uses OpenCode Zen models (`opencode/` prefix) and `RIVAL_OPENCODE_API_KEY`
+is unset, opencode preflight now fails with an actionable message ("export your Zen key…")
+instead of each reviewer failing mid-run with an opaque "Missing API key". (Root cause of an
+observed `Skipped: glm-5.2 (exited with code 1)` — the key was in `~/.zshrc`, which
+non-interactive shells don't source; it belongs in `~/.zshenv`.)
+
 ## [v3.16.0] — 2026-07-03
 
 ### Added — OpenCode Zen provider + API key
