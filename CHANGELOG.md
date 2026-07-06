@@ -18,6 +18,14 @@ reasoning effort by default (`/rival-claude-fable` reviews git-detected changes;
 `/rival-claude-fable src/api/` reviews a scope). The disabled `rival-fable-only` skill is
 superseded by it.
 
+### Fixed — opencode "database is locked" under parallel reviewers
+
+The megareview runs several opencode processes at once; they otherwise share one
+SQLite session DB and one intermittently lost the write lock, failing with
+`database is locked` (exit 1 — observed as `Skipped: glm-5.2 (exited with code 1)`).
+Each opencode reviewer now gets its own `OPENCODE_DB` (keyed on the session ID), so
+the parallel processes never contend.
+
 ### Fixed — clear preflight error when a Zen model has no API key
 
 If the opencode roster uses OpenCode Zen models (`opencode/` prefix) and `RIVAL_OPENCODE_API_KEY`
