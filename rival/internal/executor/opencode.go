@@ -12,10 +12,22 @@ import (
 	"github.com/1F47E/rival/internal/session"
 )
 
-// OpencodePreflight checks that the opencode CLI is installed.
+// OpencodePreflight checks that the opencode CLI is installed and, when the
+// reviewer roster uses OpenCode Zen models ("opencode/" prefix), that a Zen API
+// key is configured. The opencode CLI's own Zen auth resolution is unreliable, so
+// rival injects RIVAL_OPENCODE_API_KEY per run — without it every Zen reviewer
+// fails mid-run with an opaque "Missing API key". Failing preflight here turns
+// that into one clear, actionable skip reason instead.
 func OpencodePreflight() error {
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return fmt.Errorf("opencode CLI not installed. Install: https://opencode.ai (brew install sst/tap/opencode)")
+	}
+	if config.OpencodeAPIKey() == "" {
+		for _, r := range config.OpencodeReviewerList() {
+			if strings.HasPrefix(r.Model, "opencode/") {
+				return fmt.Errorf("opencode roster uses OpenCode Zen models (%s) but RIVAL_OPENCODE_API_KEY is not set — export your Zen key, or set RIVAL_OPENCODE_MODELS to non-Zen models", r.Model)
+			}
+		}
 	}
 	return nil
 }

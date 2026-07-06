@@ -2,7 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, GLM-5.2 / DeepSeek V4 via opencode, or Claude Opus 4.8 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + Antigravity + three opencode models (GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash) in parallel and merges their findings with a consilium judge.
+Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, GLM-5.2 / DeepSeek V4 via opencode, or Claude Opus 4.8 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + three opencode models (GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash) in parallel and merges their findings with a consilium judge.
 
 ## Install
 
@@ -22,7 +22,7 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-antigravity-only`, `/rival-plan-codex`, and `/rival-plan-fable` are available in Claude Code. (Install also removes the deprecated `/rival-gemini-only`, `/rival-claude-only`, and `/rival-plan` skills.)
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-antigravity-only`, `/rival-plan-codex`, `/rival-plan-fable`, and `/rival-claude-fable` are available in Claude Code. (Install also removes the deprecated `/rival-gemini-only`, `/rival-claude-only`, `/rival-fable-only`, and `/rival-plan` skills.)
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -34,16 +34,16 @@ Use `rival install --force` to overwrite without prompting.
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below) — optional standalone
 
-You only need the CLIs for the commands you use. **Megareview uses Codex + Antigravity + opencode (3 models)** — any that are unavailable are skipped. The opencode roster is overridable via `RIVAL_OPENCODE_MODELS` (comma list of `model[:role]`); the Zen API key comes from `RIVAL_OPENCODE_API_KEY`.
+You only need the CLIs for the commands you use. **Megareview uses Codex + opencode (3 models)** — any that are unavailable are skipped. (Antigravity is no longer part of megareview; it remains available as the standalone `/rival-antigravity-only`.) The opencode roster is overridable via `RIVAL_OPENCODE_MODELS` (comma `model[:role]`); the OpenCode Zen key comes from `RIVAL_OPENCODE_API_KEY` (put it in `~/.zshenv` so non-interactive shells inherit it).
 
 ## Usage
 
 ### Claude Code Skills
 
-**Default review** (runs Codex + Antigravity + 3 opencode models + consilium judge):
+**Default review** (runs Codex + 3 opencode models + consilium judge):
 
 ```
-/rival-review                              — review with Codex + Antigravity + opencode (auto-detects changed files)
+/rival-review                              — review with Codex + opencode (auto-detects changed files)
 /rival-review src/api/                     — review specific scope (bypasses git detection)
 /rival-review -re xhigh src/api/           — all reviewers, max reasoning effort
 ```
@@ -64,6 +64,13 @@ You only need the CLIs for the commands you use. **Megareview uses Codex + Antig
 /rival-antigravity-only review src/api/    — review specific scope
 ```
 
+**Code review via claude-fable** (medium effort by default):
+
+```
+/rival-claude-fable                        — review changed files with claude-fable-5 (auto-detects via git)
+/rival-claude-fable src/api/               — review a specific scope
+```
+
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
@@ -77,7 +84,7 @@ Each rates the plan 1-10 and returns numbered findings. `/rival-plan-codex` runs
 
 ### How Reviews Work
 
-When you run a review, Codex, Antigravity, and the opencode models get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
+When you run a review, Codex and the opencode models get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
@@ -106,7 +113,6 @@ The reviewer will figure out what to look at, explore the relevant code, and giv
 Megareview assigns **specialized roles** to each reviewer:
 
 - **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
-- **Antigravity → Bug Hunter** — a second bug-hunting pass from a different model.
 - **opencode / GLM-5.2 → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
 - **opencode / DeepSeek V4 Pro → Bug Hunter** and **opencode / DeepSeek V4 Flash → Code Quality** round out the roster.
 
@@ -162,7 +168,7 @@ The consilium judge runs via Codex, falling back to Antigravity if Codex is unav
 echo 'explain the auth flow' | rival command codex --workdir .
 echo 'explain the auth flow' | rival command antigravity --workdir .
 
-# Review via megareview (Codex + Antigravity + 3 opencode models in parallel)
+# Review via megareview (Codex + 3 opencode models in parallel)
 echo 'src/api/' | rival command megareview --workdir .
 
 # Rate a plan/spec doc 1-10 (codex + claude-fable by default, xhigh effort)
@@ -181,7 +187,7 @@ rival tui
 
 **List view** shows all sessions with status, CLI (◈ codex / △ antigravity / ❯ opencode / ⬡ claude / ▤ plan / ◈△❯ mega), model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into a single row: megareview shows `◈△❯ mega`. Claude sessions show `⬡ claude` for native or `⬡ claude/dk` for Docker mode. Plan reviews (`/rival-plan-codex`, `/rival-plan-fable`) show `▤ plan`.
 
-**Detail view** shows full metadata (including Mode and Account/subscription type for Claude), prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a megareview group is titled `Megareview` with CLI `codex+antigravity+opencode`, a dual plan group is titled `Plan Review` with CLI `codex+claude-fable` and mode `plan`. All member logs are shown.
+**Detail view** shows full metadata (including Mode and Account/subscription type for Claude), prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a megareview group is titled `Megareview` with CLI `codex+glm-5.2+deepseek-v4-pro+deepseek-v4-flash`, a dual plan group is titled `Plan Review` with CLI `codex+claude-fable` and mode `plan`. All member logs are shown.
 
 #### Keys
 
