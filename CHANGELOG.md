@@ -28,10 +28,10 @@ GLM-5.2**. Sol and DeepSeek are independent bug hunters, Kimi covers
 architecture/security, and GLM covers code quality. Default judge priority follows that same
 order. Per-run selection is intentionally limited to these four curated models.
 
-Code review and Sol plan review now default to `high` effort and accept `ultra`.
-Sol receives `ultra` natively; DeepSeek V4 Pro and GLM-5.2 map it to their maximum
-variant, while Kimi K2.7 Code keeps its model default. A Fable-only plan retains its
-low default.
+Code review and the native Sol plan command default to `high` effort and accept `ultra`.
+The `/rival-plan-sol` skill pins Sol to `ultra`; DeepSeek V4 Pro and GLM-5.2 map
+`ultra` to their maximum variant, while Kimi K2.7 Code keeps its model default.
+A Fable-only plan retains its low default.
 
 The process-wide `RIVAL_OPENCODE_MODELS` roster override is retired; use the
 per-invocation `-m/--model` interface instead.
@@ -43,10 +43,11 @@ usage.
 
 ### Added — Sol plan review
 
-`/rival-plan-sol` reviews a plan/spec with Sol at `high` effort by default and accepts
-`-re ultra`. The plan binary now selects reviewers by model name via `--model`; output,
-dashboard labels, skipped-reviewer messages, and consilium attribution all show concrete model
-names. Superseded provider-named skills are removed during `rival install`.
+`/rival-plan-sol` reviews a plan/spec with Sol at `ultra` effort. The plan binary now
+selects reviewers by model name via `--model`; output, dashboard labels,
+skipped-reviewer messages, and consilium attribution all show concrete model names.
+The skill is bumped to v3.20.0 so existing installs receive the ultra default.
+Superseded provider-named skills are removed during `rival install`.
 
 ### Changed — short public model names
 

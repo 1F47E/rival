@@ -78,12 +78,11 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
-/rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at high effort
-/rival-plan-sol -re ultra path/to/plan.md   — use ultra effort
+/rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at ultra effort
 /rival-plan-fable path/to/plan.md           — same, with Fable (low effort by default)
 ```
 
-Each rates the plan 1-10 and returns numbered findings. `/rival-plan-sol` defaults to **high** and accepts `-re ultra`; `/rival-plan-fable` defaults to **low**. The binary selects exact plan reviewers by name, for example `rival command plan --model sol --effort ultra`.
+Each rates the plan 1-10 and returns numbered findings. `/rival-plan-sol` always uses **ultra**; `/rival-plan-fable` defaults to **low**. The native binary defaults to high for Sol and accepts an explicit override, for example `rival command plan --model sol --effort ultra`.
 
 **Model selection** (`-m`, `--model`): `sol`, `deepseek`, `kimi`, and `glm`; comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
 
@@ -404,7 +403,7 @@ See the [full Opus/Fable Docker setup](docs/opus-fable-docker-setup.md) for arch
 
 | Model | Default Effort | Used by |
 |-------|----------------|---------|
-| Sol | high; `ultra` supported | `/rival-review`, `/rival-sol`, `/rival-plan-sol` |
+| Sol | high generally; ultra in `/rival-plan-sol` | `/rival-review`, `/rival-sol`, `/rival-plan-sol` |
 | `deepseek-v4-pro` | high; `ultra` maps to max | `/rival-review` |
 | `kimi-k2.7-code` | model default | `/rival-review` |
 | `glm-5.2` | high; `ultra` maps to max | `/rival-review` |

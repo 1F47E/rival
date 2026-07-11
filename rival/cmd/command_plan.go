@@ -17,15 +17,13 @@ import (
 )
 
 const planUsage = `Usage:
-  /rival-plan-sol path/to/plan.md — review with Sol
-  /rival-plan-sol -re ultra path/to/plan.md — use ultra reasoning
+  /rival-plan-sol path/to/plan.md — review with Sol at ultra effort
   /rival-plan-fable path/to/plan.md — review with Fable
   rival command plan --help — show native command options
 
-Input is a single path to a markdown plan/spec file. Reasoning effort defaults to high
-(low for Fable alone); use -re/--effort ultra for the deepest review. --model
-accepts sol and fable. An unavailable model
-is skipped, not fatal.`
+Input is a single path to a markdown plan/spec file. The /rival-plan-sol skill
+always uses ultra. Native command effort defaults to high (low for Fable alone).
+--model accepts sol and fable. An unavailable model is skipped, not fatal.`
 
 var defaultPlanModels = []string{config.SolLabel, config.FableLabel}
 
@@ -156,13 +154,10 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
-	if inputEffort != "" {
-		if cmd.Flags().Changed("effort") {
-			err := fmt.Errorf("reasoning effort was provided both as --effort command flags and in plan arguments; use one form")
-			_, _ = fmt.Fprintln(os.Stdout, err.Error())
-			return &ExitCodeError{Code: 1, Err: err}
-		}
-		effort = inputEffort
+	effort, err = mergePlanEffort(effort, cmd.Flags().Changed("effort"), inputEffort)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stdout, err.Error())
+		return &ExitCodeError{Code: 1, Err: err}
 	}
 	if rawPath == "" {
 		_, _ = fmt.Fprintln(os.Stdout, planUsage)
@@ -191,6 +186,16 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("write stdout: %w", err)
 	}
 	return nil
+}
+
+func mergePlanEffort(flagEffort string, flagSet bool, inputEffort string) (string, error) {
+	if inputEffort == "" {
+		return flagEffort, nil
+	}
+	if flagSet && inputEffort != flagEffort {
+		return "", fmt.Errorf("reasoning effort conflicts: command uses %q but plan arguments request %q", flagEffort, inputEffort)
+	}
+	return inputEffort, nil
 }
 
 func defaultPlanEffort(clis []string) string {
