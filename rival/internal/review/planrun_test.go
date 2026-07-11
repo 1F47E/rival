@@ -24,7 +24,7 @@ func TestAssemblePlanResults_AllFailed(t *testing.T) {
 
 func TestAssemblePlanResults_OneSkippedOneOK(t *testing.T) {
 	batch := []planCLIRun{
-		{CLI: "codex", Model: config.CodexModel, Raw: realPlanJSON, ExitCode: 0},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: realPlanJSON, ExitCode: 0},
 	}
 	// fable was unavailable at preflight → pre-run skipped list.
 	pre := []SkippedCLI{{CLI: "fable", Reason: "claude not found"}}
@@ -46,7 +46,7 @@ func TestAssemblePlanResults_OneSkippedOneOK(t *testing.T) {
 
 func TestAssemblePlanResults_NonzeroExitSkips(t *testing.T) {
 	batch := []planCLIRun{
-		{CLI: "codex", Model: config.CodexModel, Raw: realPlanJSON, ExitCode: 0},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: realPlanJSON, ExitCode: 0},
 		{CLI: "fable", Model: config.FableModel, Raw: "partial", ExitCode: 2},
 	}
 	res, err := assemblePlanResults(batch, nil)
@@ -63,7 +63,7 @@ func TestAssemblePlanResults_NonzeroExitSkips(t *testing.T) {
 
 func TestAssemblePlanResults_QuotaSkips(t *testing.T) {
 	batch := []planCLIRun{
-		{CLI: "codex", Model: config.CodexModel, Raw: "error: insufficient_quota", ExitCode: 0},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: "error: insufficient_quota", ExitCode: 0},
 		{CLI: "fable", Model: config.FableModel, Raw: realPlanJSON, ExitCode: 0},
 	}
 	res, err := assemblePlanResults(batch, nil)
@@ -81,7 +81,7 @@ func TestAssemblePlanResults_QuotaSkips(t *testing.T) {
 func TestAssemblePlanResults_ParseFailKeepsRaw(t *testing.T) {
 	// Exit 0, no quota, but output has no parseable plan payload → keep Raw, nil Parsed.
 	batch := []planCLIRun{
-		{CLI: "codex", Model: config.CodexModel, Raw: "just some prose, no json", ExitCode: 0},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: "just some prose, no json", ExitCode: 0},
 	}
 	res, err := assemblePlanResults(batch, nil)
 	if err != nil {
@@ -103,7 +103,7 @@ func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
 	// successful (but empty) plan review. (Found by opencode/GLM in review.)
 	batch := []planCLIRun{
 		{CLI: "fable", Model: config.FableModel, Raw: "   \n  ", ExitCode: 0},
-		{CLI: "codex", Model: config.CodexModel, Raw: realPlanJSON, ExitCode: 0},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: realPlanJSON, ExitCode: 0},
 	}
 	res, err := assemblePlanResults(batch, nil)
 	if err != nil {
@@ -118,18 +118,31 @@ func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
 }
 
 func TestPlanEngineLabel(t *testing.T) {
-	if got := planEngineLabel("codex", config.CodexModel); got != "codex" {
-		t.Errorf("codex label = %q, want codex", got)
+	if got := planEngineLabel("codex", config.GPT56SolModel); got != config.GPT56SolModel {
+		t.Errorf("gpt-5.6-sol label = %q, want %q", got, config.GPT56SolModel)
 	}
-	// Fable's session CLI is "fable" here, but the model id is what tags it.
-	if got := planEngineLabel("fable", config.FableModel); got != "claude-fable" {
-		t.Errorf("fable label = %q, want claude-fable", got)
+	if got := planEngineLabel("fable", config.FableModel); got != config.FableModel {
+		t.Errorf("fable label = %q, want %q", got, config.FableModel)
+	}
+}
+
+func TestPlanFailureReasonUsesModelName(t *testing.T) {
+	got := planFailureReason("codex", "Codex CLI not installed; run codex login")
+	if !strings.Contains(got, config.GPT56SolModel) {
+		t.Fatalf("failure reason missing model name: %q", got)
+	}
+	if strings.Contains(strings.ToLower(got), "codex") {
+		t.Fatalf("failure reason leaked adapter name: %q", got)
+	}
+	fable := planFailureReason("fable", config.FableModel+" failed in Claude CLI")
+	if strings.Count(fable, config.FableModel) != 2 {
+		t.Fatalf("model-facing normalization corrupted exact fable model name: %q", fable)
 	}
 }
 
 func TestFormatPlanResult_SingleParsed(t *testing.T) {
 	res := &PlanRunResult{Results: []PlanCLIResult{
-		{CLI: "codex", Model: config.CodexModel, Parsed: &PlanOutput{Summary: "s", Rating: 8}},
+		{CLI: "codex", Model: config.GPT56SolModel, Parsed: &PlanOutput{Summary: "s", Rating: 8}},
 	}}
 	out := FormatPlanResult(res, "/tmp/plan.md")
 	if !strings.Contains(out, "═══ RIVAL PLAN REVIEW ═══") || !strings.Contains(out, "Rating: 8/10") {
@@ -143,38 +156,41 @@ func TestFormatPlanResult_SingleParsed(t *testing.T) {
 
 func TestFormatPlanResult_SingleParseFailReturnsRaw(t *testing.T) {
 	res := &PlanRunResult{Results: []PlanCLIResult{
-		{CLI: "codex", Model: config.CodexModel, Parsed: nil, Raw: "RAW CODEX OUTPUT"},
+		{CLI: "codex", Model: config.GPT56SolModel, Parsed: nil, Raw: "Codex raw output"},
 	}}
 	out := FormatPlanResult(res, "/tmp/plan.md")
-	if out != "RAW CODEX OUTPUT" {
-		t.Errorf("parse-fail single result must return raw verbatim, got:\n%s", out)
+	if out != config.GPT56SolModel+" raw output" {
+		t.Errorf("parse-fail single result must preserve raw content with a model-facing label, got:\n%s", out)
 	}
 }
 
 func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 	res := &PlanRunResult{
 		Results: []PlanCLIResult{
-			{CLI: "codex", Model: config.CodexModel, Parsed: &PlanOutput{Summary: "cx", Rating: 6}},
-			{CLI: "fable", Model: config.FableModel, Parsed: nil, Raw: "fable raw dump"},
+			{CLI: "codex", Model: config.GPT56SolModel, Parsed: &PlanOutput{Summary: "cx", Rating: 6}},
+			{CLI: "fable", Model: config.FableModel, Parsed: nil, Raw: "Claude raw dump"},
 		},
-		Skipped: []SkippedCLI{{CLI: "antigravity", Reason: "n/a"}},
+		Skipped: []SkippedCLI{{CLI: "antigravity", Model: config.AntigravityModel, Reason: "n/a"}},
 	}
 	out := FormatPlanResult(res, "/tmp/plan.md")
-	if !strings.Contains(out, "RIVAL PLAN REVIEW (codex + claude-fable)") {
+	if !strings.Contains(out, "RIVAL PLAN REVIEW ("+config.GPT56SolModel+" + "+config.FableModel+")") {
 		t.Errorf("multi header missing engines:\n%s", out)
 	}
-	if !strings.Contains(out, "── codex ("+config.CodexModel+") ──") {
-		t.Errorf("codex block header missing:\n%s", out)
+	if !strings.Contains(out, "── "+config.GPT56SolModel+" ──") {
+		t.Errorf("gpt-5.6-sol block header missing:\n%s", out)
 	}
-	if !strings.Contains(out, "── claude-fable ("+config.FableModel+") ──") {
-		t.Errorf("fable block header missing (should be claude-fable):\n%s", out)
+	if !strings.Contains(out, "── "+config.FableModel+" ──") {
+		t.Errorf("fable block header missing:\n%s", out)
 	}
 	// Fable block had no parsed output → raw fallback shown.
-	if !strings.Contains(out, "fable raw dump") {
+	if !strings.Contains(out, config.FableModel+" raw dump") {
 		t.Errorf("fable raw fallback missing:\n%s", out)
 	}
-	if !strings.Contains(out, "Skipped: antigravity — n/a") {
+	if !strings.Contains(out, "Skipped: "+config.AntigravityModel+" — n/a") {
 		t.Errorf("skipped line missing:\n%s", out)
+	}
+	if strings.Contains(strings.ToLower(out), "codex") {
+		t.Errorf("plan output must use model names, not adapter names:\n%s", out)
 	}
 }
 
@@ -182,8 +198,8 @@ func TestAssemblePlanResults_ErrUsesReason(t *testing.T) {
 	// A timeout-style failure carries a Reason that must surface in Skipped,
 	// instead of the bare error text.
 	batch := []planCLIRun{
-		{CLI: "fable", Err: errString("context deadline exceeded"), Reason: "fable run timeout after 30m (RIVAL_RUN_TIMEOUT) — provider CLI did not finish", ExitCode: -1},
-		{CLI: "codex", Model: config.CodexModel, Raw: realPlanJSON, ExitCode: 0},
+		{CLI: "fable", Err: errString("context deadline exceeded"), Reason: config.FableModel + " run timeout after 30m (RIVAL_RUN_TIMEOUT) — model did not finish", ExitCode: -1},
+		{CLI: "codex", Model: config.GPT56SolModel, Raw: realPlanJSON, ExitCode: 0},
 	}
 	res, err := assemblePlanResults(batch, nil)
 	if err != nil {
@@ -201,7 +217,7 @@ func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
 
 	// The fable executor overwrites sess.Mode to the transport ("native"); the
 	// terminal session must be recorded as a plan session regardless.
-	sess, err := session.NewQueued("fable", "plan", config.FableModel, "xhigh", t.TempDir(), "p", "/tmp/plan.md", "g")
+	sess, err := session.NewQueued("fable", "plan", config.FableModel, "high", t.TempDir(), "p", "/tmp/plan.md", "g")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +231,7 @@ func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
 			return realPlanJSON, 0, nil
 		},
 	}
-	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", "xhigh", t.TempDir())
+	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", "high", t.TempDir())
 	if out.ExitCode != 0 {
 		t.Fatalf("run failed: %+v", out)
 	}

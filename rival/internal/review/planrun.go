@@ -23,11 +23,41 @@ func buildPlanPrompt(absPath string) string {
 // the run's context hit the RIVAL_RUN_TIMEOUT deadline, it returns a clear
 // "run timeout" message so a hung provider CLI is distinguishable from a normal
 // failure; otherwise it returns the provider's own error text.
-func runTimeoutReason(ctx context.Context, cli, fallback string) string {
+func runTimeoutReason(ctx context.Context, model, fallback string) string {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Sprintf("%s run timeout after %s (RIVAL_RUN_TIMEOUT) — provider CLI did not finish", cli, config.RunTimeout())
+		return fmt.Sprintf("%s run timeout after %s (RIVAL_RUN_TIMEOUT) — model did not finish", model, config.RunTimeout())
 	}
 	return fallback
+}
+
+// planFailureReason keeps user-facing failures model-specific even though the
+// implementation uses local adapter binaries underneath.
+func planFailureReason(cli, reason string) string {
+	model := planModelForCLI(cli)
+	const modelMarker = "\x00RIVAL_PLAN_MODEL\x00"
+	protected := strings.ReplaceAll(reason, model, modelMarker)
+	var normalized string
+	switch cli {
+	case "codex":
+		normalized = strings.NewReplacer(
+			"Codex CLI", model,
+			"codex CLI", model,
+			"Codex", model,
+			"codex", model,
+		).Replace(protected)
+	case "fable":
+		normalized = strings.NewReplacer(
+			"Claude Code CLI", model,
+			"Claude CLI", model,
+			"claude CLI", model,
+			"rival-claude", model,
+			"Claude", model,
+			"claude", model,
+		).Replace(protected)
+	default:
+		return reason
+	}
+	return strings.ReplaceAll(normalized, modelMarker, model)
 }
 
 // PlanRunResult holds the outcome of a plan review across one or more CLIs.
@@ -80,7 +110,7 @@ func defaultPlanExecutor() planExecutor {
 			var err error
 			switch cli {
 			case "codex":
-				result, err = executor.RunCodex(ctx, sess, prompt, effort, workdir, nil)
+				result, err = executor.RunCodexModel(ctx, sess, prompt, effort, workdir, config.GPT56SolModel, nil)
 			case "fable":
 				result, err = executor.RunFable(ctx, sess, prompt, effort, workdir, nil)
 			default:
@@ -102,7 +132,7 @@ func defaultPlanExecutor() planExecutor {
 func planModelForCLI(cli string) string {
 	switch cli {
 	case "codex":
-		return config.CodexModel
+		return config.GPT56SolModel
 	case "fable":
 		return config.FableModel
 	default:
@@ -121,7 +151,7 @@ func RunPlanReview(ctx context.Context, absPath, effort, workdir, groupID string
 
 func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
 	if len(clis) == 0 {
-		return nil, fmt.Errorf("no plan CLIs requested")
+		return nil, fmt.Errorf("no plan models requested")
 	}
 
 	prompt := buildPlanPrompt(absPath)
@@ -150,12 +180,12 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 	for _, cli := range clis {
 		if err := ex.preflight(cli); err != nil {
 			log.Warn().Str("cli", cli).Err(err).Msg("plan cli unavailable")
-			skipped = append(skipped, SkippedCLI{CLI: cli, Reason: err.Error()})
+			skipped = append(skipped, SkippedCLI{CLI: cli, Model: planModelForCLI(cli), Reason: planFailureReason(cli, err.Error())})
 			continue
 		}
 		sess, err := session.NewQueued(cli, "plan", planModelForCLI(cli), effort, workdir, prompt, absPath, groupID)
 		if err != nil {
-			return nil, fmt.Errorf("create %s plan session: %w", cli, err)
+			return nil, fmt.Errorf("create %s plan session: %w", planModelForCLI(cli), err)
 		}
 		if cli == "fable" {
 			sess.Account = config.ClaudeSubscription()
@@ -165,7 +195,7 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 	}
 
 	if len(plans) == 0 {
-		return nil, fmt.Errorf("no plan CLIs available (see skipped reasons): %s", formatSkipped(skipped))
+		return nil, fmt.Errorf("no plan models available (see skipped reasons): %s", formatSkipped(skipped))
 	}
 
 	// One queue ticket covers all plan sessions; all of them are the run set
@@ -224,21 +254,21 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 	sess.Mode = "plan"
 
 	if err != nil {
-		reason := runTimeoutReason(ctx, cli, err.Error())
+		reason := runTimeoutReason(ctx, model, planFailureReason(cli, err.Error()))
 		_ = sess.Fail(1, reason)
 		return planCLIRun{CLI: cli, Model: model, Err: err, Reason: reason, ExitCode: -1}
 	}
 
 	switch {
 	case exitCode != 0:
-		_ = sess.Fail(exitCode, fmt.Sprintf("%s exited with code %d", cli, exitCode))
+		_ = sess.Fail(exitCode, fmt.Sprintf("%s exited with code %d", model, exitCode))
 	case executor.IsQuotaExhausted(raw):
-		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", cli))
+		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", model))
 	case strings.TrimSpace(raw) == "":
 		// Exited 0 but wrote nothing — a silent no-op (e.g. an auth/session
 		// failure). Fail it so it is reported as skipped, not a "successful" plan
 		// review that formats to an empty string while the command exits 0.
-		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", cli))
+		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", model))
 	default:
 		_ = sess.Complete(exitCode, int64(len(raw)), 0)
 	}
@@ -256,28 +286,32 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 func assemblePlanResults(batch []planCLIRun, skipped []SkippedCLI) (*PlanRunResult, error) {
 	var results []PlanCLIResult
 	for _, r := range batch {
+		model := r.Model
+		if model == "" {
+			model = planModelForCLI(r.CLI)
+		}
 		switch {
 		case r.Err != nil:
 			reason := r.Reason
 			if reason == "" {
-				reason = r.Err.Error()
+				reason = planFailureReason(r.CLI, r.Err.Error())
 			}
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: reason})
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: model, Reason: reason})
 			continue
 		case r.ExitCode != 0:
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: model, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
 			continue
 		case executor.IsQuotaExhausted(r.Raw):
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: model, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
 			continue
 		case strings.TrimSpace(r.Raw) == "":
 			// Defensive: an exit-0 run that wrote nothing is not a review. Skip it
 			// so a single-CLI run never formats to an empty string with exit 0.
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: model, Reason: "produced no output (empty result) — the model exited without writing a review; likely an auth/session failure"})
 			continue
 		}
 
-		res := PlanCLIResult{CLI: r.CLI, Model: r.Model, Raw: r.Raw}
+		res := PlanCLIResult{CLI: r.CLI, Model: model, Raw: r.Raw}
 		parsed, parseErr := ParsePlanOutput(r.Raw)
 		if parseErr != nil {
 			log.Warn().Str("cli", r.CLI).Err(parseErr).Msg("failed to parse plan output, keeping raw")

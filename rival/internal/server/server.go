@@ -20,17 +20,17 @@ var indexHTML embed.FS
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type sessionGroup struct {
-	ID           string             `json:"id"`
-	IsGroup      bool               `json:"is_group"`
-	Kind         string             `json:"kind"` // group kind: "megareview" or "plan" ("" for solo)
-	Sessions     []*session.Session `json:"sessions"`
-	Status       string             `json:"status"`
-	CLI          string             `json:"cli"`
-	Models       string             `json:"models"`
-	Effort       string             `json:"effort"`
-	Elapsed      string             `json:"elapsed"`
-	WorkDir      string             `json:"work_dir"`
-	PromptPreview string            `json:"prompt_preview"`
+	ID            string             `json:"id"`
+	IsGroup       bool               `json:"is_group"`
+	Kind          string             `json:"kind"` // group kind: "megareview" or "plan" ("" for solo)
+	Sessions      []*session.Session `json:"sessions"`
+	Status        string             `json:"status"`
+	CLI           string             `json:"cli"`
+	Models        string             `json:"models"`
+	Effort        string             `json:"effort"`
+	Elapsed       string             `json:"elapsed"`
+	WorkDir       string             `json:"work_dir"`
+	PromptPreview string             `json:"prompt_preview"`
 }
 
 type stats struct {
@@ -161,7 +161,7 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 			g.CLI = groupCLIs(b.sessions)
 			g.Models = groupModels(b.sessions)
 		} else {
-			g.CLI = primary.CLI
+			g.CLI = config.EngineLabel(primary.CLI, primary.Model)
 			g.Models = primary.Model
 		}
 

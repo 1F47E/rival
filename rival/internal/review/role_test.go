@@ -7,12 +7,10 @@ import (
 )
 
 func TestRoleForCLI_Opencode(t *testing.T) {
-	// opencode (GLM) gets the arch/security lens so the 3-reviewer roster isn't
-	// all bug_hunter (codex + antigravity already are).
-	if got := RoleForCLI("opencode"); got != RoleArchSecurity {
-		t.Errorf("RoleForCLI(opencode) = %q, want %q", got, RoleArchSecurity)
+	if got := RoleForCLI("opencode"); got != RoleBugHunter {
+		t.Errorf("RoleForCLI(opencode) = %q, want %q", got, RoleBugHunter)
 	}
-	// Sanity: the other mega reviewers are unchanged.
+	// Sanity: legacy CLI fallback mappings remain unchanged.
 	if got := RoleForCLI("codex"); got != RoleBugHunter {
 		t.Errorf("RoleForCLI(codex) = %q, want bug_hunter", got)
 	}
@@ -28,47 +26,58 @@ func TestModelForCLI_Opencode(t *testing.T) {
 }
 
 func TestPickJudge(t *testing.T) {
-	in := func(clis ...string) []ReviewInput {
-		var r []ReviewInput
-		for _, c := range clis {
-			r = append(r, ReviewInput{CLI: c})
-		}
-		return r
-	}
 	cases := []struct {
 		name      string
 		inputs    []ReviewInput
+		targets   []config.ReviewTarget
 		wantCLI   string
 		wantModel string
 	}{
-		{"codex preferred", in("opencode", "antigravity", "codex"), "codex", ""},
-		{"antigravity when no codex", in("opencode", "antigravity"), "antigravity", ""},
-		{"opencode when it's the only one", in("opencode"), "opencode", ""},
-		{"empty when no preferred cli succeeded", in("gemini", "claude"), "", ""},
-		{"empty on no inputs", nil, "", ""},
 		{
-			// Deterministic by ROSTER order (glm is first in the default roster),
-			// not by which goroutine finished first — here deepseek-pro is listed
-			// first in `inputs` (completion order) but glm must still win.
-			"opencode judge picks highest roster model, not first-completed",
+			"default judge picks GPT-5.6-Sol regardless of completion order",
 			[]ReviewInput{
-				{CLI: "opencode", Model: "opencode/deepseek-v4-pro"},
-				{CLI: "opencode", Model: "opencode/glm-5.2"},
+				{CLI: "opencode", Model: config.OpencodeGLMModel},
+				{CLI: "codex", Model: config.GPT56SolModel},
+				{CLI: "opencode", Model: config.OpencodeDeepSeekPro},
+				{CLI: "opencode", Model: config.OpencodeKimiK27Code},
 			},
-			"opencode", "opencode/glm-5.2",
+			config.DefaultReviewTargets(),
+			"codex", config.GPT56SolModel,
 		},
 		{
-			// If glm 429'd and only deepseek-pro survived, judge with deepseek-pro.
-			"opencode judge falls to next roster model when top one failed",
+			"requested order controls OpenCode judge",
 			[]ReviewInput{
-				{CLI: "opencode", Model: "opencode/deepseek-v4-pro"},
+				{CLI: "opencode", Model: config.OpencodeKimiK27Code},
+				{CLI: "opencode", Model: config.OpencodeGLMModel},
 			},
-			"opencode", "opencode/deepseek-v4-pro",
+			[]config.ReviewTarget{
+				{CLI: "opencode", Model: config.OpencodeGLMModel, Role: "code_quality"},
+				{CLI: "opencode", Model: config.OpencodeKimiK27Code, Role: "arch_security"},
+			},
+			"opencode", config.OpencodeGLMModel,
+		},
+		{
+			"default judge falls through to DeepSeek when GPT-5.6-Sol failed",
+			[]ReviewInput{{CLI: "opencode", Model: config.OpencodeDeepSeekPro}},
+			config.DefaultReviewTargets(),
+			"opencode", config.OpencodeDeepSeekPro,
+		},
+		{
+			"single GPT-5.6-Sol success judges itself",
+			[]ReviewInput{{CLI: "codex", Model: config.GPT56SolModel}},
+			[]config.ReviewTarget{{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"}},
+			"codex", config.GPT56SolModel,
+		},
+		{
+			"empty on no successful inputs",
+			nil,
+			config.DefaultReviewTargets(),
+			"", "",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotCLI, gotModel := pickJudge(tc.inputs)
+			gotCLI, gotModel := pickJudge(tc.inputs, tc.targets)
 			if gotCLI != tc.wantCLI {
 				t.Errorf("pickJudge(%v) cli = %q, want %q", tc.inputs, gotCLI, tc.wantCLI)
 			}
@@ -79,12 +88,21 @@ func TestPickJudge(t *testing.T) {
 	}
 }
 
-func TestOpencodeVariantLevel_CoversAllEfforts(t *testing.T) {
-	// Every valid effort must map to a non-empty opencode --variant so the
-	// executor never falls back unexpectedly.
-	for _, e := range config.ValidEfforts {
-		if v := config.OpencodeVariantLevel[e]; v == "" {
-			t.Errorf("OpencodeVariantLevel[%q] is empty; want a variant", e)
+func TestOpencodeVariant_PerCuratedModel(t *testing.T) {
+	cases := []struct{ model, effort, want string }{
+		{config.OpencodeDeepSeekPro, "low", "low"},
+		{config.OpencodeDeepSeekPro, "medium", "medium"},
+		{config.OpencodeDeepSeekPro, "xhigh", "max"},
+		{config.OpencodeDeepSeekPro, "ultra", "max"},
+		{config.OpencodeKimiK27Code, "xhigh", ""},
+		{config.OpencodeKimiK27Code, "ultra", ""},
+		{config.OpencodeGLMModel, "low", "high"},
+		{config.OpencodeGLMModel, "xhigh", "max"},
+		{config.OpencodeGLMModel, "ultra", "max"},
+	}
+	for _, tc := range cases {
+		if got := config.OpencodeVariant(tc.model, tc.effort); got != tc.want {
+			t.Errorf("OpencodeVariant(%q, %q) = %q, want %q", tc.model, tc.effort, got, tc.want)
 		}
 	}
 }

@@ -13,16 +13,22 @@ import (
 )
 
 const (
-	CodexModel           = "gpt-5.5"
+	GPT56SolModel        = "gpt-5.6-sol"
+	CodexModel           = GPT56SolModel // legacy internal alias
 	GeminiModel          = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	AntigravityModel     = "gemini-3.5-flash"
-	OpencodeModel        = "opencode/glm-5.2"
+	OpencodeDeepSeekPro  = "opencode/deepseek-v4-pro"
+	OpencodeModel        = OpencodeDeepSeekPro
+	OpencodeKimiK27Code  = "opencode/kimi-k2.7-code"
+	OpencodeGLMModel     = "opencode/glm-5.2"
 	ClaudeDockerImage    = "rival-claude"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
 	DefaultEffort              = "xhigh"
+	DefaultReviewEffort        = "high"
+	DefaultPlanEffort          = "high"
 	DefaultConfidenceThreshold = 6
 	SessionDir                 = ".rival/sessions"
 	QueueDir                   = ".rival/queue"
@@ -35,7 +41,14 @@ const (
 	QueuePollInterval    = 2 * time.Second
 )
 
+// ValidEfforts includes xhigh for compatibility with existing commands and
+// saved invocations. Review and plan help intentionally advertises the simpler
+// low/medium/high/ultra ladder, with high as the default.
 var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
+
+// ReviewEfforts is the public effort ladder shown by code-review and
+// plan-review commands. xhigh remains accepted as a compatibility alias.
+var ReviewEfforts = []string{"low", "medium", "high", "ultra"}
 
 // ClaudeEffortLevel maps rival effort levels to claude CLI --effort values.
 var ClaudeEffortLevel = map[string]string{
@@ -43,28 +56,46 @@ var ClaudeEffortLevel = map[string]string{
 	"medium": "medium",
 	"high":   "max",
 	"xhigh":  "max",
+	"ultra":  "max",
 }
 
-// OpencodeVariantLevel maps rival effort levels to opencode's --variant
-// (provider-specific reasoning level: minimal | high | max).
-var OpencodeVariantLevel = map[string]string{
-	"low":    "minimal",
-	"medium": "minimal",
-	"high":   "high",
-	"xhigh":  "max",
+// OpencodeVariant returns the provider-supported reasoning variant for a
+// curated model and Rival effort. Kimi K2.7 Code currently advertises no named
+// variants, so it must be launched without --variant. GLM exposes only high/max;
+// DeepSeek exposes the full low/medium/high/max ladder.
+func OpencodeVariant(model, effort string) string {
+	switch model {
+	case OpencodeKimiK27Code:
+		return ""
+	case OpencodeGLMModel:
+		if effort == "xhigh" || effort == "ultra" {
+			return "max"
+		}
+		return "high"
+	default: // DeepSeek V4 Pro and the generic OpenCode fallback.
+		switch effort {
+		case "low", "medium", "high":
+			return effort
+		case "xhigh", "ultra":
+			return "max"
+		default:
+			return "high"
+		}
+	}
 }
 
-// EngineLabel returns a short human label for a reviewer engine, given its cli
-// and model. opencode backs several models under the single cli "opencode", so
-// its label comes from the model (the provider prefix is stripped, e.g.
-// "opencode-go/glm-5.2" → "glm-5.2"). Fable (cli "claude"/"fable", model
-// claude-fable-5) shows as "claude-fable". Everything else is just the cli.
+// EngineLabel returns a human-facing reviewer label. Review output names the
+// concrete model instead of the executable adapter used to launch it.
 func EngineLabel(cli, model string) string {
 	switch {
 	case cli == "opencode":
 		return OpencodeShortLabel(model)
+	case model == GPT56SolModel:
+		return GPT56SolModel
 	case model == FableModel:
-		return "claude-fable"
+		return FableModel
+	case model != "":
+		return model
 	default:
 		return cli
 	}
@@ -92,88 +123,109 @@ type OpencodeReviewer struct {
 	Role  string
 }
 
-// defaultOpencodeReviewers is the built-in opencode reviewer roster: three
-// models via the OpenCode Zen provider (the "opencode/" prefix), each with a
-// distinct role so they don't all hunt the same class of issue. Overridable via
-// RIVAL_OPENCODE_MODELS. Zen billing uses RIVAL_OPENCODE_API_KEY (see
-// OpencodeAPIKey); without a key opencode falls back to its own stored auth.
+// defaultOpencodeReviewers is the intentionally curated three-model roster,
+// ordered by judge preference. Each model gets a distinct review lens.
 var defaultOpencodeReviewers = []OpencodeReviewer{
-	{Model: "opencode/glm-5.2", Role: "arch_security"},
-	{Model: "opencode/deepseek-v4-pro", Role: "bug_hunter"},
-	{Model: "opencode/deepseek-v4-flash", Role: "code_quality"},
+	{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
+	{Model: OpencodeKimiK27Code, Role: "arch_security"},
+	{Model: OpencodeGLMModel, Role: "code_quality"},
 }
 
-// OpencodeAPIKey returns the API key rival injects into the opencode provider
-// config for reviewer runs (via OPENCODE_CONFIG_CONTENT), from
-// RIVAL_OPENCODE_API_KEY. Empty means "let the opencode CLI use its own stored
-// credential". The key is NEVER read from a repo file — only this env var — so a
-// reviewed repo cannot supply it.
+// ReviewTarget is one concrete reviewer selected for a megareview run. CLI is
+// the internal executable adapter, Model is the concrete model id, and Role
+// controls the review lens. User-facing output always uses Model.
+type ReviewTarget struct {
+	CLI   string
+	Model string
+	Role  string
+}
+
+// DefaultReviewTargets returns the curated four-model megareview roster. The
+// order is also the consilium judge preference order.
+func DefaultReviewTargets() []ReviewTarget {
+	targets := []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
+	for _, reviewer := range OpencodeReviewerList() {
+		targets = append(targets, ReviewTarget{CLI: "opencode", Model: reviewer.Model, Role: reviewer.Role})
+	}
+	return targets
+}
+
+// ResolveReviewTargets resolves per-invocation model selectors to an exact,
+// ordered reviewer roster. With no selectors the curated default roster is
+// returned. With selectors, ONLY the named reviewers are returned. Selectors
+// may be repeated or comma-separated.
+//
+// Friendly aliases:
+//   - sol, gpt-5.6-sol
+//   - deepseek, deepseek-pro, deepseek-v4-pro
+//   - kimi, kimi-code, kimi-k2.7-code
+//   - glm, glm-5.2
+//
+// Per-run selection intentionally stays on this curated set.
+func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
+	var flat []string
+	for _, value := range selectors {
+		for _, selector := range strings.Split(value, ",") {
+			selector = strings.TrimSpace(selector)
+			if selector == "" {
+				return nil, fmt.Errorf("model selector cannot be empty")
+			}
+			flat = append(flat, selector)
+		}
+	}
+	if len(flat) == 0 {
+		return DefaultReviewTargets(), nil
+	}
+
+	var targets []ReviewTarget
+	seen := map[string]bool{}
+	appendTarget := func(target ReviewTarget) {
+		key := target.CLI + "\x00" + target.Model
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		targets = append(targets, target)
+	}
+
+	for _, raw := range flat {
+		alias := strings.ToLower(strings.TrimSpace(raw))
+
+		var expanded []ReviewTarget
+		switch alias {
+		case "sol", GPT56SolModel:
+			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
+		case "deepseek", "deepseek-pro", "deepseek-v4-pro":
+			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeDeepSeekPro, Role: "bug_hunter"}}
+		case "kimi", "kimi-code", "kimi-k2.7", "kimi-k2.7-code":
+			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeKimiK27Code, Role: "arch_security"}}
+		case "glm", "glm-5.2":
+			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeGLMModel, Role: "code_quality"}}
+		default:
+			return nil, fmt.Errorf("unknown review model %q; use one of: gpt-5.6-sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2", raw)
+		}
+		for _, target := range expanded {
+			appendTarget(target)
+		}
+	}
+
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("no review models selected")
+	}
+	return targets, nil
+}
+
+// OpencodeAPIKey returns the required OpenCode Zen API key that Rival injects
+// into reviewer runs via OPENCODE_CONFIG_CONTENT. The key is read only from
+// RIVAL_OPENCODE_API_KEY, never from a reviewed repository.
 func OpencodeAPIKey() string {
 	return strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_API_KEY"))
 }
 
-// validReviewerRoles are the roles BuildRolePrompt has instructions for. A role
-// from RIVAL_OPENCODE_MODELS that isn't one of these would build a reviewer
-// prompt with no role instructions, so unknown roles fall back to bug_hunter.
-var validReviewerRoles = map[string]bool{
-	"bug_hunter":    true,
-	"arch_security": true,
-	"code_quality":  true,
-}
-
-// validReviewerRole returns role if it is a known reviewer role, else
-// "bug_hunter". (A user-configured role-prompt override in ~/.rival/config.yaml
-// is honoured at prompt-build time regardless, so a custom role keyed there still
-// works even though this normalizes the roster default.)
-func validReviewerRole(role string) string {
-	if validReviewerRoles[role] {
-		return role
-	}
-	if _, ok := RolePromptOverride(role); ok {
-		return role
-	}
-	return "bug_hunter"
-}
-
-// OpencodeReviewerList returns the opencode reviewer roster for megareview.
-// RIVAL_OPENCODE_MODELS overrides the default: a comma-separated list of entries
-// `model[:role]` (role defaults to "code_quality" when omitted; unknown roles are
-// kept as-is and fall back to bug_hunter at prompt-build time). Duplicate models
-// are dropped, preserving first-seen order. An empty/whitespace override yields
-// the default roster (not an empty one), so a stray env value never disables
-// opencode entirely.
+// OpencodeReviewerList returns a copy of the curated roster. Per-run selection
+// is handled by ResolveReviewTargets rather than process-wide environment state.
 func OpencodeReviewerList() []OpencodeReviewer {
-	raw := strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_MODELS"))
-	if raw == "" {
-		return defaultOpencodeReviewers
-	}
-	var out []OpencodeReviewer
-	seen := map[string]bool{}
-	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		model, role := part, "code_quality"
-		// Split off an optional trailing :role. The model id itself contains a
-		// slash (opencode-go/glm-5.2) but no colon, so the LAST colon (if any)
-		// separates the role.
-		if i := strings.LastIndex(part, ":"); i >= 0 {
-			model = strings.TrimSpace(part[:i])
-			if r := strings.TrimSpace(part[i+1:]); r != "" {
-				role = r
-			}
-		}
-		if model == "" || seen[model] {
-			continue
-		}
-		seen[model] = true
-		out = append(out, OpencodeReviewer{Model: model, Role: validReviewerRole(role)})
-	}
-	if len(out) == 0 {
-		return defaultOpencodeReviewers
-	}
-	return out
+	return append([]OpencodeReviewer(nil), defaultOpencodeReviewers...)
 }
 
 // SystemPrompt is prepended as a system instruction to all CLI invocations.
@@ -196,6 +248,7 @@ var GeminiThinkingLevel = map[string]string{
 	"medium": "MEDIUM",
 	"high":   "HIGH",
 	"xhigh":  "HIGH",
+	"ultra":  "HIGH",
 }
 
 // DiffReviewPreamble is prepended to ReviewPrompt when git auto-detects changed files.
@@ -280,6 +333,13 @@ func IsValidEffort(e string) bool {
 		}
 	}
 	return false
+}
+
+// IsValidReviewEffort validates review and plan effort values. It intentionally
+// accepts xhigh so existing invocations keep working even though new help text
+// presents ultra as the top-level choice.
+func IsValidReviewEffort(e string) bool {
+	return IsValidEffort(e) || e == "ultra"
 }
 
 // SessionDirPath returns the absolute path to ~/.rival/sessions.

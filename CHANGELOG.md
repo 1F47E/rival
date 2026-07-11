@@ -4,12 +4,49 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
-### Changed — megareview roster: Antigravity dropped, Codex + opencode only
+### Added — first-class per-review model selection
 
-Megareview no longer runs Antigravity. The default roster is **Codex + three opencode models**
-(GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash). The `agy` executor stays in the binary for the
-standalone `/rival-antigravity-only` skill; it is just no longer part of the megareview roster.
-The consilium judge preference is now codex → opencode.
+`/rival-review` and both binary entry points now accept `-m/--model` with an exact,
+comma-separated or repeated model list:
+
+- `/rival-review -m deepseek src/api/`
+- `/rival-review -m kimi src/api/`
+- `/rival-review -m glm src/api/`
+- `/rival-review -m gpt-5.6-sol src/api/`
+- `/rival-review -m deepseek,kimi src/api/`
+- `rival review --model kimi src/api/`
+
+An explicit list replaces the complete roster; no reviewer is added implicitly. Model-only
+invocations still auto-detect the git scope, options can be combined in either order, and `--`
+escapes a scope beginning with a dash. The skill is bumped to v3.18.0 so existing installs
+receive the new argument contract.
+
+### Changed — curated four-model megareview roster
+
+The default roster is now exactly **GPT-5.6-Sol + DeepSeek V4 Pro + Kimi K2.7 Code +
+GLM-5.2**. GPT-5.6-Sol and DeepSeek are independent bug hunters, Kimi covers
+architecture/security, and GLM covers code quality. Default judge priority follows that same
+order. Per-run selection is intentionally limited to these four curated models.
+
+Code review and GPT-5.6-Sol plan review now default to `high` effort and accept `ultra`.
+GPT-5.6-Sol receives `ultra` natively; DeepSeek V4 Pro and GLM-5.2 map it to their maximum
+variant, while Kimi K2.7 Code keeps its model default. A claude-fable-5-only plan retains its
+low default.
+
+The process-wide `RIVAL_OPENCODE_MODELS` roster override is retired; use the
+per-invocation `-m/--model` interface instead.
+
+Judge selection now follows the requested model order after reviewer-phase failures, and console output shows
+the concrete judge model. Empty
+`/rival-review` arguments now run the default roster with git scope detection; use `--help` for
+usage.
+
+### Added — GPT-5.6-Sol plan review
+
+`/rival-plan-sol` reviews a plan/spec with GPT-5.6-Sol at `high` effort by default and accepts
+`-re ultra`. The plan binary now selects reviewers by model name via `--model`; output,
+dashboard labels, skipped-reviewer messages, and consilium attribution all show concrete model
+names. Superseded provider-named skills are removed during `rival install`.
 
 ### Added — `/rival-claude-fable` code-review skill
 
@@ -28,9 +65,9 @@ the parallel processes never contend.
 
 ### Fixed — clear preflight error when a Zen model has no API key
 
-If the opencode roster uses OpenCode Zen models (`opencode/` prefix) and `RIVAL_OPENCODE_API_KEY`
-is unset, opencode preflight now fails with an actionable message ("export your Zen key…")
-instead of each reviewer failing mid-run with an opaque "Missing API key". (Root cause of an
+Because DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 use the same Zen credential, their
+preflight requires `RIVAL_OPENCODE_API_KEY` and fails with an actionable message ("export your
+Zen key…") instead of each reviewer failing mid-run with an opaque "Missing API key". (Root cause of an
 observed `Skipped: glm-5.2 (exited with code 1)` — the key was in `~/.zshrc`, which
 non-interactive shells don't source; it belongs in `~/.zshenv`.)
 

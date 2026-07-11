@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -52,8 +53,8 @@ func sessionsAction(cmd *cobra.Command, args []string) error {
 		if len(id) > 8 {
 			id = id[:8]
 		}
-		fmt.Printf("%-8s  %-7s  %-10s  %-6s  %s  %s\n",
-			id, s.CLI, status, s.Effort, dur, s.Model)
+		fmt.Printf("%-8s  %-20s  %-10s  %-6s  %s\n",
+			id, config.EngineLabel(s.CLI, s.Model), status, s.Effort, dur)
 	}
 
 	return nil
