@@ -156,6 +156,33 @@ func TestDefaultPlanEffort(t *testing.T) {
 	}
 }
 
+func TestMergePlanEffort(t *testing.T) {
+	tests := []struct {
+		name        string
+		flagEffort  string
+		flagSet     bool
+		inputEffort string
+		want        string
+		wantErr     bool
+	}{
+		{"flag only", "ultra", true, "", "ultra", false},
+		{"input only", "high", false, "ultra", "ultra", false},
+		{"matching duplicate", "ultra", true, "ultra", "ultra", false},
+		{"conflicting duplicate", "ultra", true, "high", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := mergePlanEffort(tc.flagEffort, tc.flagSet, tc.inputEffort)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("mergePlanEffort() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("mergePlanEffort() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParsePlanInput(t *testing.T) {
 	cases := []struct {
 		name       string
