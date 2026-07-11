@@ -1,36 +1,37 @@
 ---
-name: rival-gpt-5-6-sol
-version: 3.18.0
-description: Run gpt-5.6-sol through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-gpt-5-6-sol.
-argument-hint: "[-re low|medium|high|ultra] [review [scope] | prompt]"
+name: rival-fable
+version: 3.19.0
+description: Code review via Fable through the rival binary — reviews changed files (or a given scope) at medium effort by default. Detached + watched in the background. Use only when the user explicitly invokes /rival-fable.
+argument-hint: "[scope | -re level [scope]]"
 allowed-tools: Bash, Read
 ---
 
-# gpt-5.6-sol runner
+# Fable reviewer (rival binary)
 
-Run `gpt-5.6-sol` through the `rival` Go binary. The run is detached and
-watched in the background, so this skill does not block your session.
+Ruthless code review with Fable via the `rival` Go binary. Reviews the changed
+files (git auto-detected) or an explicit scope, and **defaults to medium
+reasoning effort** (a balance of depth vs cost/speed). The run is detached and
+watched in the background — this skill does not block your session.
+
+For a Fable review of a plan/spec *document* (rated 1-10) use `/rival-plan-fable`.
 
 ## Instructions
 
 **Arguments received:** $ARGUMENTS
 
-### Empty arguments check
+### Build the review input
 
-If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
+This skill always runs a **code review** at **medium effort by default**. Construct the input line that gets piped to `rival command fable`:
 
-> **Usage:**
-> - `/rival-gpt-5-6-sol 'explain the auth flow'` — run any prompt with `gpt-5.6-sol`
-> - `/rival-gpt-5-6-sol -re ultra 'find bugs in src/main.go'` — use ultra reasoning
-> - `/rival-gpt-5-6-sol review` — code review (auto-detects changed files via git)
-> - `/rival-gpt-5-6-sol review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-gpt-5-6-sol -re ultra review src/api/` — review with ultra reasoning
->
-> **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`
+- No arguments → `-re medium review` (reviews git-detected changed files).
+- A scope (e.g. `src/api/`, or natural language like `the auth middleware`) → `-re medium review <scope>`.
+- The user explicitly asked for a different effort (e.g. "review at high", `-re high`) → use that effort instead of medium: `-re <effort> review <scope-if-any>`. A user-supplied effort always wins over the medium default.
+
+Call the constructed line **REVIEW_INPUT** below. Reasoning effort (`-re`): `low`, `medium` (default here), `high`, `xhigh`.
 
 ### Execute — launch detached, then watch in the background
 
-Rival serializes runs through a cross-process queue and a review can take many
+rival serializes runs through a cross-process queue and a review can take many
 minutes, so this skill **does not block**. It launches rival detached (survives
 this context ending), arms a **background watcher**, and then returns control to
 you immediately. The watcher notifies you when the run finishes — you present
@@ -42,16 +43,16 @@ the result then, possibly several turns later.
 DELIM="RIVAL_INPUT_$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n' | head -c 16)"
 RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX)"; RIVAL_ERR="$(mktemp -t rival_err.XXXXXX)"
 cat <<"$DELIM" >"$RIVAL_IN"
-$ARGUMENTS
+REVIEW_INPUT
 $DELIM
-rival command gpt-5.6-sol --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command fable --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"
 [ -n "$RIVAL_PID" ] && echo "rival_pid=$RIVAL_PID" || { echo "DETACH FAILED:"; tail -n 5 "$RIVAL_ERR"; exit 1; }
 ```
 
-**Replace `$ARGUMENTS` with the actual arguments verbatim.** The heredoc-to-file prevents shell injection.
+**Replace `REVIEW_INPUT` with the constructed line** (e.g. `-re medium review` or `-re medium review src/api/`). The heredoc-to-file prevents shell injection.
 **Capture the printed `rival_out` / `rival_err` paths.** They are the literal values to use everywhere below.
 
 **Step 2 — arm the background watcher (`run_in_background: true`):**

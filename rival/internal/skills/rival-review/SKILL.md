@@ -1,7 +1,7 @@
 ---
 name: rival-review
-version: 3.18.0
-description: Run GPT-5.6-Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and/or GLM-5.2 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+version: 3.19.0
+description: Run Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and/or GLM-5.2 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-m sol|deepseek|kimi|glm[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read
 ---
@@ -9,7 +9,7 @@ allowed-tools: Bash, Read
 # Megareview Runner (rival binary)
 
 Run the curated reviewers via the `rival` Go binary. The default roster is
-GPT-5.6-Sol + DeepSeek V4 Pro + Kimi K2.7 Code + GLM-5.2; `-m/--model` replaces
+Sol + DeepSeek V4 Pro + Kimi K2.7 Code + GLM-5.2; `-m/--model` replaces
 that roster for one invocation. Returns a single combined answer.
 
 ## Instructions
@@ -24,14 +24,14 @@ respond with this usage message and STOP:
 
 > **Usage:**
 > - `/rival-review` — all four models; auto-detect changed files via git
-> - `/rival-review -m gpt-5.6-sol src/api/` — GPT-5.6-Sol only
+> - `/rival-review -m sol src/api/` — Sol only
 > - `/rival-review -m deepseek src/api/` — DeepSeek V4 Pro only
 > - `/rival-review -m kimi src/api/` — Kimi K2.7 Code only
 > - `/rival-review -m glm src/api/` — GLM-5.2 only
 > - `/rival-review -m deepseek,kimi src/api/` — exactly those two models
 > - `/rival-review -re ultra src/api/` — highest supported effort
 >
-> **Models** (`-m`, `--model`): `gpt-5.6-sol` (`sol`), `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), `glm-5.2` (`glm`)
+> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), `glm-5.2` (`glm`)
 > **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high` (default), `ultra`
 >
 > An explicit model list is exact; no other reviewer is added implicitly. A

@@ -16,7 +16,7 @@ var forceInstall bool
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install Claude Code skills to ~/.claude/skills/",
+	Short: "Install slash-command skills to ~/.claude/skills/",
 	RunE:  runInstall,
 }
 
@@ -92,9 +92,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		targetDir := filepath.Join(targetBase, name)
 		if _, err := os.Stat(targetDir); err == nil {
 			if err := os.RemoveAll(targetDir); err != nil {
-				fmt.Printf("  ✗ %s — failed to remove: %v\n", name, err)
+				fmt.Println("  ✗ deprecated skill cleanup failed — check permissions in the skills directory")
 			} else {
-				fmt.Printf("  🗑 %s — removed (deprecated)\n", name)
+				fmt.Println("  🗑 deprecated skill removed")
 				removed++
 			}
 		}

@@ -1,19 +1,19 @@
 ---
 name: rival-plan-fable
-version: 3.18.0
-description: Review a plan/spec markdown document with claude-fable-5 only via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-fable.
+version: 3.19.0
+description: Review a plan/spec markdown document with Fable only via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-fable.
 argument-hint: "[-re low|high|ultra] <path-to-plan.md>"
 allowed-tools: Bash, Read
 ---
 
-# Plan reviewer — claude-fable-5
+# Plan reviewer — Fable
 
-Review a single plan/spec markdown file with `claude-fable-5`. It rates the plan
+Review a single plan/spec markdown file with Fable. It rates the plan
 1-10 and returns numbered findings (crit/high/med/low). Reasoning effort defaults
 to **low**; the user can request **high** or **ultra**. The run is detached
 and watched in the background — this skill does not block your session.
 
-For a `gpt-5.6-sol` review instead, use `/rival-plan-sol`.
+For a Sol review instead, use `/rival-plan-sol`.
 
 ## Instructions
 
@@ -24,7 +24,7 @@ For a `gpt-5.6-sol` review instead, use `/rival-plan-sol`.
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-plan-fable path/to/plan.md` — review a plan/spec with `claude-fable-5` at low effort
+> - `/rival-plan-fable path/to/plan.md` — review a plan/spec with Fable at low effort
 > - `/rival-plan-fable -re high path/to/plan.md` — use high effort
 > - `/rival-plan-fable -re ultra path/to/plan.md` — use ultra effort
 > - `/rival-plan-fable` — show this usage info
@@ -48,7 +48,7 @@ RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX
 cat <<"$DELIM" >"$RIVAL_IN"
 $ARGUMENTS
 $DELIM
-rival command plan --model claude-fable-5 --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command plan --model fable --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

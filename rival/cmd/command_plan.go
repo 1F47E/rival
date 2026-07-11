@@ -17,28 +17,28 @@ import (
 )
 
 const planUsage = `Usage:
-  /rival-plan-sol path/to/plan.md — review with gpt-5.6-sol
+  /rival-plan-sol path/to/plan.md — review with Sol
   /rival-plan-sol -re ultra path/to/plan.md — use ultra reasoning
-  /rival-plan-fable path/to/plan.md — review with claude-fable-5
+  /rival-plan-fable path/to/plan.md — review with Fable
   rival command plan --help — show native command options
 
 Input is a single path to a markdown plan/spec file. Reasoning effort defaults to high
-(low for claude-fable-5 alone); use -re/--effort ultra for the deepest review. --model
-accepts gpt-5.6-sol (alias: sol) and claude-fable-5 (alias: fable). An unavailable model
+(low for Fable alone); use -re/--effort ultra for the deepest review. --model
+accepts sol and fable. An unavailable model
 is skipped, not fatal.`
 
-var defaultPlanModels = []string{config.GPT56SolModel, config.FableModel}
+var defaultPlanModels = []string{config.SolLabel, config.FableLabel}
 
 var commandPlanCmd = &cobra.Command{
 	Use:   "plan",
-	Short: "Review a plan/spec with gpt-5.6-sol and/or claude-fable-5",
+	Short: "Review a plan/spec with Sol and/or Fable",
 	RunE:  commandPlanAction,
 }
 
 func init() {
 	commandPlanCmd.Flags().String("workdir", ".", "working directory")
 	commandPlanCmd.Flags().Bool("no-queue", false, "bypass the review queue")
-	commandPlanCmd.Flags().StringSliceP("model", "m", defaultPlanModels, "plan review model(s): gpt-5.6-sol, claude-fable-5 (comma-separated)")
+	commandPlanCmd.Flags().StringSliceP("model", "m", defaultPlanModels, "plan review model(s): sol, fable (comma-separated)")
 	commandPlanCmd.Flags().StringSlice("cli", nil, "legacy plan reviewer selector")
 	if err := commandPlanCmd.Flags().MarkHidden("cli"); err != nil {
 		panic(err)
@@ -58,14 +58,14 @@ func parsePlanModels(raw []string) ([]string, error) {
 			model := strings.ToLower(strings.TrimSpace(part))
 			var cli string
 			switch model {
-			case "sol", config.GPT56SolModel:
+			case config.SolLabel, config.GPT56SolModel:
 				cli = "codex"
-			case "fable", config.FableModel:
+			case config.FableLabel, config.FableModel:
 				cli = "fable"
 			case "":
 				return nil, fmt.Errorf("model selector cannot be empty")
 			default:
-				return nil, fmt.Errorf("unknown plan model %q; use one of: %s, %s", part, config.GPT56SolModel, config.FableModel)
+				return nil, fmt.Errorf("unknown plan model %q; use one of: sol, fable", part)
 			}
 			if !seen[cli] {
 				seen[cli] = true
@@ -94,11 +94,11 @@ func parsePlanCLIs(raw []string) ([]string, error) {
 		case "":
 			continue
 		default:
-			return nil, fmt.Errorf("unknown legacy plan selector; use --model with %s or %s", config.GPT56SolModel, config.FableModel)
+			return nil, fmt.Errorf("unknown legacy plan selector; use --model with sol or fable")
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no plan models selected; use --model with %s or %s", config.GPT56SolModel, config.FableModel)
+		return nil, fmt.Errorf("no plan models selected; use --model with sol or fable")
 	}
 	return out, nil
 }

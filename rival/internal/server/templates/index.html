@@ -75,7 +75,7 @@
 </div>
 
 <script>
-const CLI_ICONS = { codex: '◈', gemini: '✦', claude: '⬡', fable: '⬡', antigravity: '△', opencode: '❯' };
+const CLI_ICONS = { sol: '◈', opus: '⬡', fable: '⬡', gemini: '✦', antigravity: '△', opencode: '❯' };
 const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
@@ -130,16 +130,15 @@ function buildRow(g) {
 
   let cliText;
   if (g.is_group) {
-    // Plan groups run codex + claude-fable; everything else grouped is a megareview.
+    // Plan groups and code-review groups use distinct task labels.
     const reviewerCount = Math.max(1, g.sessions.filter(s => s.mode === 'megareview').length);
     cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : ('❯'.repeat(reviewerCount) + ' mega');
   } else {
     let icon = CLI_ICONS[primary.cli] || '';
     let label = g.cli || primary.model || primary.cli;
-	// Legacy read-compat: older sessions stored the fable model as the adapter.
-	if (primary.cli === 'fable') label = primary.model || g.cli;
-	if ((primary.cli === 'claude' || primary.cli === 'fable') && primary.mode === 'docker') label = (primary.model || g.cli) + '/dk';
-    if (primary.cli === 'codex' && primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
+    // Both fields are normalized to Rival's public model name by the API.
+    if (primary.mode === 'docker') label = (g.cli || primary.model) + '/dk';
+    if (primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
     cliText = icon + ' ' + label;
   }
 

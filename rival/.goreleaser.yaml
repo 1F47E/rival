@@ -33,7 +33,7 @@ archives:
 brews:
   - name: rival
     homepage: https://github.com/1F47E/rival
-    description: "Dispatch prompts to GPT-5.6-Sol, Gemini, and Claude models with session tracking and TUI/web dashboard"
+    description: "Dispatch prompts to Sol, Gemini, Opus, and Fable with session tracking and TUI/web dashboard"
     license: MIT
     # directory omitted → formula written to the repo root (rival.rb)
     repository:

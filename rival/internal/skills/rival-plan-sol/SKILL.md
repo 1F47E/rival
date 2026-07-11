@@ -1,19 +1,19 @@
 ---
 name: rival-plan-sol
-version: 3.18.0
-description: Review a plan/spec markdown document with gpt-5.6-sol only via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-sol.
+version: 3.19.0
+description: Review a plan/spec markdown document with Sol only via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-sol.
 argument-hint: "[-re high|ultra] <path-to-plan.md>"
 allowed-tools: Bash, Read
 ---
 
-# Plan reviewer — gpt-5.6-sol
+# Plan reviewer — Sol
 
-Review one plan/spec markdown file with `gpt-5.6-sol`. The model rates the plan
+Review one plan/spec markdown file with Sol. The model rates the plan
 1-10 and returns numbered findings (crit/high/med/low). Reasoning effort defaults
 to **high**; the user can request **ultra** with `-re ultra`. The run is detached
 and watched in the background, so this skill does not block the session.
 
-For a `claude-fable-5` review instead, use `/rival-plan-fable`.
+For a Fable review instead, use `/rival-plan-fable`.
 
 ## Instructions
 
@@ -24,7 +24,7 @@ For a `claude-fable-5` review instead, use `/rival-plan-fable`.
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-plan-sol path/to/plan.md` — review a plan/spec with `gpt-5.6-sol` at high effort
+> - `/rival-plan-sol path/to/plan.md` — review a plan/spec with Sol at high effort
 > - `/rival-plan-sol -re ultra path/to/plan.md` — use ultra effort
 > - `/rival-plan-sol` — show this usage info
 >
@@ -47,7 +47,7 @@ RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX
 cat <<"$DELIM" >"$RIVAL_IN"
 $ARGUMENTS
 $DELIM
-rival command plan --model gpt-5.6-sol --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command plan --model sol --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

@@ -14,13 +14,13 @@ import (
 // CodexPreflight checks that codex is installed and authenticated.
 func CodexPreflight() error {
 	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("%s runtime is not installed", config.GPT56SolModel)
+		return fmt.Errorf("%s runtime is not installed", config.SolLabel)
 	}
 
 	cmd := exec.Command("codex", "login", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s authentication is unavailable\n%s", config.GPT56SolModel, string(out))
+		return fmt.Errorf("%s authentication is unavailable\n%s", config.SolLabel, string(out))
 	}
 	return nil
 }
@@ -43,8 +43,9 @@ func RunCodexModel(ctx context.Context, sess *session.Session, prompt, effort, w
 	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	result, err := RunSubprocess(ctx, sess, "codex", args, nil, fullPrompt, mirror)
 	if err != nil {
-		message := strings.NewReplacer("Codex", model, "codex", model).Replace(err.Error())
-		return nil, fmt.Errorf("%s runtime: %s", model, message)
+		label := config.EngineLabel("codex", model)
+		message := strings.NewReplacer("Codex", label, "codex", label, model, label).Replace(err.Error())
+		return nil, fmt.Errorf("%s runtime: %s", label, message)
 	}
 	return result, nil
 }

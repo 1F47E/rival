@@ -17,18 +17,18 @@ import (
 )
 
 const fableUsage = `Usage:
-  /rival-fable 'explain the auth flow' — run any prompt via claude-fable-5 (max effort)
+  /rival-fable 'explain the auth flow' — run any prompt with Fable (max effort)
   /rival-fable -re medium 'find bugs in src/main.go' — run with a lower reasoning effort
   /rival-fable review — ruthless code review of the entire project
   /rival-fable review src/api/ — review specific scope
   /rival-fable -re medium review src/api/ — review with medium reasoning
   /rival-fable — show this usage info
 
-Model: claude-fable-5. Reasoning effort (-re): low, medium, high, xhigh — default maps to max.`
+Reasoning effort (-re): low, medium, high, xhigh — default maps to max.`
 
 var commandFableCmd = &cobra.Command{
 	Use:   "fable",
-	Short: "Skill-facing claude-fable-5 executor",
+	Short: "Skill-facing Fable executor",
 	RunE:  commandFableAction,
 }
 
@@ -137,7 +137,7 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read log file: %w", err)
 	}
-	if _, err := os.Stdout.Write(logData); err != nil {
+	if _, err := io.WriteString(os.Stdout, config.PublicRuntimeLog(sess.CLI, sess.Model, string(logData))); err != nil {
 		return fmt.Errorf("write stdout: %w", err)
 	}
 

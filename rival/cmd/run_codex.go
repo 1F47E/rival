@@ -16,13 +16,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runGPT56SolCmd = &cobra.Command{
-	Use:   config.GPT56SolModel,
-	Short: "Run gpt-5.6-sol",
+var runSolCmd = &cobra.Command{
+	Use:   config.SolLabel,
+	Short: "Run Sol",
 	RunE:  runGPT56SolAction,
 }
 
-// Retained for scripts created before the model-named command was introduced.
+// Retained for scripts created before the short model-named command was introduced.
+var runGPT56SolCmd = &cobra.Command{
+	Use:    config.GPT56SolModel,
+	Hidden: true,
+	RunE:   runGPT56SolAction,
+}
+
 var runCodexCmd = &cobra.Command{
 	Use:    "codex",
 	Hidden: true,
@@ -30,8 +36,12 @@ var runCodexCmd = &cobra.Command{
 }
 
 func init() {
+	configureRunGPT56SolFlags(runSolCmd)
 	configureRunGPT56SolFlags(runGPT56SolCmd)
 	configureRunGPT56SolFlags(runCodexCmd)
+	mirrorHiddenHelp(runGPT56SolCmd, runSolCmd)
+	mirrorHiddenHelp(runCodexCmd, runSolCmd)
+	runCmd.AddCommand(runSolCmd)
 	runCmd.AddCommand(runGPT56SolCmd)
 	runCmd.AddCommand(runCodexCmd)
 }
@@ -94,7 +104,7 @@ func runGPT56SolAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting gpt-5.6-sol")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting sol")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -118,10 +128,10 @@ func runGPT56SolAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.GPT56SolModel, result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.SolLabel, result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s exited with code %d", config.GPT56SolModel, result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s exited with code %d", config.SolLabel, result.ExitCode)}
 	}
 
 	if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {

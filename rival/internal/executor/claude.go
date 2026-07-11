@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -14,7 +15,7 @@ import (
 
 // ClaudePreflight checks that claude is available (native or docker).
 func ClaudePreflight() error {
-	if _, err := exec.LookPath("claude"); err == nil {
+	if _, lookErr := exec.LookPath("claude"); lookErr == nil {
 		return nil
 	}
 	return ClaudeDockerPreflight()
@@ -36,12 +37,20 @@ func RunFable(ctx context.Context, sess *session.Session, prompt, effort, workdi
 // RunClaudeModel runs a prompt through the Claude CLI with an explicit model id,
 // auto-selecting native (claude on PATH) vs docker.
 func RunClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
-	if _, err := exec.LookPath("claude"); err == nil {
+	var result *Result
+	var err error
+	if _, lookErr := exec.LookPath("claude"); lookErr == nil {
 		sess.Mode = "native"
-		return runClaudeNative(ctx, sess, prompt, effort, workdir, model, mirror)
+		result, err = runClaudeNative(ctx, sess, prompt, effort, workdir, model, mirror)
+	} else {
+		sess.Mode = "docker"
+		result, err = RunClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
 	}
-	sess.Mode = "docker"
-	return RunClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
+	if err != nil {
+		label := config.EngineLabel("claude", model)
+		return nil, fmt.Errorf("%s runtime: %s", label, config.PublicRuntimeError("claude", model, err.Error()))
+	}
+	return result, nil
 }
 
 func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
@@ -50,7 +59,7 @@ func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort,
 		return nil, err
 	}
 	sess.Account = auth
-	log.Info().Str("session", sess.ID).Str("auth", auth).Str("model", model).Msg("claude native auth mode")
+	log.Info().Str("session", sess.ID).Str("auth", auth).Str("model", config.EngineLabel("claude", model)).Msg("model native auth mode")
 
 	// Subscription mode: the claude CLI is already authed via /login. An
 	// inherited ANTHROPIC_API_KEY would silently win over that login and bill

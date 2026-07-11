@@ -16,23 +16,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const gpt56SolUsage = `Usage:
-  /rival-gpt-5-6-sol 'explain the auth flow' — run any prompt with gpt-5.6-sol
-  /rival-gpt-5-6-sol -re ultra 'find bugs in src/main.go' — use ultra reasoning
-  /rival-gpt-5-6-sol review — ruthless code review of the entire project
-  /rival-gpt-5-6-sol review src/api/ — review specific scope
-  /rival-gpt-5-6-sol -re ultra review src/api/ — review with ultra reasoning
-  /rival-gpt-5-6-sol — show this usage info
+const solUsage = `Usage:
+  /rival-sol 'explain the auth flow' — run any prompt with Sol
+  /rival-sol -re ultra 'find bugs in src/main.go' — use ultra reasoning
+  /rival-sol review — ruthless code review of the entire project
+  /rival-sol review src/api/ — review specific scope
+  /rival-sol -re ultra review src/api/ — review with ultra reasoning
+  /rival-sol — show this usage info
 
 Reasoning effort (-re): low, medium, high (default), ultra`
 
-var commandGPT56SolCmd = &cobra.Command{
-	Use:   config.GPT56SolModel,
-	Short: "Skill-facing gpt-5.6-sol executor",
+var commandSolCmd = &cobra.Command{
+	Use:   config.SolLabel,
+	Short: "Skill-facing Sol executor",
 	RunE:  commandGPT56SolAction,
 }
 
-// Retained for scripts created before the model-named command was introduced.
+// Retained for scripts created before the short model-named command was introduced.
+var commandGPT56SolCmd = &cobra.Command{
+	Use:    config.GPT56SolModel,
+	Hidden: true,
+	RunE:   commandGPT56SolAction,
+}
+
 var commandCodexCmd = &cobra.Command{
 	Use:    "codex",
 	Hidden: true,
@@ -40,8 +46,12 @@ var commandCodexCmd = &cobra.Command{
 }
 
 func init() {
+	configureCommandGPT56SolFlags(commandSolCmd)
 	configureCommandGPT56SolFlags(commandGPT56SolCmd)
 	configureCommandGPT56SolFlags(commandCodexCmd)
+	mirrorHiddenHelp(commandGPT56SolCmd, commandSolCmd)
+	mirrorHiddenHelp(commandCodexCmd, commandSolCmd)
+	commandCmd.AddCommand(commandSolCmd)
 	commandCmd.AddCommand(commandGPT56SolCmd)
 	commandCmd.AddCommand(commandCodexCmd)
 }
@@ -57,7 +67,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 
 	// If stdin is a terminal, show usage instead of hanging.
 	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-		_, _ = fmt.Fprintln(os.Stdout, gpt56SolUsage)
+		_, _ = fmt.Fprintln(os.Stdout, solUsage)
 		return nil
 	}
 
@@ -74,7 +84,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if parsed.IsEmpty {
-		_, _ = fmt.Fprintln(os.Stdout, gpt56SolUsage)
+		_, _ = fmt.Fprintln(os.Stdout, solUsage)
 		return nil
 	}
 
@@ -103,7 +113,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting gpt-5.6-sol (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting sol (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -130,7 +140,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.GPT56SolModel, result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.SolLabel, result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {
@@ -144,12 +154,12 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read log file: %w", err)
 	}
-	if _, err := os.Stdout.Write(logData); err != nil {
+	if _, err := io.WriteString(os.Stdout, config.PublicRuntimeLog(sess.CLI, sess.Model, string(logData))); err != nil {
 		return fmt.Errorf("write stdout: %w", err)
 	}
 
 	if result.ExitCode != 0 {
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s exited with code %d", config.GPT56SolModel, result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s exited with code %d", config.SolLabel, result.ExitCode)}
 	}
 
 	return nil

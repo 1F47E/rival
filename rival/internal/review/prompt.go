@@ -50,7 +50,7 @@ func BuildConsiliumPrompt(inputs []ReviewInput, scope string, threshold int) str
 	sb.WriteString(fmt.Sprintf("## Reviewer Findings (%d reviewers)\n\n", len(inputs)))
 	for _, input := range inputs {
 		label := config.EngineLabel(input.CLI, input.Model)
-		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s (model: %s) [role: %s] ===\n\n", label, input.Model, input.Role))
+		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s [role: %s] ===\n\n", label, input.Role))
 		if input.Parsed != nil {
 			if data, err := json.MarshalIndent(input.Parsed, "", "  "); err == nil {
 				sb.WriteString(string(data))

@@ -18,12 +18,15 @@ const (
 	GeminiModel          = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
+	SolLabel             = "sol"
+	OpusLabel            = "opus"
+	FableLabel           = "fable"
 	AntigravityModel     = "gemini-3.5-flash"
 	OpencodeDeepSeekPro  = "opencode/deepseek-v4-pro"
 	OpencodeModel        = OpencodeDeepSeekPro
 	OpencodeKimiK27Code  = "opencode/kimi-k2.7-code"
 	OpencodeGLMModel     = "opencode/glm-5.2"
-	ClaudeDockerImage    = "rival-claude"
+	ClaudeDockerImage    = "rival-opus-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
 	DefaultEffort              = "xhigh"
@@ -84,21 +87,204 @@ func OpencodeVariant(model, effort string) string {
 	}
 }
 
-// EngineLabel returns a human-facing reviewer label. Review output names the
-// concrete model instead of the executable adapter used to launch it.
-func EngineLabel(cli, model string) string {
-	switch {
-	case cli == "opencode":
-		return OpencodeShortLabel(model)
-	case model == GPT56SolModel:
-		return GPT56SolModel
-	case model == FableModel:
-		return FableModel
-	case model != "":
-		return model
+// ModelLabel returns the stable public name for a concrete model id. Runtime
+// model ids stay internal so dashboards, console output, and API summaries use
+// Rival's short model names consistently.
+func ModelLabel(model string) string {
+	switch model {
+	case GPT56SolModel:
+		return SolLabel
+	case ClaudeModel:
+		return OpusLabel
+	case FableModel:
+		return FableLabel
 	default:
-		return cli
+		return OpencodeShortLabel(model)
 	}
+}
+
+// EngineLabel returns a human-facing reviewer label. Review output names the
+// selected model instead of the executable adapter used to launch it.
+func EngineLabel(cli, model string) string {
+	// Exact current ids win first because one shared adapter can launch both
+	// Opus and Fable.
+	switch model {
+	case GPT56SolModel:
+		return SolLabel
+	case ClaudeModel:
+		return OpusLabel
+	case FableModel:
+		return FableLabel
+	}
+
+	// Adapter identity is the reliable fallback for sessions written by older
+	// releases with now-obsolete model ids.
+	switch cli {
+	case "codex":
+		return SolLabel
+	case "claude":
+		if strings.Contains(strings.ToLower(model), FableLabel) {
+			return FableLabel
+		}
+		return OpusLabel
+	case "fable":
+		return FableLabel
+	}
+	if model != "" {
+		return ModelLabel(model)
+	}
+	return cli
+}
+
+// PublicRuntimeError removes internal adapter and concrete model identifiers
+// from an error before it is shown to a user. Required executable paths and
+// configuration keys remain untouched.
+func PublicRuntimeError(cli, model, message string) string {
+	message = replaceConcreteModelIDs(cli, model, message)
+	label := EngineLabel(cli, model)
+	switch cli {
+	case "codex":
+		return strings.NewReplacer(
+			"OpenAI Codex", "Sol runtime",
+			"Codex CLI", "Sol runtime",
+			"codex CLI", "Sol runtime",
+			"run codex login", "authenticate the Sol runtime",
+			"codex exited", "sol exited",
+			"start codex:", "start Sol runtime:",
+			"subprocess codex:", "Sol runtime:",
+			"Codex", "Sol",
+		).Replace(message)
+	case "claude", "fable":
+		title := strings.ToUpper(label[:1]) + label[1:]
+		return strings.NewReplacer(
+			"Claude Code CLI", title+" runtime",
+			"Claude CLI", title+" runtime",
+			"claude CLI", label+" runtime",
+			"claude requires Docker", title+" runtime requires Docker",
+			"claude exited", label+" exited",
+			"rival-claude", "rival-opus-fable",
+			"start claude:", "start "+title+" runtime:",
+			"subprocess claude:", title+" runtime:",
+		).Replace(message)
+	default:
+		return message
+	}
+}
+
+// PublicRuntimeLog normalizes runtime banners and concrete model ids while
+// preserving model output, including any source paths that contain an adapter
+// name. Persisted logs stay lossless; every user-facing log reader calls this.
+func PublicRuntimeLog(cli, model, raw string) string {
+	if raw == "" {
+		return raw
+	}
+	raw = replaceConcreteModelIDs(cli, model, raw)
+	label := EngineLabel(cli, model)
+	title := label
+	if title != "" {
+		title = strings.ToUpper(title[:1]) + title[1:]
+	}
+
+	lines := strings.SplitAfter(raw, "\n")
+	bannerSeen := false
+	headerOpen := true
+	delimiters := 0
+	for i, line := range lines {
+		ending := ""
+		body := line
+		if strings.HasSuffix(body, "\n") {
+			body = strings.TrimSuffix(body, "\n")
+			ending = "\n"
+		}
+		trimmed := strings.TrimSpace(body)
+		leading := body[:len(body)-len(strings.TrimLeft(body, " \t"))]
+
+		switch cli {
+		case "codex":
+			if strings.HasPrefix(trimmed, "OpenAI Codex") {
+				trimmed = "Sol runtime" + strings.TrimPrefix(trimmed, "OpenAI Codex")
+				body = leading + trimmed
+				bannerSeen = true
+			} else if i == 0 && strings.HasPrefix(trimmed, "Codex ") {
+				trimmed = "Sol runtime " + strings.TrimPrefix(trimmed, "Codex ")
+				body = leading + trimmed
+				bannerSeen = true
+			}
+		case "claude", "fable":
+			if strings.HasPrefix(trimmed, "Claude Code") {
+				trimmed = title + " runtime" + strings.TrimPrefix(trimmed, "Claude Code")
+				body = leading + trimmed
+				bannerSeen = true
+			} else if i == 0 && strings.HasPrefix(trimmed, "Claude ") {
+				trimmed = title + " runtime " + strings.TrimPrefix(trimmed, "Claude ")
+				body = leading + trimmed
+				bannerSeen = true
+			}
+		}
+
+		if bannerSeen && headerOpen && strings.HasPrefix(strings.ToLower(trimmed), "model:") {
+			body = leading + "model: " + label
+		}
+		if strings.HasPrefix(trimmed, "=== REVIEW FROM ") {
+			body = leading + publicReviewHeader(trimmed)
+		}
+
+		if trimmed == "--------" {
+			delimiters++
+			if delimiters >= 2 {
+				headerOpen = false
+			}
+		}
+		if strings.EqualFold(trimmed, "user") {
+			headerOpen = false
+		}
+		lines[i] = body + ending
+	}
+	return strings.Join(lines, "")
+}
+
+func replaceConcreteModelIDs(cli, model, text string) string {
+	if model != "" {
+		text = strings.ReplaceAll(text, model, EngineLabel(cli, model))
+	}
+	text = strings.ReplaceAll(text, GPT56SolModel, SolLabel)
+	text = strings.ReplaceAll(text, ClaudeModel, OpusLabel)
+	text = strings.ReplaceAll(text, FableModel, FableLabel)
+	return text
+}
+
+func publicReviewHeader(line string) string {
+	const prefix = "=== REVIEW FROM "
+	rest := strings.TrimPrefix(line, prefix)
+	roleAt := strings.Index(rest, " [role:")
+	if roleAt < 0 {
+		return line
+	}
+	identity := rest[:roleAt]
+	role := rest[roleAt:]
+	fields := strings.Fields(identity)
+	if len(fields) == 0 {
+		return line
+	}
+	reviewer := strings.Trim(fields[0], "()")
+	lowerIdentity := strings.ToLower(identity)
+	switch strings.ToLower(reviewer) {
+	case "codex":
+		reviewer = SolLabel
+	case "claude":
+		if strings.Contains(lowerIdentity, FableLabel) {
+			reviewer = FableLabel
+		} else {
+			reviewer = OpusLabel
+		}
+	case GPT56SolModel:
+		reviewer = SolLabel
+	case ClaudeModel:
+		reviewer = OpusLabel
+	case FableModel:
+		reviewer = FableLabel
+	}
+	return prefix + reviewer + role
 }
 
 // OpencodeShortLabel strips the opencode provider prefix from a model id for
@@ -156,7 +342,7 @@ func DefaultReviewTargets() []ReviewTarget {
 // may be repeated or comma-separated.
 //
 // Friendly aliases:
-//   - sol, gpt-5.6-sol
+//   - sol (the exact runtime model id remains accepted for compatibility)
 //   - deepseek, deepseek-pro, deepseek-v4-pro
 //   - kimi, kimi-code, kimi-k2.7-code
 //   - glm, glm-5.2
@@ -193,7 +379,7 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 
 		var expanded []ReviewTarget
 		switch alias {
-		case "sol", GPT56SolModel:
+		case SolLabel, GPT56SolModel:
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
 		case "deepseek", "deepseek-pro", "deepseek-v4-pro":
 			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeDeepSeekPro, Role: "bug_hunter"}}
@@ -202,7 +388,7 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		case "glm", "glm-5.2":
 			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeGLMModel, Role: "code_quality"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: gpt-5.6-sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)

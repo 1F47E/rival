@@ -16,19 +16,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runClaudeCmd = &cobra.Command{
-	Use:   "claude",
-	Short: "Run Claude CLI",
+var runOpusCmd = &cobra.Command{
+	Use:   config.OpusLabel,
+	Short: "Run Opus",
 	RunE:  runClaudeAction,
 }
 
+var runClaudeCmd = &cobra.Command{
+	Use:    "claude",
+	Hidden: true,
+	RunE:   runClaudeAction,
+}
+
 func init() {
-	runClaudeCmd.Flags().String("effort", config.DefaultEffort, "reasoning effort (low, medium, high, xhigh)")
-	runClaudeCmd.Flags().String("workdir", ".", "working directory")
-	runClaudeCmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
-	runClaudeCmd.Flags().String("review", "", "review scope (enables review mode)")
-	runClaudeCmd.Flags().Bool("no-queue", false, "bypass the review queue")
+	configureRunOpusFlags(runOpusCmd)
+	configureRunOpusFlags(runClaudeCmd)
+	mirrorHiddenHelp(runClaudeCmd, runOpusCmd)
+	runCmd.AddCommand(runOpusCmd)
 	runCmd.AddCommand(runClaudeCmd)
+}
+
+func configureRunOpusFlags(cmd *cobra.Command) {
+	cmd.Flags().String("effort", config.DefaultEffort, "reasoning effort (low, medium, high, xhigh)")
+	cmd.Flags().String("workdir", ".", "working directory")
+	cmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
+	cmd.Flags().String("review", "", "review scope (enables review mode)")
+	cmd.Flags().Bool("no-queue", false, "bypass the review queue")
 }
 
 func runClaudeAction(cmd *cobra.Command, args []string) error {
@@ -82,7 +95,7 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting claude")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting opus")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -106,13 +119,13 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("claude exited with code %d", result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("opus exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		if hint := executor.ClaudeAuthHint(sess.LogFile); hint != "" {
 			_, _ = fmt.Fprintln(os.Stderr, hint)
 		}
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("claude exited with code %d", result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("opus exited with code %d", result.ExitCode)}
 	}
 
 	if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {

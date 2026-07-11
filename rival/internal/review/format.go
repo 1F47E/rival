@@ -22,8 +22,8 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 		if f.Suggestion != "" {
 			sb.WriteString(fmt.Sprintf("  Fix: %s\n", f.Suggestion))
 		}
-		if len(f.FoundBy) > 0 {
-			sb.WriteString(fmt.Sprintf("  Found by: %s\n", strings.Join(f.FoundBy, ", ")))
+		if foundBy := publicFoundBy(f.FoundBy, inputs); len(foundBy) > 0 {
+			sb.WriteString(fmt.Sprintf("  Found by: %s\n", strings.Join(foundBy, ", ")))
 		}
 		sb.WriteString("\n")
 	}
@@ -44,7 +44,8 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 	if len(skipped) > 0 {
 		var parts []string
 		for _, s := range skipped {
-			parts = append(parts, fmt.Sprintf("%s (%s)", s.Label(), s.Reason))
+			reason := config.PublicRuntimeError(s.CLI, s.Model, s.Reason)
+			parts = append(parts, fmt.Sprintf("%s (%s)", s.Label(), reason))
 		}
 		sb.WriteString(fmt.Sprintf("Skipped: %s\n", strings.Join(parts, ", ")))
 	}
@@ -52,4 +53,43 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 	sb.WriteString(fmt.Sprintf("Findings: %d (threshold: %d)\n", len(output.Findings), threshold))
 
 	return sb.String()
+}
+
+// publicFoundBy treats judge-provided attribution as untrusted. Only reviewers
+// that succeeded in this invocation may be shown, and their adapter/model
+// aliases are collapsed to the same public labels used everywhere else.
+func publicFoundBy(foundBy []string, inputs []ReviewInput) []string {
+	aliases := make(map[string]string)
+	ambiguous := make(map[string]bool)
+	addAlias := func(alias, label string) {
+		alias = strings.ToLower(strings.TrimSpace(alias))
+		if alias == "" || label == "" || ambiguous[alias] {
+			return
+		}
+		if existing, ok := aliases[alias]; ok && existing != label {
+			delete(aliases, alias)
+			ambiguous[alias] = true
+			return
+		}
+		aliases[alias] = label
+	}
+
+	for _, input := range inputs {
+		label := config.EngineLabel(input.CLI, input.Model)
+		addAlias(label, label)
+		addAlias(input.Model, label)
+		addAlias(input.CLI, label)
+	}
+
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(foundBy))
+	for _, raw := range foundBy {
+		label, ok := aliases[strings.ToLower(strings.TrimSpace(raw))]
+		if !ok || seen[label] {
+			continue
+		}
+		seen[label] = true
+		result = append(result, label)
+	}
+	return result
 }

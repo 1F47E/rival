@@ -26,16 +26,24 @@ func TestFormatConsole_UsesConcreteSelectedModelLabels(t *testing.T) {
 	}
 }
 
-func TestFormatConsole_UsesGPTModelName(t *testing.T) {
+func TestFormatConsole_UsesSolName(t *testing.T) {
 	output := &ConsiliumOutput{
-		Summary:        "reviewed",
+		Summary: "reviewed",
+		Findings: []Finding{{
+			File: "main.go", Line: 1, Severity: "high", Title: "bug", Body: "broken",
+			FoundBy: []string{"codex", config.GPT56SolModel, "unselected-model"},
+		}},
 		Recommendation: Recommendation{Status: "approve", Summary: "solid"},
 	}
 	inputs := []ReviewInput{{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"}}
 	got := FormatConsole(output, inputs, 6, "codex", config.GPT56SolModel, nil)
-	if !strings.Contains(got, "Reviewed by: "+config.GPT56SolModel+" (bug_hunter)") ||
-		!strings.Contains(got, "Judge: "+config.GPT56SolModel+" (consilium)") {
+	if !strings.Contains(got, "Reviewed by: "+config.SolLabel+" (bug_hunter)") ||
+		!strings.Contains(got, "Judge: "+config.SolLabel+" (consilium)") ||
+		!strings.Contains(got, "Found by: "+config.SolLabel) {
 		t.Fatalf("formatted review does not use the model name:\n%s", got)
+	}
+	if strings.Contains(got, "codex") || strings.Contains(got, config.GPT56SolModel) || strings.Contains(got, "unselected-model") {
+		t.Fatalf("formatted review leaked or accepted a non-public reporter:\n%s", got)
 	}
 }
 
