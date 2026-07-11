@@ -37,13 +37,16 @@ func TestBuildConsiliumPrompt_UsesGPTModelName(t *testing.T) {
 		CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter", Parsed: &ReviewerOutput{},
 	}}, "src/", 6)
 	for _, want := range []string{
-		"REVIEW FROM " + config.GPT56SolModel,
-		"Allowed found_by labels for this run: " + config.GPT56SolModel,
-		`"found_by": ["` + config.GPT56SolModel + `"]`,
+		"REVIEW FROM " + config.SolLabel,
+		"Allowed found_by labels for this run: " + config.SolLabel,
+		`"found_by": ["` + config.SolLabel + `"]`,
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("consilium prompt missing %q", want)
 		}
+	}
+	if strings.Contains(prompt, config.GPT56SolModel) || strings.Contains(strings.ToLower(prompt), "codex") {
+		t.Fatalf("consilium prompt exposes an internal model or adapter name:\n%s", prompt)
 	}
 }
 

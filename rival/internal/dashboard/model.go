@@ -3,11 +3,13 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -221,7 +223,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode == viewDetail && m.selected < len(m.items) {
 				item := m.items[m.selected]
 				if s := item.Primary(); s != nil && s.LogFile != "" {
-					_ = exec.Command("open", s.LogFile).Start()
+					openPublicLog(s)
 				}
 			}
 
@@ -274,6 +276,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func openPublicLog(s *session.Session) {
+	viewPath, err := createPublicLogView(s)
+	if err != nil {
+		return
+	}
+	if err := exec.Command("open", viewPath).Start(); err != nil {
+		_ = os.Remove(viewPath)
+		return
+	}
+	time.AfterFunc(10*time.Minute, func() { _ = os.Remove(viewPath) })
+}
+
+func createPublicLogView(s *session.Session) (string, error) {
+	data, err := os.ReadFile(s.LogFile)
+	if err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp("", "rival-log-*.txt")
+	if err != nil {
+		return "", err
+	}
+	viewPath := file.Name()
+	if _, err := file.WriteString(config.PublicRuntimeLog(s.CLI, s.Model, string(data))); err != nil {
+		_ = file.Close()
+		_ = os.Remove(viewPath)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(viewPath)
+		return "", err
+	}
+	return viewPath, nil
 }
 
 // bannerLines is the ASCII logo for the TUI header.

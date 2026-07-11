@@ -170,7 +170,7 @@ func FormatPlanResult(result *PlanRunResult, file string) string {
 		}
 		// Parse failed — preserve the raw model output while normalizing any
 		// adapter banner to the concrete model name.
-		return planFailureReason(r.CLI, r.Raw)
+		return config.PublicRuntimeLog(r.CLI, r.Model, r.Raw)
 	}
 	return FormatPlanMultiConsole(result.Results, result.Skipped, file)
 }
@@ -188,17 +188,11 @@ type PlanCLIResult struct {
 // planEngineLabel is the human-facing model name for a plan block. The adapter
 // is intentionally never exposed in plan-review output.
 func planEngineLabel(cli, model string) string {
-	if model != "" {
-		return model
-	}
 	return config.EngineLabel(cli, model)
 }
 
 func planSkippedLabel(skipped SkippedCLI) string {
-	if skipped.Model != "" {
-		return skipped.Model
-	}
-	return skipped.Label()
+	return config.EngineLabel(skipped.CLI, skipped.Model)
 }
 
 // FormatPlanMultiConsole renders 2+ models' plan reviews as separate labelled
@@ -220,9 +214,10 @@ func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file 
 		if r.Parsed != nil {
 			formatPlanBody(r.Parsed, &sb)
 		} else {
-			// Parse failed — emit the raw CLI output verbatim so nothing is lost.
+			// Parse failed — emit normalized raw output so nothing is lost while
+			// internal runtime identifiers stay out of the public result.
 			sb.WriteString("(could not parse structured output — raw output below)\n\n")
-			sb.WriteString(strings.TrimSpace(planFailureReason(r.CLI, r.Raw)))
+			sb.WriteString(strings.TrimSpace(config.PublicRuntimeLog(r.CLI, r.Model, r.Raw)))
 			sb.WriteString("\n")
 		}
 		if i < len(results)-1 {
@@ -233,7 +228,8 @@ func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file 
 	if len(skipped) > 0 {
 		sb.WriteString("\n")
 		for _, s := range skipped {
-			fmt.Fprintf(&sb, "Skipped: %s — %s\n", planSkippedLabel(s), s.Reason)
+			reason := config.PublicRuntimeError(s.CLI, s.Model, s.Reason)
+			fmt.Fprintf(&sb, "Skipped: %s — %s\n", planSkippedLabel(s), reason)
 		}
 	}
 

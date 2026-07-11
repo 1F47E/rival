@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/1F47E/rival/internal/config"
@@ -29,7 +30,7 @@ func TestGroupSessions(t *testing.T) {
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{false, false},
-			wantCLI:     []string{config.GPT56SolModel, "gemini-3.1"},
+			wantCLI:     []string{config.SolLabel, "gemini-3.1"},
 			wantKind:    []string{"", ""},
 		},
 		{
@@ -40,7 +41,7 @@ func TestGroupSessions(t *testing.T) {
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{config.GPT56SolModel + "+gemini-3.1"},
+			wantCLI:     []string{config.SolLabel + "+gemini-3.1"},
 			wantKind:    []string{"megareview"},
 		},
 		{
@@ -51,7 +52,7 @@ func TestGroupSessions(t *testing.T) {
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{config.GPT56SolModel + "+" + config.FableModel},
+			wantCLI:     []string{config.SolLabel + "+" + config.FableLabel},
 			wantKind:    []string{"plan"},
 		},
 		{
@@ -63,7 +64,7 @@ func TestGroupSessions(t *testing.T) {
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{true, false},
-			wantCLI:     []string{config.GPT56SolModel + "+gemini-3.1", "opus"},
+			wantCLI:     []string{config.SolLabel + "+gemini-3.1", "opus"},
 			wantKind:    []string{"megareview", ""},
 		},
 	}
@@ -124,8 +125,37 @@ func TestGroupModels_Dedupes(t *testing.T) {
 		{Model: ""},                   // skipped
 	}
 	got := groupModels(sessions)
-	want := config.GPT56SolModel + " + gemini-3.1"
+	want := config.SolLabel + " + gemini-3.1"
 	if got != want {
 		t.Errorf("groupModels() = %q, want %q", got, want)
+	}
+}
+
+func TestPublicSessionsUsesOnlyPublicNames(t *testing.T) {
+	original := &session.Session{CLI: "codex", Model: config.GPT56SolModel, ErrorMsg: "Codex CLI failed for " + config.GPT56SolModel}
+	got := publicSessions([]*session.Session{original})
+	if len(got) != 1 || got[0].CLI != config.SolLabel || got[0].Model != config.SolLabel {
+		t.Fatalf("public session = %+v, want sol labels", got)
+	}
+	if original.CLI != "codex" || original.Model != config.GPT56SolModel {
+		t.Fatal("publicSessions mutated persisted session metadata")
+	}
+	if strings.Contains(got[0].ErrorMsg, "Codex") || strings.Contains(got[0].ErrorMsg, config.GPT56SolModel) {
+		t.Fatalf("public session error was not normalized: %q", got[0].ErrorMsg)
+	}
+}
+
+func TestPublicLogDataNormalizesRuntimeBanner(t *testing.T) {
+	raw := []byte("OpenAI Codex v1\n--------\nmodel: " + config.GPT56SolModel + "\n--------\n")
+	data, ok := publicLogData("a", raw, []*session.Session{{ID: "a", CLI: "codex", Model: config.GPT56SolModel}})
+	if !ok {
+		t.Fatal("expected matching session metadata")
+	}
+	got := string(data)
+	if strings.Contains(got, config.GPT56SolModel) || strings.Contains(got, "Codex") || !strings.Contains(got, "Sol runtime") {
+		t.Fatalf("public log was not normalized: %q", got)
+	}
+	if _, ok := publicLogData("missing", raw, nil); ok {
+		t.Fatal("orphan log must fail closed without session metadata")
 	}
 }

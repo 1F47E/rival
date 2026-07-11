@@ -12,25 +12,25 @@ comma-separated or repeated model list:
 - `/rival-review -m deepseek src/api/`
 - `/rival-review -m kimi src/api/`
 - `/rival-review -m glm src/api/`
-- `/rival-review -m gpt-5.6-sol src/api/`
+- `/rival-review -m sol src/api/`
 - `/rival-review -m deepseek,kimi src/api/`
 - `rival review --model kimi src/api/`
 
 An explicit list replaces the complete roster; no reviewer is added implicitly. Model-only
 invocations still auto-detect the git scope, options can be combined in either order, and `--`
-escapes a scope beginning with a dash. The skill is bumped to v3.18.0 so existing installs
+escapes a scope beginning with a dash. The skill is bumped to v3.19.0 so existing installs
 receive the new argument contract.
 
 ### Changed — curated four-model megareview roster
 
-The default roster is now exactly **GPT-5.6-Sol + DeepSeek V4 Pro + Kimi K2.7 Code +
-GLM-5.2**. GPT-5.6-Sol and DeepSeek are independent bug hunters, Kimi covers
+The default roster is now exactly **Sol + DeepSeek V4 Pro + Kimi K2.7 Code +
+GLM-5.2**. Sol and DeepSeek are independent bug hunters, Kimi covers
 architecture/security, and GLM covers code quality. Default judge priority follows that same
 order. Per-run selection is intentionally limited to these four curated models.
 
-Code review and GPT-5.6-Sol plan review now default to `high` effort and accept `ultra`.
-GPT-5.6-Sol receives `ultra` natively; DeepSeek V4 Pro and GLM-5.2 map it to their maximum
-variant, while Kimi K2.7 Code keeps its model default. A claude-fable-5-only plan retains its
+Code review and Sol plan review now default to `high` effort and accept `ultra`.
+Sol receives `ultra` natively; DeepSeek V4 Pro and GLM-5.2 map it to their maximum
+variant, while Kimi K2.7 Code keeps its model default. A Fable-only plan retains its
 low default.
 
 The process-wide `RIVAL_OPENCODE_MODELS` roster override is retired; use the
@@ -41,18 +41,26 @@ the concrete judge model. Empty
 `/rival-review` arguments now run the default roster with git scope detection; use `--help` for
 usage.
 
-### Added — GPT-5.6-Sol plan review
+### Added — Sol plan review
 
-`/rival-plan-sol` reviews a plan/spec with GPT-5.6-Sol at `high` effort by default and accepts
+`/rival-plan-sol` reviews a plan/spec with Sol at `high` effort by default and accepts
 `-re ultra`. The plan binary now selects reviewers by model name via `--model`; output,
 dashboard labels, skipped-reviewer messages, and consilium attribution all show concrete model
 names. Superseded provider-named skills are removed during `rival install`.
 
-### Added — `/rival-claude-fable` code-review skill
+### Changed — short public model names
 
-A new skill runs a **code review with claude-fable-5** via `rival command fable`, at **medium**
-reasoning effort by default (`/rival-claude-fable` reviews git-detected changes;
-`/rival-claude-fable src/api/` reviews a scope). The disabled `rival-fable-only` skill is
+The standalone skills are now `/rival-sol` and `/rival-fable`; plan review remains
+`/rival-plan-sol` and `/rival-plan-fable`. Binary commands, selectors, review attribution,
+session lists, and dashboards expose `sol`, `fable`, and `opus`. Exact runtime identifiers are
+internal, and the previous command names remain hidden aliases for script compatibility. The
+Docker image and login container use the public `rival-opus-fable` name.
+
+### Added — `/rival-fable` code-review skill
+
+A new skill runs a **code review with Fable** via `rival command fable`, at **medium**
+reasoning effort by default (`/rival-fable` reviews git-detected changes;
+`/rival-fable src/api/` reviews a scope). The disabled `rival-fable-only` skill is
 superseded by it.
 
 ### Fixed — opencode "database is locked" under parallel reviewers

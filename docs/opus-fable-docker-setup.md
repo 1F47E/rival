@@ -1,12 +1,12 @@
-# Claude Code CLI in Docker
+# Opus and Fable in Docker
 
-Run the standalone Claude Code CLI through Rival inside a Docker container.
+Run the Opus/Fable runtime through Rival inside a Docker container.
 
 ## Architecture
 
 ```
 Host: rival binary
-└── Claude CLI (Docker container)
+└── Opus/Fable runtime (Docker container)
     ├── workdir mounted as /workspace
     └── OAuth token passed via env var
 ```
@@ -18,7 +18,7 @@ Host: rival binary
 Happens automatically on first run, or manually:
 
 ```bash
-docker build -t rival-claude -f - . <<'EOF'
+docker build -t rival-opus-fable -f - . <<'EOF'
 FROM node:22-slim
 RUN npm install -g @anthropic-ai/claude-code && \
     useradd -m -s /bin/bash claude
@@ -28,18 +28,18 @@ ENTRYPOINT ["claude"]
 EOF
 ```
 
-Image is ~200MB. Runs as non-root user `claude` (required — Claude CLI refuses `--dangerously-skip-permissions` as root).
+Image is ~200MB. Runs as non-root user `claude` because the runtime refuses `--dangerously-skip-permissions` as root.
 
 ### 2. Authenticate
 
 Start a temporary container and run interactive login:
 
 ```bash
-docker run -d --name rival-claude-login \
+docker run -d --name rival-opus-fable-login \
   --user claude \
-  --entrypoint sh rival-claude -c "sleep 3600"
+  --entrypoint sh rival-opus-fable -c "sleep 3600"
 
-docker exec -it rival-claude-login claude login
+docker exec -it rival-opus-fable-login claude login
 ```
 
 This prints an auth URL. Open it in your browser, authorize, and paste the `localhost:...` redirect URL back.
@@ -47,17 +47,17 @@ This prints an auth URL. Open it in your browser, authorize, and paste the `loca
 Extract the OAuth token:
 
 ```bash
-docker exec rival-claude-login cat /home/claude/.claude/.credentials.json
+docker exec rival-opus-fable-login cat /home/claude/.claude/.credentials.json
 # grab the accessToken field (starts with sk-ant-oat01-...)
 ```
 
 Clean up:
 
 ```bash
-docker rm -f rival-claude-login
+docker rm -f rival-opus-fable-login
 ```
 
-### 3. Configure rival
+### 3. Export the token
 
 Export the token:
 
@@ -65,28 +65,20 @@ Export the token:
 export RIVAL_CLAUDE_TOKEN=sk-ant-oat01-YOUR-TOKEN-HERE
 ```
 
-Enable docker mode in `~/.rival/config.yaml`:
-
-```yaml
-claude:
-  mode: docker
-```
-
 ### 4. Run
 
 ```bash
-# Single Claude review
-printf 'review\n' | rival command claude --workdir /path/to/project
-
+# Single Opus review
+printf 'review\n' | rival command opus --workdir /path/to/project
 ```
 
 ## How it works
 
-1. `rival` detects `claude.mode: docker` in config
-2. `RunClaudeDocker()` runs `docker run --rm -i` with:
+1. `rival` uses Docker when the native runtime executable is unavailable
+2. The Docker executor runs `docker run --rm -i` with:
    - `-v <workdir>:/workspace` — mounts project dir
    - `-e ANTHROPIC_AUTH_TOKEN=<token>` — passes OAuth token
-   - Claude CLI flags: `--model`, `--effort`, `--output-format text`, `--dangerously-skip-permissions`
+   - Runtime flags: `--model`, `--effort`, `--output-format text`, `--dangerously-skip-permissions`
 3. Prompt is piped to stdin, stdout is captured to session log
 
 ## Gotchas
@@ -94,5 +86,5 @@ printf 'review\n' | rival command claude --workdir /path/to/project
 - **OAuth tokens expire** — re-run `claude login` in a temp container when you get 401s
 - **Non-root required** — the Dockerfile creates a `claude` user; running as root causes `--dangerously-skip-permissions` to fail
 - **Token env var** is `RIVAL_CLAUDE_TOKEN` (not `ANTHROPIC_API_KEY`)
-- **Native mode** (default, no config or `claude.mode: native`) runs `claude` binary directly from host, no Docker, no token env var needed
+- **Native mode** runs the host executable whenever it is available; Docker is the automatic fallback
 - **Config location**: the embedded Dockerfile is in `rival/internal/executor/claude_docker.go`, not a standalone file

@@ -24,8 +24,8 @@ func TestCommandPlanDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models, ",") != config.GPT56SolModel+","+config.FableModel {
-		t.Fatalf("default plan models = %v, want exact model roster", models)
+	if strings.Join(models, ",") != config.SolLabel+","+config.FableLabel {
+		t.Fatalf("default plan models = %v, want public model roster", models)
 	}
 	if flag := commandPlanCmd.Flags().Lookup("cli"); flag == nil || !flag.Hidden {
 		t.Fatal("legacy --cli flag must remain hidden")
@@ -146,13 +146,13 @@ func TestParsePlanModels(t *testing.T) {
 
 func TestDefaultPlanEffort(t *testing.T) {
 	if got := defaultPlanEffort([]string{"codex"}); got != "high" {
-		t.Fatalf("gpt-5.6-sol plan default = %q, want high", got)
+		t.Fatalf("sol plan default = %q, want high", got)
 	}
 	if got := defaultPlanEffort([]string{"codex", "fable"}); got != "high" {
 		t.Fatalf("multi-model plan default = %q, want high", got)
 	}
 	if got := defaultPlanEffort([]string{"fable"}); got != "low" {
-		t.Fatalf("claude-fable-5 plan default = %q, want low", got)
+		t.Fatalf("fable plan default = %q, want low", got)
 	}
 }
 

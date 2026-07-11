@@ -95,8 +95,10 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 			preflightErr = fmt.Errorf("unsupported reviewer CLI: %s", target.CLI)
 		}
 		if preflightErr != nil {
-			log.Warn().Str("cli", target.CLI).Str("model", target.Model).Err(preflightErr).Msg("reviewer unavailable")
-			skipped = append(skipped, SkippedCLI{CLI: target.CLI, Model: target.Model, Reason: preflightErr.Error()})
+			label := config.EngineLabel(target.CLI, target.Model)
+			reason := config.PublicRuntimeError(target.CLI, target.Model, preflightErr.Error())
+			log.Warn().Str("reviewer", label).Str("reason", reason).Msg("reviewer unavailable")
+			skipped = append(skipped, SkippedCLI{CLI: target.CLI, Model: target.Model, Reason: reason})
 			continue
 		}
 		available = append(available, target)
@@ -186,13 +188,15 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// Collect and parse reviewer outputs.
 	var inputs []ReviewInput
 	for r := range results {
+		label := config.EngineLabel(r.CLI, r.Model)
 		if r.Err != nil {
-			log.Error().Str("cli", r.CLI).Str("model", r.Model).Err(r.Err).Msg("reviewer failed")
-			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: r.Err.Error()})
+			reason := config.PublicRuntimeError(r.CLI, r.Model, r.Err.Error())
+			log.Error().Str("reviewer", label).Str("reason", reason).Msg("reviewer failed")
+			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: reason})
 			continue
 		}
 		if r.ExitCode != 0 {
-			log.Error().Str("cli", r.CLI).Str("model", r.Model).Int("exit_code", r.ExitCode).Msg("reviewer exited with error")
+			log.Error().Str("reviewer", label).Int("exit_code", r.ExitCode).Msg("reviewer exited with error")
 			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: fmt.Sprintf("exited with code %d", r.ExitCode)})
 			continue
 		}
@@ -200,7 +204,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		// reviewer is reported as skipped, not counted as a successful empty
 		// review that silently degrades the consilium.
 		if executor.IsQuotaExhausted(r.RawOutput) {
-			log.Error().Str("cli", r.CLI).Str("model", r.Model).Msg("reviewer hit provider quota/rate limit (429) — skipping")
+			log.Error().Str("reviewer", label).Msg("reviewer hit provider quota/rate limit (429) — skipping")
 			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: "quota/rate limit reached (429) — not authenticated to a quota-bearing account or quota exhausted"})
 			continue
 		}
@@ -208,21 +212,21 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		// not successful: count it as skipped so the consilium isn't fed a no-op
 		// input and the TUI shows why instead of a blank "(empty log)".
 		if strings.TrimSpace(r.RawOutput) == "" {
-			log.Error().Str("cli", r.CLI).Str("model", r.Model).Msg("reviewer produced empty output — skipping")
+			log.Error().Str("reviewer", label).Msg("reviewer produced empty output — skipping")
 			skipped = append(skipped, SkippedCLI{CLI: r.CLI, Model: r.Model, Reason: "produced no output (empty result) — the provider CLI exited without writing a review; likely an auth/session failure"})
 			continue
 		}
 
 		parsed, parseErr := ParseReviewerOutput(r.RawOutput)
 		if parseErr != nil {
-			log.Warn().Str("cli", r.CLI).Err(parseErr).Msg("failed to parse structured output, using raw")
+			log.Warn().Str("reviewer", label).Err(parseErr).Msg("failed to parse structured output, using raw")
 		}
 
 		inputs = append(inputs, ReviewInput{
 			CLI:       r.CLI,
 			Model:     r.Model,
 			Role:      string(r.Role),
-			RawOutput: r.RawOutput,
+			RawOutput: config.PublicRuntimeLog(r.CLI, r.Model, r.RawOutput),
 			Parsed:    parsed,
 		})
 	}
@@ -258,7 +262,10 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// invocation's exact requested order controls the fallback preference.
 	if pickedCLI, pickedModel := pickJudge(inputs, available); pickedCLI != "" {
 		if pickedCLI != judgeCLI {
-			log.Info().Str("from", judgeCLI).Str("to", pickedCLI).Msg("re-selecting consilium judge to a CLI that produced a review")
+			log.Info().
+				Str("from", config.EngineLabel(judgeCLI, judgeModel)).
+				Str("to", config.EngineLabel(pickedCLI, pickedModel)).
+				Msg("re-selecting consilium judge to a reviewer that produced a review")
 			judgeCLI = pickedCLI
 			consiliumSess.CLI = pickedCLI
 		}
@@ -271,7 +278,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		}
 	}
 
-	log.Info().Int("successful", len(inputs)).Str("judge", judgeCLI).Str("model", judgeModel).Msg("reviewers complete, running consilium")
+	log.Info().Int("successful", len(inputs)).Str("judge", config.EngineLabel(judgeCLI, judgeModel)).Msg("reviewers complete, running consilium")
 
 	// Phase 2: Run consilium judge (under the same held slot).
 	consiliumOutput, err := runConsilium(ctx, consiliumSess, judgeCLI, inputs, scope, effort, workdir, threshold)
@@ -410,7 +417,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("cli", cli).Str("model", model).Str("role", string(role)).Msg("starting reviewer")
+	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Str("role", string(role)).Msg("starting reviewer")
 
 	var err error
 	var result *executor.Result
@@ -426,8 +433,9 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 	}
 
 	if err != nil {
-		_ = sess.Fail(1, err.Error())
-		return cliResult{CLI: cli, Model: model, Role: role, Err: err}
+		reason := config.PublicRuntimeError(cli, model, err.Error())
+		_ = sess.Fail(1, reason)
+		return cliResult{CLI: cli, Model: model, Role: role, Err: errors.New(reason)}
 	}
 
 	// Read the log file to get raw output (includes stdout + stderr, so the
@@ -472,7 +480,8 @@ func formatSkipped(skipped []SkippedCLI) string {
 	}
 	parts := make([]string, 0, len(skipped))
 	for _, s := range skipped {
-		parts = append(parts, fmt.Sprintf("%s: %s", s.Label(), s.Reason))
+		reason := config.PublicRuntimeError(s.CLI, s.Model, s.Reason)
+		parts = append(parts, fmt.Sprintf("%s: %s", s.Label(), reason))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -493,7 +502,7 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("cli", judgeCLI).Msg("starting consilium judge")
+	log.Info().Str("session", sess.ID).Str("judge", judgeLabel).Msg("starting consilium judge")
 
 	var err error
 	var result *executor.Result
@@ -511,8 +520,9 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
 	if err != nil {
-		_ = sess.Fail(1, err.Error())
-		return nil, err
+		reason := config.PublicRuntimeError(judgeCLI, sess.Model, err.Error())
+		_ = sess.Fail(1, reason)
+		return nil, errors.New(reason)
 	}
 
 	if result.ExitCode != 0 {
@@ -537,7 +547,7 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 	output, err := ParseConsiliumOutput(string(logData))
 	if err != nil {
 		// Dump raw for debugging.
-		log.Error().Str("raw", truncate(string(logData), 500)).Msg("consilium parse failed")
+		log.Error().Str("raw", truncate(config.PublicRuntimeLog(judgeCLI, sess.Model, string(logData)), 500)).Msg("consilium parse failed")
 		_ = sess.Fail(1, fmt.Sprintf("consilium judge (%s) output could not be parsed", judgeLabel))
 		return nil, fmt.Errorf("parse consilium output: %w", err)
 	}

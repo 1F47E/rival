@@ -20,14 +20,14 @@ import (
 
 const megareviewUsage = `Usage:
   /rival-review — review changed files with all four curated models
-  /rival-review -m gpt-5.6-sol src/api/ — review a scope with GPT-5.6-Sol only
+  /rival-review -m sol src/api/ — review a scope with Sol only
   /rival-review -m deepseek src/api/ — review a scope with DeepSeek V4 Pro only
   /rival-review -m kimi src/api/ — review a scope with Kimi K2.7 Code only
   /rival-review -m glm — review changed files with GLM-5.2 only
   /rival-review -m deepseek,kimi src/api/ — use exactly those two models
   /rival-review -re ultra src/api/ — use the default roster at ultra effort
 
-Models (-m/--model): gpt-5.6-sol (sol), deepseek-v4-pro (deepseek), kimi-k2.7-code (kimi), glm-5.2 (glm)
+Models (-m/--model): sol, deepseek-v4-pro (deepseek), kimi-k2.7-code (kimi), glm-5.2 (glm)
 An explicit model list replaces the default four-model roster.
 Reasoning effort (-re/--effort): low, medium, high (default), ultra`
 

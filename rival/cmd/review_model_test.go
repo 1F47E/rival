@@ -41,10 +41,13 @@ func TestReviewCommandDefaultsToHighEffort(t *testing.T) {
 }
 
 func TestMegareviewUsageNamesModelsAndUltra(t *testing.T) {
-	for _, want := range []string{"gpt-5.6-sol", "DeepSeek V4 Pro", "Kimi K2.7 Code", "GLM-5.2", "high (default)", "ultra"} {
+	for _, want := range []string{"Sol", "DeepSeek V4 Pro", "Kimi K2.7 Code", "GLM-5.2", "high (default)", "ultra"} {
 		if !strings.Contains(megareviewUsage, want) {
 			t.Errorf("megareview usage missing %q", want)
 		}
+	}
+	if strings.Contains(strings.ToLower(megareviewUsage), "gpt-5.6") {
+		t.Fatal("megareview usage advertises an internal model id")
 	}
 }
 

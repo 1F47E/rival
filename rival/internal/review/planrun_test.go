@@ -118,25 +118,26 @@ func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
 }
 
 func TestPlanEngineLabel(t *testing.T) {
-	if got := planEngineLabel("codex", config.GPT56SolModel); got != config.GPT56SolModel {
-		t.Errorf("gpt-5.6-sol label = %q, want %q", got, config.GPT56SolModel)
+	if got := planEngineLabel("codex", config.GPT56SolModel); got != config.SolLabel {
+		t.Errorf("sol label = %q, want %q", got, config.SolLabel)
 	}
-	if got := planEngineLabel("fable", config.FableModel); got != config.FableModel {
-		t.Errorf("fable label = %q, want %q", got, config.FableModel)
+	if got := planEngineLabel("fable", config.FableModel); got != config.FableLabel {
+		t.Errorf("fable label = %q, want %q", got, config.FableLabel)
 	}
 }
 
 func TestPlanFailureReasonUsesModelName(t *testing.T) {
 	got := planFailureReason("codex", "Codex CLI not installed; run codex login")
-	if !strings.Contains(got, config.GPT56SolModel) {
+	if !strings.Contains(strings.ToLower(got), config.SolLabel) {
 		t.Fatalf("failure reason missing model name: %q", got)
 	}
 	if strings.Contains(strings.ToLower(got), "codex") {
 		t.Fatalf("failure reason leaked adapter name: %q", got)
 	}
 	fable := planFailureReason("fable", config.FableModel+" failed in Claude CLI")
-	if strings.Count(fable, config.FableModel) != 2 {
-		t.Fatalf("model-facing normalization corrupted exact fable model name: %q", fable)
+	lowerFable := strings.ToLower(fable)
+	if strings.Count(lowerFable, config.FableLabel) != 2 || strings.Contains(lowerFable, "claude") {
+		t.Fatalf("model-facing normalization did not use public fable name: %q", fable)
 	}
 }
 
@@ -159,7 +160,7 @@ func TestFormatPlanResult_SingleParseFailReturnsRaw(t *testing.T) {
 		{CLI: "codex", Model: config.GPT56SolModel, Parsed: nil, Raw: "Codex raw output"},
 	}}
 	out := FormatPlanResult(res, "/tmp/plan.md")
-	if out != config.GPT56SolModel+" raw output" {
+	if out != "Sol runtime raw output" {
 		t.Errorf("parse-fail single result must preserve raw content with a model-facing label, got:\n%s", out)
 	}
 }
@@ -173,17 +174,17 @@ func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 		Skipped: []SkippedCLI{{CLI: "antigravity", Model: config.AntigravityModel, Reason: "n/a"}},
 	}
 	out := FormatPlanResult(res, "/tmp/plan.md")
-	if !strings.Contains(out, "RIVAL PLAN REVIEW ("+config.GPT56SolModel+" + "+config.FableModel+")") {
+	if !strings.Contains(out, "RIVAL PLAN REVIEW ("+config.SolLabel+" + "+config.FableLabel+")") {
 		t.Errorf("multi header missing engines:\n%s", out)
 	}
-	if !strings.Contains(out, "── "+config.GPT56SolModel+" ──") {
-		t.Errorf("gpt-5.6-sol block header missing:\n%s", out)
+	if !strings.Contains(out, "── "+config.SolLabel+" ──") {
+		t.Errorf("sol block header missing:\n%s", out)
 	}
-	if !strings.Contains(out, "── "+config.FableModel+" ──") {
+	if !strings.Contains(out, "── "+config.FableLabel+" ──") {
 		t.Errorf("fable block header missing:\n%s", out)
 	}
 	// Fable block had no parsed output → raw fallback shown.
-	if !strings.Contains(out, config.FableModel+" raw dump") {
+	if !strings.Contains(out, "Fable runtime raw dump") {
 		t.Errorf("fable raw fallback missing:\n%s", out)
 	}
 	if !strings.Contains(out, "Skipped: "+config.AntigravityModel+" — n/a") {

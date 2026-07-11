@@ -33,7 +33,7 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 
 	// Metadata fields.
 	addField(&meta, "Reviewer", config.EngineLabel(s.CLI, s.Model), width)
-	addField(&meta, "Model", s.Model, width)
+	addField(&meta, "Model", config.EngineLabel(s.CLI, s.Model), width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", s.Mode, width)
 	if s.Account != "" {
@@ -67,7 +67,7 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 		logHeight = 3
 	}
 
-	lines := wrapLogLines(s.LogFile, width)
+	lines := wrapLogLines(s, width)
 	logTitle := "Log"
 	if len(lines) > logHeight {
 		logTitle = "Log (recent)"
@@ -108,7 +108,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	meta.WriteString("\n\n")
 
 	// Shared metadata from primary session — derived from the group's sessions so
-	// a plan group ("codex+claude-fable", mode "plan") is not mislabelled a megareview.
+	// a Sol + Fable plan group is not mislabelled a megareview.
 	addField(&meta, "Models", groupCLIs(item), width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", groupKindLabel(item), width)
@@ -149,7 +149,8 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 		logSections.WriteString("\n")
 
 		if sess.Status == "failed" && sess.ErrorMsg != "" {
-			for _, line := range wrapText(sess.ErrorMsg, width) {
+			message := config.PublicRuntimeError(sess.CLI, sess.Model, sess.ErrorMsg)
+			for _, line := range wrapText(message, width) {
 				logSections.WriteString(failedStyle.Render(line))
 				logSections.WriteString("\n")
 			}
@@ -160,7 +161,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 			perLogHeight = 3
 		}
 
-		lines := wrapLogLines(sess.LogFile, width)
+		lines := wrapLogLines(sess, width)
 		if len(lines) == 0 {
 			logSections.WriteString(labelStyle.Render("(empty log)"))
 		} else if len(lines) <= perLogHeight {
@@ -181,7 +182,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 
 // renderErrorSection renders the full error message wrapped across as many
 // lines as needed, in the failed (red) style. Unlike a single-line field it is
-// never truncated, so long errors like "codex exited with code -1" plus any
+// never truncated, so long model-runtime errors plus any
 // trailing detail stay fully readable.
 func renderErrorSection(b *strings.Builder, s *session.Session, width int) {
 	if s.ErrorMsg == "" {
@@ -190,7 +191,8 @@ func renderErrorSection(b *strings.Builder, s *session.Session, width int) {
 	b.WriteString("\n")
 	b.WriteString(titleStyle.Render("Error"))
 	b.WriteString("\n")
-	for _, line := range wrapText(s.ErrorMsg, width) {
+	message := config.PublicRuntimeError(s.CLI, s.Model, s.ErrorMsg)
+	for _, line := range wrapText(message, width) {
 		b.WriteString(failedStyle.Render(line))
 		b.WriteString("\n")
 	}
@@ -268,9 +270,10 @@ func wrapText(text string, wrapWidth int) []string {
 	return result
 }
 
-// wrapLogLines reads a log file and wraps long lines to wrapWidth.
-func wrapLogLines(path string, wrapWidth int) []string {
-	data, err := os.ReadFile(path)
+// wrapLogLines reads one session log, applies public model naming, and wraps
+// long lines to wrapWidth.
+func wrapLogLines(s *session.Session, wrapWidth int) []string {
+	data, err := os.ReadFile(s.LogFile)
 	if err != nil {
 		return nil
 	}
@@ -278,7 +281,8 @@ func wrapLogLines(path string, wrapWidth int) []string {
 		return nil
 	}
 
-	rawLines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	publicLog := config.PublicRuntimeLog(s.CLI, s.Model, string(data))
+	rawLines := strings.Split(strings.TrimRight(publicLog, "\n"), "\n")
 
 	var lines []string
 	for _, rawLine := range rawLines {

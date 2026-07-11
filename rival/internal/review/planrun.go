@@ -33,31 +33,7 @@ func runTimeoutReason(ctx context.Context, model, fallback string) string {
 // planFailureReason keeps user-facing failures model-specific even though the
 // implementation uses local adapter binaries underneath.
 func planFailureReason(cli, reason string) string {
-	model := planModelForCLI(cli)
-	const modelMarker = "\x00RIVAL_PLAN_MODEL\x00"
-	protected := strings.ReplaceAll(reason, model, modelMarker)
-	var normalized string
-	switch cli {
-	case "codex":
-		normalized = strings.NewReplacer(
-			"Codex CLI", model,
-			"codex CLI", model,
-			"Codex", model,
-			"codex", model,
-		).Replace(protected)
-	case "fable":
-		normalized = strings.NewReplacer(
-			"Claude Code CLI", model,
-			"Claude CLI", model,
-			"claude CLI", model,
-			"rival-claude", model,
-			"Claude", model,
-			"claude", model,
-		).Replace(protected)
-	default:
-		return reason
-	}
-	return strings.ReplaceAll(normalized, modelMarker, model)
+	return config.PublicRuntimeError(cli, planModelForCLI(cli), reason)
 }
 
 // PlanRunResult holds the outcome of a plan review across one or more CLIs.
@@ -179,13 +155,15 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 
 	for _, cli := range clis {
 		if err := ex.preflight(cli); err != nil {
-			log.Warn().Str("cli", cli).Err(err).Msg("plan cli unavailable")
-			skipped = append(skipped, SkippedCLI{CLI: cli, Model: planModelForCLI(cli), Reason: planFailureReason(cli, err.Error())})
+			model := planModelForCLI(cli)
+			reason := planFailureReason(cli, err.Error())
+			log.Warn().Str("reviewer", config.EngineLabel(cli, model)).Str("reason", reason).Msg("plan reviewer unavailable")
+			skipped = append(skipped, SkippedCLI{CLI: cli, Model: model, Reason: reason})
 			continue
 		}
 		sess, err := session.NewQueued(cli, "plan", planModelForCLI(cli), effort, workdir, prompt, absPath, groupID)
 		if err != nil {
-			return nil, fmt.Errorf("create %s plan session: %w", planModelForCLI(cli), err)
+			return nil, fmt.Errorf("create %s plan session: %w", config.EngineLabel(cli, planModelForCLI(cli)), err)
 		}
 		if cli == "fable" {
 			sess.Account = config.ClaudeSubscription()
@@ -243,7 +221,7 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("cli", cli).Msg("starting plan reviewer")
+	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Msg("starting plan reviewer")
 
 	raw, exitCode, err := ex.run(ctx, sess, cli, prompt, effort, workdir)
 
@@ -254,21 +232,21 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 	sess.Mode = "plan"
 
 	if err != nil {
-		reason := runTimeoutReason(ctx, model, planFailureReason(cli, err.Error()))
+		reason := runTimeoutReason(ctx, config.EngineLabel(cli, model), planFailureReason(cli, err.Error()))
 		_ = sess.Fail(1, reason)
 		return planCLIRun{CLI: cli, Model: model, Err: err, Reason: reason, ExitCode: -1}
 	}
 
 	switch {
 	case exitCode != 0:
-		_ = sess.Fail(exitCode, fmt.Sprintf("%s exited with code %d", model, exitCode))
+		_ = sess.Fail(exitCode, fmt.Sprintf("%s exited with code %d", config.EngineLabel(cli, model), exitCode))
 	case executor.IsQuotaExhausted(raw):
-		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", model))
+		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", config.EngineLabel(cli, model)))
 	case strings.TrimSpace(raw) == "":
 		// Exited 0 but wrote nothing — a silent no-op (e.g. an auth/session
 		// failure). Fail it so it is reported as skipped, not a "successful" plan
 		// review that formats to an empty string while the command exits 0.
-		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", model))
+		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", config.EngineLabel(cli, model)))
 	default:
 		_ = sess.Complete(exitCode, int64(len(raw)), 0)
 	}
@@ -314,7 +292,7 @@ func assemblePlanResults(batch []planCLIRun, skipped []SkippedCLI) (*PlanRunResu
 		res := PlanCLIResult{CLI: r.CLI, Model: model, Raw: r.Raw}
 		parsed, parseErr := ParsePlanOutput(r.Raw)
 		if parseErr != nil {
-			log.Warn().Str("cli", r.CLI).Err(parseErr).Msg("failed to parse plan output, keeping raw")
+			log.Warn().Str("reviewer", config.EngineLabel(r.CLI, model)).Err(parseErr).Msg("failed to parse plan output, keeping raw")
 		} else {
 			res.Parsed = parsed
 		}

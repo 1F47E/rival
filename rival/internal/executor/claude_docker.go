@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const claudeDockerImage = "rival-claude"
+const claudeDockerImage = config.ClaudeDockerImage
 
 // Embedded Dockerfile content — written to temp file for auto-build.
 const claudeDockerfile = `FROM node:22-slim
@@ -27,7 +27,7 @@ ENTRYPOINT ["claude"]
 // ClaudeDockerPreflight checks docker is available, token is set, and image exists (auto-builds if missing).
 func ClaudeDockerPreflight() error {
 	if _, err := exec.LookPath("docker"); err != nil {
-		return fmt.Errorf("claude requires Docker but docker is not installed")
+		return fmt.Errorf("Opus/Fable runtime requires Docker but docker is not installed")
 	}
 
 	// Check docker daemon is running.
@@ -35,17 +35,17 @@ func ClaudeDockerPreflight() error {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("claude requires Docker but the daemon is not running — start Docker Desktop and retry")
+		return fmt.Errorf("Opus/Fable runtime requires Docker but the daemon is not running — start Docker Desktop and retry")
 	}
 
 	token := os.Getenv(config.ClaudeDockerTokenEnv)
 	if token == "" {
 		return fmt.Errorf("%s env var not set. To authenticate:\n"+
-			"  1. docker run -d --name rival-claude-login --user claude --entrypoint sh %s -c 'sleep 3600'\n"+
-			"  2. docker exec -it rival-claude-login claude login\n"+
-			"  3. docker exec rival-claude-login cat /home/claude/.claude/.credentials.json\n"+
+			"  1. docker run -d --name rival-opus-fable-login --user claude --entrypoint sh %s -c 'sleep 3600'\n"+
+			"  2. docker exec -it rival-opus-fable-login claude login\n"+
+			"  3. docker exec rival-opus-fable-login cat /home/claude/.claude/.credentials.json\n"+
 			"  4. export %s=<accessToken from step 3>\n"+
-			"  5. docker rm -f rival-claude-login",
+			"  5. docker rm -f rival-opus-fable-login",
 			config.ClaudeDockerTokenEnv, claudeDockerImage, config.ClaudeDockerTokenEnv)
 	}
 
@@ -54,11 +54,11 @@ func ClaudeDockerPreflight() error {
 	inspectCmd.Stdout = nil
 	inspectCmd.Stderr = nil
 	if err := inspectCmd.Run(); err != nil {
-		log.Info().Msg("rival-claude docker image not found, building...")
+		log.Info().Msg("Opus/Fable Docker image not found, building...")
 		if buildErr := buildClaudeDockerImage(); buildErr != nil {
 			return fmt.Errorf("failed to build %s docker image: %w", claudeDockerImage, buildErr)
 		}
-		log.Info().Msg("rival-claude docker image built successfully")
+		log.Info().Msg("Opus/Fable Docker image built successfully")
 	}
 
 	return nil
@@ -66,7 +66,7 @@ func ClaudeDockerPreflight() error {
 
 func buildClaudeDockerImage() error {
 	// Write embedded Dockerfile to temp file.
-	tmpFile, err := os.CreateTemp("", "rival-claude-dockerfile-*")
+	tmpFile, err := os.CreateTemp("", "rival-opus-fable-dockerfile-*")
 	if err != nil {
 		return fmt.Errorf("create temp dockerfile: %w", err)
 	}

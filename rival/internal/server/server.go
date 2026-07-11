@@ -111,6 +111,11 @@ func New(version string) *http.ServeMux {
 			http.Error(w, "log not found", http.StatusNotFound)
 			return
 		}
+		data, ok := publicLogData(id, data, session.LoadAll())
+		if !ok {
+			http.Error(w, "session metadata not found", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write(data)
 	})
@@ -147,7 +152,7 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 		g := sessionGroup{
 			ID:            primary.ID,
 			IsGroup:       len(b.sessions) > 1,
-			Sessions:      b.sessions,
+			Sessions:      publicSessions(b.sessions),
 			Status:        groupStatus(b.sessions),
 			Effort:        primary.Effort,
 			WorkDir:       primary.WorkDir,
@@ -155,14 +160,14 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 		}
 
 		if g.IsGroup {
-			// Derive the group kind + engines from the sessions so a plan group
-			// ("codex+claude-fable", kind "plan") is not mislabelled a megareview.
+			// Derive the group kind + models from the sessions so a plan group
+			// (Sol + Fable) is not mislabelled a megareview.
 			g.Kind = groupKind(b.sessions)
 			g.CLI = groupCLIs(b.sessions)
 			g.Models = groupModels(b.sessions)
 		} else {
 			g.CLI = config.EngineLabel(primary.CLI, primary.Model)
-			g.Models = primary.Model
+			g.Models = config.EngineLabel(primary.CLI, primary.Model)
 		}
 
 		g.Elapsed = groupElapsed(b.sessions)
@@ -192,7 +197,7 @@ func groupStatus(sessions []*session.Session) string {
 }
 
 // groupKind returns the group kind: "plan" if any session is a plan review,
-// otherwise "megareview". Plan groups run codex + claude-fable.
+// otherwise "megareview". Plan groups run Sol + Fable.
 func groupKind(sessions []*session.Session) string {
 	for _, s := range sessions {
 		if s.Mode == "plan" {
@@ -202,15 +207,12 @@ func groupKind(sessions []*session.Session) string {
 	return "megareview"
 }
 
-// groupEngineLabel names one session's engine for group display. Fable runs
-// through the Claude CLI (cli == "claude") but is distinguished by its model id
-// and shown as "claude-fable".
+// groupEngineLabel names one session's model for group display.
 func groupEngineLabel(s *session.Session) string {
 	return config.EngineLabel(s.CLI, s.Model)
 }
 
-// groupCLIs returns the group's distinct engines joined with "+", e.g.
-// "codex+antigravity" or "codex+claude-fable".
+// groupCLIs returns the group's distinct public model names joined with "+".
 func groupCLIs(sessions []*session.Session) string {
 	seen := map[string]bool{}
 	var clis []string
@@ -228,12 +230,38 @@ func groupModels(sessions []*session.Session) string {
 	seen := map[string]bool{}
 	var models []string
 	for _, s := range sessions {
-		if s.Model != "" && !seen[s.Model] {
-			seen[s.Model] = true
-			models = append(models, s.Model)
+		label := config.EngineLabel(s.CLI, s.Model)
+		if label != "" && !seen[label] {
+			seen[label] = true
+			models = append(models, label)
 		}
 	}
 	return strings.Join(models, " + ")
+}
+
+// publicSessions returns shallow copies with public model names for the web
+// API. Session files retain the exact runtime ids needed for execution and
+// backwards compatibility.
+func publicSessions(sessions []*session.Session) []*session.Session {
+	result := make([]*session.Session, 0, len(sessions))
+	for _, s := range sessions {
+		copy := *s
+		label := config.EngineLabel(s.CLI, s.Model)
+		copy.CLI = label
+		copy.Model = label
+		copy.ErrorMsg = config.PublicRuntimeError(s.CLI, s.Model, s.ErrorMsg)
+		result = append(result, &copy)
+	}
+	return result
+}
+
+func publicLogData(id string, data []byte, sessions []*session.Session) ([]byte, bool) {
+	for _, s := range sessions {
+		if s.ID == id {
+			return []byte(config.PublicRuntimeLog(s.CLI, s.Model, string(data))), true
+		}
+	}
+	return nil, false
 }
 
 func groupElapsed(sessions []*session.Session) string {

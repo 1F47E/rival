@@ -77,12 +77,12 @@ func formatItemRow(item *displayItem, width int) string {
 
 // CLI icons — Unicode symbols for visual distinction.
 const (
-	iconCodex       = "◈" // OpenAI / Codex
+	iconSol         = "◈" // Sol
 	iconGemini      = "✦" // Google / Gemini
-	iconClaude      = "⬡" // Anthropic / Claude
+	iconOpusFable   = "⬡" // Opus / Fable
 	iconAntigravity = "△" // Google / Antigravity
 	iconOpencode    = "❯" // OpenCode model
-	iconPlan        = "▤" // Plan/spec review (codex under the hood)
+	iconPlan        = "▤" // Plan/spec review
 )
 
 // cliLabel returns a display label with icon for a CLI name.
@@ -92,16 +92,15 @@ func cliLabel(cli, model, mode string) string {
 		if mode == "plan" {
 			return iconPlan + " plan"
 		}
-		return iconCodex + " " + config.EngineLabel(cli, model)
+		return iconSol + " " + config.EngineLabel(cli, model)
 	case "gemini":
 		return iconGemini + " " + config.EngineLabel(cli, model)
 	case "claude", "fable":
-		// "fable" is legacy read-compat only: sessions written before v3.14.0
-		// stored the fable model as the CLI. New sessions always say "claude".
+		// The second value is retained for sessions written by older releases.
 		if mode == "docker" {
-			return iconClaude + " " + config.EngineLabel(cli, model) + "/dk"
+			return iconOpusFable + " " + config.EngineLabel(cli, model) + "/dk"
 		}
-		return iconClaude + " " + config.EngineLabel(cli, model)
+		return iconOpusFable + " " + config.EngineLabel(cli, model)
 	case "antigravity":
 		return iconAntigravity + " " + config.EngineLabel(cli, model)
 	case "opencode":
@@ -144,7 +143,7 @@ func formatGroupRow(item *displayItem, width int) string {
 }
 
 // groupIsPlan reports whether a group is a plan review (any session mode "plan").
-// Plan groups run codex + claude-fable; everything else grouped is a megareview.
+// Plan groups run Sol + Fable; everything else grouped is a megareview.
 func groupIsPlan(item *displayItem) bool {
 	for _, s := range item.Sessions {
 		if s.Mode == "plan" {
@@ -179,15 +178,12 @@ func groupKindLabel(item *displayItem) string {
 	return "megareview"
 }
 
-// groupEngineLabel names one session's engine for group display. Fable runs
-// through the Claude CLI (cli == "claude") but is distinguished by its model id
-// and shown as "claude-fable".
+// groupEngineLabel names one session's model for group display.
 func groupEngineLabel(s *session.Session) string {
 	return config.EngineLabel(s.CLI, s.Model)
 }
 
-// groupCLIs returns the group's distinct engines joined with "+", e.g.
-// "codex+antigravity" or "codex+claude-fable".
+// groupCLIs returns the group's distinct public model names joined with "+".
 func groupCLIs(item *displayItem) string {
 	var clis []string
 	seen := map[string]bool{}
@@ -206,9 +202,10 @@ func groupModels(item *displayItem) string {
 	var models []string
 	seen := map[string]bool{}
 	for _, s := range item.Sessions {
-		if s.Model != "" && !seen[s.Model] {
-			seen[s.Model] = true
-			models = append(models, s.Model)
+		label := config.EngineLabel(s.CLI, s.Model)
+		if label != "" && !seen[label] {
+			seen[label] = true
+			models = append(models, label)
 		}
 	}
 	return strings.Join(models, " + ")
@@ -301,7 +298,7 @@ func formatSessionRow(s *session.Session, width int) string {
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
 		cols.cli, cliLabel(s.CLI, s.Model, s.Mode),
-		cols.model, truncate(s.Model, cols.model),
+		cols.model, truncate(config.EngineLabel(s.CLI, s.Model), cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,
 		cols.workdir, wd,

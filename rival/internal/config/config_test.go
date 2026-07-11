@@ -232,9 +232,14 @@ func TestResolveReviewTargets_RejectsModelsOutsideCuratedSet(t *testing.T) {
 
 func TestEngineLabel(t *testing.T) {
 	cases := []struct{ cli, model, want string }{
-		{"codex", GPT56SolModel, GPT56SolModel},
+		{"codex", GPT56SolModel, SolLabel},
+		{"codex", "gpt-5.5", SolLabel},
+		{"codex", "", SolLabel},
 		{"antigravity", "gemini-3.5-flash", "gemini-3.5-flash"},
-		{"claude", FableModel, FableModel},
+		{"claude", ClaudeModel, OpusLabel},
+		{"claude", FableModel, FableLabel},
+		{"claude", "claude-fable-4", FableLabel},
+		{"fable", "", FableLabel},
 		{"opencode", "opencode-go/glm-5.2", "glm-5.2"},
 		{"opencode", "opencode-go/deepseek-v4-pro", "deepseek-v4-pro"},
 		{"opencode", OpencodeKimiK27Code, "kimi-k2.7-code"},
@@ -244,5 +249,34 @@ func TestEngineLabel(t *testing.T) {
 		if got := EngineLabel(c.cli, c.model); got != c.want {
 			t.Errorf("EngineLabel(%q,%q) = %q, want %q", c.cli, c.model, got, c.want)
 		}
+	}
+}
+
+func TestPublicRuntimeLogNormalizesOnlyRuntimeMetadata(t *testing.T) {
+	raw := "OpenAI Codex v0.130.0\n--------\nmodel: gpt-5.5\nprovider: openai\n--------\nuser\n" +
+		"inspect rival/cmd/command_codex.go\n" +
+		"=== REVIEW FROM codex (gpt-5.5) [role: bug_hunter] ===\n"
+	got := PublicRuntimeLog("codex", "gpt-5.5", raw)
+	for _, want := range []string{
+		"Sol runtime v0.130.0",
+		"model: sol",
+		"=== REVIEW FROM sol [role: bug_hunter] ===",
+		"rival/cmd/command_codex.go",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("public log missing %q:\n%s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"OpenAI Codex", "model: gpt-5.5", "REVIEW FROM codex"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("public log exposes %q:\n%s", forbidden, got)
+		}
+	}
+}
+
+func TestPublicRuntimeErrorUsesPublicModelName(t *testing.T) {
+	got := PublicRuntimeError("codex", GPT56SolModel, "Codex CLI failed for gpt-5.6-sol; run codex login")
+	if strings.Contains(strings.ToLower(got), "codex") || strings.Contains(got, GPT56SolModel) || !strings.Contains(strings.ToLower(got), SolLabel) {
+		t.Fatalf("public error was not normalized: %q", got)
 	}
 }

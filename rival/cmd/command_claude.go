@@ -16,26 +16,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const claudeUsage = `Usage:
-  /rival-claude 'explain the auth flow' — run any prompt via claude
-  /rival-claude -re xhigh 'find bugs in src/main.go' — run with xhigh reasoning effort
-  /rival-claude review — ruthless code review of the entire project
-  /rival-claude review src/api/ — review specific scope
-  /rival-claude -re xhigh review src/api/ — review with xhigh reasoning
-  /rival-claude — show this usage info
+const opusUsage = `Usage:
+  echo 'explain the auth flow' | rival run opus --prompt-stdin
+  echo 'find bugs in src/main.go' | rival run opus --prompt-stdin --effort xhigh
+  rival run opus --review 'the entire project'
+  rival run opus --review src/api/
+  rival run opus --review src/api/ --effort high
+  rival command opus --help — show native command options
 
-Reasoning effort (-re): low, medium (default), high, xhigh`
+Reasoning effort (--effort): low, medium, high, xhigh (default)`
 
-var commandClaudeCmd = &cobra.Command{
-	Use:   "claude",
-	Short: "Skill-facing claude executor",
+var commandOpusCmd = &cobra.Command{
+	Use:   config.OpusLabel,
+	Short: "Skill-facing Opus executor",
 	RunE:  commandClaudeAction,
 }
 
+var commandClaudeCmd = &cobra.Command{
+	Use:    "claude",
+	Hidden: true,
+	RunE:   commandClaudeAction,
+}
+
 func init() {
-	commandClaudeCmd.Flags().String("workdir", ".", "working directory")
-	commandClaudeCmd.Flags().Bool("no-queue", false, "bypass the review queue")
+	configureCommandOpusFlags(commandOpusCmd)
+	configureCommandOpusFlags(commandClaudeCmd)
+	mirrorHiddenHelp(commandClaudeCmd, commandOpusCmd)
+	commandCmd.AddCommand(commandOpusCmd)
 	commandCmd.AddCommand(commandClaudeCmd)
+}
+
+func configureCommandOpusFlags(cmd *cobra.Command) {
+	cmd.Flags().String("workdir", ".", "working directory")
+	cmd.Flags().Bool("no-queue", false, "bypass the review queue")
 }
 
 func commandClaudeAction(cmd *cobra.Command, args []string) error {
@@ -44,7 +57,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 
 	// If stdin is a terminal, show usage instead of hanging.
 	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-		_, _ = fmt.Fprintln(os.Stdout, claudeUsage)
+		_, _ = fmt.Fprintln(os.Stdout, opusUsage)
 		return nil
 	}
 
@@ -61,7 +74,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if parsed.IsEmpty {
-		_, _ = fmt.Fprintln(os.Stdout, claudeUsage)
+		_, _ = fmt.Fprintln(os.Stdout, opusUsage)
 		return nil
 	}
 
@@ -93,7 +106,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting claude (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting opus (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -120,7 +133,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("claude exited with code %d", result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("opus exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {
@@ -134,7 +147,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read log file: %w", err)
 	}
-	if _, err := os.Stdout.Write(logData); err != nil {
+	if _, err := io.WriteString(os.Stdout, config.PublicRuntimeLog(sess.CLI, sess.Model, string(logData))); err != nil {
 		return fmt.Errorf("write stdout: %w", err)
 	}
 
@@ -142,7 +155,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		if hint := executor.ClaudeAuthHint(sess.LogFile); hint != "" {
 			_, _ = fmt.Fprintln(os.Stdout, "\n"+hint)
 		}
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("claude exited with code %d", result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("opus exited with code %d", result.ExitCode)}
 	}
 
 	return nil
