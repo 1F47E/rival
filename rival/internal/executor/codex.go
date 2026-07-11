@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
@@ -13,23 +14,48 @@ import (
 // CodexPreflight checks that codex is installed and authenticated.
 func CodexPreflight() error {
 	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("codex CLI not installed. Install: npm install -g @openai/codex")
+		return fmt.Errorf("%s runtime is not installed", config.GPT56SolModel)
 	}
 
 	cmd := exec.Command("codex", "login", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("codex not authenticated. Run: codex login\n%s", string(out))
+		return fmt.Errorf("%s authentication is unavailable\n%s", config.GPT56SolModel, string(out))
 	}
 	return nil
 }
 
-// RunCodex executes a prompt through the Codex CLI.
+// RunCodex executes a prompt with the default GPT model. It remains as a
+// compatibility wrapper for standalone callers.
 func RunCodex(ctx context.Context, sess *session.Session, prompt, effort, workdir string, mirror io.Writer) (*Result, error) {
-	args := []string{
+	return RunCodexModel(ctx, sess, prompt, effort, workdir, config.GPT56SolModel, mirror)
+}
+
+// RunCodexModel executes a prompt with one explicit model. Review pipelines use
+// this entry point so the model recorded in the session is also the model sent
+// to the runtime.
+func RunCodexModel(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+	if model == "" {
+		model = config.GPT56SolModel
+	}
+	args := codexRunArgs(model, effort, workdir)
+
+	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
+	result, err := RunSubprocess(ctx, sess, "codex", args, nil, fullPrompt, mirror)
+	if err != nil {
+		message := strings.NewReplacer("Codex", model, "codex", model).Replace(err.Error())
+		return nil, fmt.Errorf("%s runtime: %s", model, message)
+	}
+	return result, nil
+}
+
+func codexRunArgs(model, effort, workdir string) []string {
+	// gpt-5.6-sol exposes ultra as a native runtime effort (distinct from max),
+	// so preserve the requested value instead of normalizing it.
+	return []string{
 		"exec",
 		"-C", workdir,
-		"-m", config.CodexModel,
+		"-m", model,
 		"-c", fmt.Sprintf("model_reasoning_effort=%s", effort),
 		"--sandbox", "read-only",
 		"--ephemeral",
@@ -37,7 +63,4 @@ func RunCodex(ctx context.Context, sess *session.Session, prompt, effort, workdi
 		"--color", "never",
 		"-",
 	}
-
-	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
-	return RunSubprocess(ctx, sess, "codex", args, nil, fullPrompt, mirror)
 }

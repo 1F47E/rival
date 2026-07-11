@@ -8,33 +8,64 @@ import (
 )
 
 // ParseReviewArgs parses raw arguments for the megareview command.
-// Grammar: [-re level] [scope] — always a review, no "review" keyword needed.
+// Grammar: [options] [scope] — always a review, no "review" keyword needed.
+// Options may appear before or after scope tokens:
+//
+//	-re, --effort <level>
+//	-m, --model <selector[,selector...]>
+//
+// Model options may be repeated. "--" ends option parsing so a scope beginning
+// with a dash can still be reviewed.
 func ParseReviewArgs(raw string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
-	if s == "" {
-		return &ParseResult{Effort: config.DefaultEffort, IsEmpty: true}, nil
+	result := &ParseResult{Effort: config.DefaultReviewEffort, IsReview: true}
+	var scopeParts []string
+
+	for s != "" {
+		token, rest := popReviewToken(s)
+		if token == "--" {
+			if rest = strings.TrimSpace(rest); rest != "" {
+				scopeParts = append(scopeParts, rest)
+			}
+			break
+		}
+
+		name, inlineValue, hasInlineValue := splitReviewOption(token)
+		switch name {
+		case "-h", "--help":
+			result.IsEmpty = true
+			return result, nil
+		case "-re", "--effort":
+			value, remaining, err := reviewOptionValue(name, inlineValue, hasInlineValue, rest)
+			if err != nil {
+				return nil, err
+			}
+			if !config.IsValidReviewEffort(value) {
+				return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", value, strings.Join(config.ReviewEfforts, ", "))
+			}
+			result.Effort = value
+			s = remaining
+		case "-m", "--model":
+			value, remaining, err := reviewOptionValue(name, inlineValue, hasInlineValue, rest)
+			if err != nil {
+				return nil, err
+			}
+			models, err := splitModelValues(value)
+			if err != nil {
+				return nil, err
+			}
+			result.Models = append(result.Models, models...)
+			s = remaining
+		default:
+			if strings.HasPrefix(token, "-") {
+				return nil, fmt.Errorf("unknown review option %q; use -m/--model, -re/--effort, or -- before a scope beginning with '-'", token)
+			}
+			scopeParts = append(scopeParts, token)
+			s = strings.TrimSpace(rest)
+		}
 	}
 
-	result := &ParseResult{Effort: config.DefaultEffort, IsReview: true}
-
-	// Parse -re flag.
-	if strings.HasPrefix(s, "-re ") {
-		rest := strings.TrimSpace(s[4:])
-		parts := strings.SplitN(rest, " ", 2)
-		effort := parts[0]
-		if !config.IsValidEffort(effort) {
-			return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", effort, strings.Join(config.ValidEfforts, ", "))
-		}
-		result.Effort = effort
-		if len(parts) > 1 {
-			s = strings.TrimSpace(parts[1])
-		} else {
-			s = ""
-		}
-	}
-
-	// Remaining text is the scope.
-	scope := s
+	scope := strings.Join(scopeParts, " ")
 	if scope == "" {
 		result.AutoScope = true
 		scope = "the entire project"
@@ -42,4 +73,49 @@ func ParseReviewArgs(raw string) (*ParseResult, error) {
 	result.ReviewScope = scope
 	result.Prompt = strings.ReplaceAll(config.ReviewPrompt, "{SCOPE}", scope)
 	return result, nil
+}
+
+func popReviewToken(s string) (token, rest string) {
+	s = strings.TrimLeft(s, " \t\r\n")
+	if i := strings.IndexAny(s, " \t\r\n"); i >= 0 {
+		return s[:i], strings.TrimLeft(s[i:], " \t\r\n")
+	}
+	return s, ""
+}
+
+func splitReviewOption(token string) (name, value string, hasValue bool) {
+	if i := strings.Index(token, "="); i >= 0 {
+		return token[:i], token[i+1:], true
+	}
+	return token, "", false
+}
+
+func reviewOptionValue(name, inlineValue string, hasInlineValue bool, rest string) (value, remaining string, err error) {
+	if hasInlineValue {
+		if strings.TrimSpace(inlineValue) == "" {
+			return "", "", fmt.Errorf("option %s requires a value", name)
+		}
+		return strings.TrimSpace(inlineValue), strings.TrimSpace(rest), nil
+	}
+	if strings.TrimSpace(rest) == "" {
+		return "", "", fmt.Errorf("option %s requires a value", name)
+	}
+	value, remaining = popReviewToken(rest)
+	if strings.HasPrefix(value, "-") {
+		return "", "", fmt.Errorf("option %s requires a value", name)
+	}
+	return value, strings.TrimSpace(remaining), nil
+}
+
+func splitModelValues(value string) ([]string, error) {
+	parts := strings.Split(value, ",")
+	models := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("model selector cannot be empty")
+		}
+		models = append(models, part)
+	}
+	return models, nil
 }

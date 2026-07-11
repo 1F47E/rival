@@ -17,7 +17,6 @@ func TestOpencodePreflight_ZenRosterRequiresKey(t *testing.T) {
 	// must fail with an actionable message instead of letting each reviewer fail
 	// mid-run with an opaque "Missing API key".
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "")
-	t.Setenv("RIVAL_OPENCODE_MODELS", "") // default (Zen) roster
 	if err := OpencodePreflight(); err == nil {
 		t.Fatal("expected preflight error when Zen roster has no RIVAL_OPENCODE_API_KEY")
 	} else if !strings.Contains(err.Error(), "RIVAL_OPENCODE_API_KEY") {
@@ -30,11 +29,10 @@ func TestOpencodePreflight_ZenRosterRequiresKey(t *testing.T) {
 		t.Errorf("preflight should pass with a key set, got: %v", err)
 	}
 
-	// A non-Zen roster (opencode-go/) doesn't require the key.
+	// A specifically selected non-Zen model doesn't require the key.
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "")
-	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode-go/glm-5.2")
-	if err := OpencodePreflight(); err != nil {
-		t.Errorf("non-Zen roster should not require the key, got: %v", err)
+	if err := OpencodePreflightModel("opencode-go/glm-5.2"); err != nil {
+		t.Errorf("non-Zen model should not require the key, got: %v", err)
 	}
 }
 
@@ -52,5 +50,51 @@ func TestOpencodeProviderConfig(t *testing.T) {
 	// Empty model or key → empty.
 	if opencodeProviderConfig("", "k") != "" || opencodeProviderConfig("m", "") != "" {
 		t.Error("empty model/key should yield empty config")
+	}
+}
+
+func TestOpencodeRunArgs_UsesOnlySupportedVariants(t *testing.T) {
+	tests := []struct {
+		name      string
+		model     string
+		effort    string
+		want      string
+		noVariant bool
+	}{
+		{name: "deepseek max", model: "opencode/deepseek-v4-pro", effort: "xhigh", want: "--variant max"},
+		{name: "deepseek ultra", model: "opencode/deepseek-v4-pro", effort: "ultra", want: "--variant max"},
+		{name: "deepseek medium", model: "opencode/deepseek-v4-pro", effort: "medium", want: "--variant medium"},
+		{name: "glm low clamps high", model: "opencode/glm-5.2", effort: "low", want: "--variant high"},
+		{name: "glm ultra", model: "opencode/glm-5.2", effort: "ultra", want: "--variant max"},
+		{name: "kimi has no named variant", model: "opencode/kimi-k2.7-code", effort: "xhigh", noVariant: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			joined := strings.Join(opencodeRunArgs(tc.model, tc.effort, "/repo"), " ")
+			if tc.noVariant {
+				if strings.Contains(joined, "--variant") {
+					t.Fatalf("Kimi args contain unsupported variant: %s", joined)
+				}
+				return
+			}
+			if !strings.Contains(joined, tc.want) {
+				t.Fatalf("args %q do not contain %q", joined, tc.want)
+			}
+		})
+	}
+}
+
+func TestOpencodeRunEnv_IsolatesSessionDatabases(t *testing.T) {
+	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-test")
+	first := strings.Join(opencodeRunEnv("session-a", "opencode/deepseek-v4-pro"), "\n")
+	second := strings.Join(opencodeRunEnv("session-b", "opencode/kimi-k2.7-code"), "\n")
+	if !strings.Contains(first, "OPENCODE_DB=rival-session-a.db") {
+		t.Fatalf("first env missing isolated DB: %s", first)
+	}
+	if !strings.Contains(second, "OPENCODE_DB=rival-session-b.db") {
+		t.Fatalf("second env missing isolated DB: %s", second)
+	}
+	if first == second {
+		t.Fatal("different sessions received identical OpenCode environments")
 	}
 }

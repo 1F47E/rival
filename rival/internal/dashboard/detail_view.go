@@ -32,7 +32,7 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 	meta.WriteString("\n\n")
 
 	// Metadata fields.
-	addField(&meta, "CLI", s.CLI, width)
+	addField(&meta, "Reviewer", config.EngineLabel(s.CLI, s.Model), width)
 	addField(&meta, "Model", s.Model, width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", s.Mode, width)
@@ -109,7 +109,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 
 	// Shared metadata from primary session — derived from the group's sessions so
 	// a plan group ("codex+claude-fable", mode "plan") is not mislabelled a megareview.
-	addField(&meta, "CLI", groupCLIs(item), width)
+	addField(&meta, "Models", groupCLIs(item), width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", groupKindLabel(item), width)
 	addStyledField(&meta, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)
@@ -130,7 +130,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	metaStr := meta.String()
 	metaLines := strings.Count(metaStr, "\n") + 1
 
-	// Split remaining height between the two logs.
+	// Share the remaining height across the selected reviewer and judge logs.
 	remaining := height - metaLines
 	if remaining < 6 {
 		remaining = 6
@@ -139,8 +139,8 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	var logSections strings.Builder
 
 	for _, sess := range item.Sessions {
-		// Label by engine (opencode's 3 models each get their short model name)
-		// so the per-reviewer log blocks are distinguishable, not 3× "OPENCODE".
+		// Label each OpenCode session by its concrete short model name so
+		// per-reviewer log blocks remain distinguishable for any selected subset.
 		label := strings.ToUpper(groupEngineLabel(sess)) + " REVIEW"
 		if sess.Status == "failed" && sess.ErrorMsg != "" {
 			label += " (FAILED)"

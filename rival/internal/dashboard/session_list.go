@@ -59,7 +59,7 @@ func formatHeaderRow(width int) string {
 	cols := calcColumns(width)
 	return fmt.Sprintf(" %-*s %-*s %-*s %-*s %-*s %-*s %s",
 		cols.status, "STATUS",
-		cols.cli, "CLI",
+		cols.cli, "REVIEWER",
 		cols.model, "MODEL",
 		cols.effort, "EFFORT",
 		cols.elapsed, "TIME",
@@ -77,36 +77,35 @@ func formatItemRow(item *displayItem, width int) string {
 
 // CLI icons — Unicode symbols for visual distinction.
 const (
-	iconCodex        = "◈" // OpenAI / Codex
-	iconGemini       = "✦" // Google / Gemini
-	iconClaude       = "⬡" // Anthropic / Claude
-	iconAntigravity  = "△" // Google / Antigravity
-	iconOpencode     = "❯" // opencode / GLM
-	iconMega         = "◈△❯" // Codex + Antigravity + Opencode
-	iconPlan         = "▤" // Plan/spec review (codex under the hood)
+	iconCodex       = "◈" // OpenAI / Codex
+	iconGemini      = "✦" // Google / Gemini
+	iconClaude      = "⬡" // Anthropic / Claude
+	iconAntigravity = "△" // Google / Antigravity
+	iconOpencode    = "❯" // OpenCode model
+	iconPlan        = "▤" // Plan/spec review (codex under the hood)
 )
 
 // cliLabel returns a display label with icon for a CLI name.
-func cliLabel(cli, mode string) string {
+func cliLabel(cli, model, mode string) string {
 	switch cli {
 	case "codex":
 		if mode == "plan" {
 			return iconPlan + " plan"
 		}
-		return iconCodex + " codex"
+		return iconCodex + " " + config.EngineLabel(cli, model)
 	case "gemini":
-		return iconGemini + " gemini"
+		return iconGemini + " " + config.EngineLabel(cli, model)
 	case "claude", "fable":
 		// "fable" is legacy read-compat only: sessions written before v3.14.0
 		// stored the fable model as the CLI. New sessions always say "claude".
 		if mode == "docker" {
-			return iconClaude + " claude/dk"
+			return iconClaude + " " + config.EngineLabel(cli, model) + "/dk"
 		}
-		return iconClaude + " claude"
+		return iconClaude + " " + config.EngineLabel(cli, model)
 	case "antigravity":
-		return iconAntigravity + " antigravity"
+		return iconAntigravity + " " + config.EngineLabel(cli, model)
 	case "opencode":
-		return iconOpencode + " opencode"
+		return iconOpencode + " " + config.EngineLabel(cli, model)
 	default:
 		return cli
 	}
@@ -160,7 +159,16 @@ func groupIcon(item *displayItem) string {
 	if groupIsPlan(item) {
 		return iconPlan + " plan"
 	}
-	return iconMega + " mega"
+	reviewers := 0
+	for _, s := range item.Sessions {
+		if s.Mode == "megareview" {
+			reviewers++
+		}
+	}
+	if reviewers == 0 {
+		reviewers = 1
+	}
+	return strings.Repeat(iconOpencode, reviewers) + " mega"
 }
 
 // groupKindLabel returns the human title/mode word for a group.
@@ -292,7 +300,7 @@ func formatSessionRow(s *session.Session, width int) string {
 
 	return fmt.Sprintf(" %s %-*s %-*s %-*s %-*s %-*s %s",
 		coloredStatus,
-		cols.cli, cliLabel(s.CLI, s.Mode),
+		cols.cli, cliLabel(s.CLI, s.Model, s.Mode),
 		cols.model, truncate(s.Model, cols.model),
 		cols.effort, s.Effort,
 		cols.elapsed, elapsed,

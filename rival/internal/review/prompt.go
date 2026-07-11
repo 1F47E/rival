@@ -36,29 +36,34 @@ func BuildRolePrompt(role Role, scope string) string {
 // BuildConsiliumPrompt builds the judge prompt with all reviewer findings + scope context.
 func BuildConsiliumPrompt(inputs []ReviewInput, scope string, threshold int) string {
 	var sb strings.Builder
+	reviewerLabels := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		reviewerLabels = append(reviewerLabels, config.EngineLabel(input.CLI, input.Model))
+	}
 
 	sb.WriteString("# Consilium Judge — Final Code Review Verdict\n\n")
 	sb.WriteString(fmt.Sprintf("Review scope: %s\n\n", scope))
 
-	sb.WriteString(consiliumInstructions(threshold))
+	sb.WriteString(consiliumInstructions(threshold, reviewerLabels))
 
 	// Reviewer findings
 	sb.WriteString(fmt.Sprintf("## Reviewer Findings (%d reviewers)\n\n", len(inputs)))
 	for _, input := range inputs {
-		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s (%s) [role: %s] ===\n\n", input.CLI, input.Model, input.Role))
+		label := config.EngineLabel(input.CLI, input.Model)
+		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s (model: %s) [role: %s] ===\n\n", label, input.Model, input.Role))
 		if input.Parsed != nil {
 			if data, err := json.MarshalIndent(input.Parsed, "", "  "); err == nil {
 				sb.WriteString(string(data))
 			} else {
-				sb.WriteString(failedReviewerStub(input.CLI, input.RawOutput))
+				sb.WriteString(failedReviewerStub(label, input.RawOutput))
 			}
 		} else {
-			sb.WriteString(failedReviewerStub(input.CLI, input.RawOutput))
+			sb.WriteString(failedReviewerStub(label, input.RawOutput))
 		}
 		sb.WriteString("\n\n=== END REVIEW ===\n\n")
 	}
 
-	sb.WriteString(consiliumJSONContract())
+	sb.WriteString(consiliumJSONContract(reviewerLabels))
 	return sb.String()
 }
 
@@ -182,12 +187,12 @@ You are not the final judge. Your value is the DX perspective that other reviewe
 `
 }
 
-func consiliumInstructions(threshold int) string {
+func consiliumInstructions(threshold int, reviewerLabels []string) string {
 	return fmt.Sprintf(`## Instructions
 
 You are the final judge for this code review.
 
-You are given independent reviewer findings from different providers in structured JSON.
+You are given independent findings from different reviewer models in structured JSON.
 
 Your job is to:
 - merge duplicate findings (same file + same line + same problem = one finding, all reporters in found_by)
@@ -198,6 +203,9 @@ Your job is to:
 
 Rules:
 - Do not invent new findings that are absent from reviewer inputs.
+- In found_by, use only the exact concrete reviewer labels shown in the REVIEW FROM headers, never the generic label "opencode".
+- Allowed found_by labels for this run: %s.
+- For each finding, include only reviewers that independently reported that specific issue; never copy the complete allowed-label list by default.
 - Prefer findings supported by multiple reviewers. Consensus bonus: findings reported by 2+ reviewers independently get +2 confidence.
 - If only one reviewer reported an issue, keep it only if the evidence is concrete and confidence >= %d.
 - Prioritize product regressions, correctness, build-breaks, security, and broken critical flows.
@@ -211,7 +219,7 @@ Severity levels:
 - medium: Logic issue, performance problem, architectural concern
 - low: Minor issue, edge case, improvement suggestion
 
-`, threshold)
+`, strings.Join(reviewerLabels, ", "), threshold)
 }
 
 func reviewerJSONContract() string {
@@ -249,12 +257,12 @@ func failedReviewerStub(cli, rawOutput string) string {
 		tail = tail[len(tail)-maxDebugTail:]
 	}
 	stub := struct {
-		Summary  string `json:"summary"`
-		Findings []any  `json:"findings"`
+		Summary   string `json:"summary"`
+		Findings  []any  `json:"findings"`
 		DebugTail string `json:"debug_tail,omitempty"`
 	}{
-		Summary:  fmt.Sprintf("%s failed to produce structured JSON output", cli),
-		Findings: []any{},
+		Summary:   fmt.Sprintf("%s failed to produce structured JSON output", cli),
+		Findings:  []any{},
 		DebugTail: strings.TrimSpace(tail),
 	}
 	data, err := json.MarshalIndent(stub, "", "  ")
@@ -264,7 +272,11 @@ func failedReviewerStub(cli, rawOutput string) string {
 	return string(data)
 }
 
-func consiliumJSONContract() string {
+func consiliumJSONContract(reviewerLabels []string) string {
+	if len(reviewerLabels) == 0 {
+		reviewerLabels = []string{"reviewer-label"}
+	}
+	labelsJSON, _ := json.Marshal(reviewerLabels[:1])
 	return `## Output Format
 
 Return JSON only. No prose, no markdown, no explanation outside the JSON. Your entire response must be a single valid JSON object matching this schema:
@@ -282,7 +294,7 @@ Return JSON only. No prose, no markdown, no explanation outside the JSON. Your e
       "body": "concrete explanation tied to code",
       "suggestion": "concrete fix",
       "confidence": 8,
-      "found_by": ["codex", "gemini", "claude"]
+	  "found_by": ` + string(labelsJSON) + `
     }
   ],
   "recommendation": {

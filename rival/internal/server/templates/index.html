@@ -44,7 +44,7 @@
     <thead>
       <tr class="text-gray-500 text-left border-b border-gray-800">
         <th class="py-2 px-2 w-24">STATUS</th>
-        <th class="py-2 px-2 w-28">CLI</th>
+        <th class="py-2 px-2 w-28">REVIEWER</th>
         <th class="py-2 px-2 w-48">MODEL</th>
         <th class="py-2 px-2 w-16">EFFORT</th>
         <th class="py-2 px-2 w-20">TIME</th>
@@ -131,13 +131,14 @@ function buildRow(g) {
   let cliText;
   if (g.is_group) {
     // Plan groups run codex + claude-fable; everything else grouped is a megareview.
-    cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : '◈△❯ mega';
+    const reviewerCount = Math.max(1, g.sessions.filter(s => s.mode === 'megareview').length);
+    cliText = g.kind === 'plan' ? (PLAN_ICON + ' plan') : ('❯'.repeat(reviewerCount) + ' mega');
   } else {
     let icon = CLI_ICONS[primary.cli] || '';
-    let label = primary.cli;
-    // Legacy read-compat: sessions written before v3.14.0 stored the fable model as the CLI.
-    if (primary.cli === 'fable') label = 'claude';
-    if ((primary.cli === 'claude' || primary.cli === 'fable') && primary.mode === 'docker') label = 'claude/dk';
+    let label = g.cli || primary.model || primary.cli;
+	// Legacy read-compat: older sessions stored the fable model as the adapter.
+	if (primary.cli === 'fable') label = primary.model || g.cli;
+	if ((primary.cli === 'claude' || primary.cli === 'fable') && primary.mode === 'docker') label = (primary.model || g.cli) + '/dk';
     if (primary.cli === 'codex' && primary.mode === 'plan') { icon = PLAN_ICON; label = 'plan'; }
     cliText = icon + ' ' + label;
   }
@@ -212,7 +213,7 @@ async function toggleDetail(id) {
   const meta = document.getElementById('detail-meta');
   meta.replaceChildren();
   const fields = [
-    ['CLI', group.cli], ['Model', group.models], ['Effort', primary.effort],
+    ['Reviewers', group.cli], ['Model', group.models], ['Effort', primary.effort],
     ['Mode', group.is_group ? group.kind : (primary.mode || 'native')], ['Status', group.status], ['WorkDir', primary.work_dir],
     ['Started', new Date(primary.start_time).toLocaleTimeString()],
     ['Duration', group.elapsed || elapsed(group)],
@@ -253,7 +254,7 @@ async function toggleDetail(id) {
       const logResp = await fetch('/api/sessions/' + s.id + '/log');
       const t = await logResp.text();
       if (group.sessions.length > 1) {
-        logText += '=== ' + s.cli.toUpperCase() + ' (' + s.model + ') ===\n' + t + '\n\n';
+        logText += '=== ' + (s.model || group.cli).toUpperCase() + ' ===\n' + t + '\n\n';
       } else {
         logText = t;
       }

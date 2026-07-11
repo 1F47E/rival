@@ -16,35 +16,48 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const codexUsage = `Usage:
-  /rival-codex 'explain the auth flow' — run any prompt via codex
-  /rival-codex -re xhigh 'find bugs in src/main.go' — run with xhigh reasoning effort
-  /rival-codex review — ruthless code review of the entire project
-  /rival-codex review src/api/ — review specific scope
-  /rival-codex -re xhigh review src/api/ — review with xhigh reasoning
-  /rival-codex — show this usage info
+const gpt56SolUsage = `Usage:
+  /rival-gpt-5-6-sol 'explain the auth flow' — run any prompt with gpt-5.6-sol
+  /rival-gpt-5-6-sol -re ultra 'find bugs in src/main.go' — use ultra reasoning
+  /rival-gpt-5-6-sol review — ruthless code review of the entire project
+  /rival-gpt-5-6-sol review src/api/ — review specific scope
+  /rival-gpt-5-6-sol -re ultra review src/api/ — review with ultra reasoning
+  /rival-gpt-5-6-sol — show this usage info
 
-Reasoning effort (-re): low, medium (default), high, xhigh`
+Reasoning effort (-re): low, medium, high (default), ultra`
 
+var commandGPT56SolCmd = &cobra.Command{
+	Use:   config.GPT56SolModel,
+	Short: "Skill-facing gpt-5.6-sol executor",
+	RunE:  commandGPT56SolAction,
+}
+
+// Retained for scripts created before the model-named command was introduced.
 var commandCodexCmd = &cobra.Command{
-	Use:   "codex",
-	Short: "Skill-facing codex executor",
-	RunE:  commandCodexAction,
+	Use:    "codex",
+	Hidden: true,
+	RunE:   commandGPT56SolAction,
 }
 
 func init() {
-	commandCodexCmd.Flags().String("workdir", ".", "working directory")
-	commandCodexCmd.Flags().Bool("no-queue", false, "bypass the review queue")
+	configureCommandGPT56SolFlags(commandGPT56SolCmd)
+	configureCommandGPT56SolFlags(commandCodexCmd)
+	commandCmd.AddCommand(commandGPT56SolCmd)
 	commandCmd.AddCommand(commandCodexCmd)
 }
 
-func commandCodexAction(cmd *cobra.Command, args []string) error {
+func configureCommandGPT56SolFlags(cmd *cobra.Command) {
+	cmd.Flags().String("workdir", ".", "working directory")
+	cmd.Flags().Bool("no-queue", false, "bypass the review queue")
+}
+
+func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
 	// If stdin is a terminal, show usage instead of hanging.
 	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-		_, _ = fmt.Fprintln(os.Stdout, codexUsage)
+		_, _ = fmt.Fprintln(os.Stdout, gpt56SolUsage)
 		return nil
 	}
 
@@ -54,14 +67,14 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read stdin: %w", err)
 	}
 
-	parsed, err := parser.ParseCodexArgs(string(raw))
+	parsed, err := parser.ParseGPT56SolArgs(string(raw))
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 
 	if parsed.IsEmpty {
-		_, _ = fmt.Fprintln(os.Stdout, codexUsage)
+		_, _ = fmt.Fprintln(os.Stdout, gpt56SolUsage)
 		return nil
 	}
 
@@ -90,7 +103,7 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting codex (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting gpt-5.6-sol (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -102,7 +115,7 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 	}
 	defer release()
 
-	// Bound the run itself: a hung provider CLI must not keep the slot (and the
+	// Bound the run itself: a hung model runtime must not keep the slot (and the
 	// detached rival) alive forever. Clock starts now, after slot promotion.
 	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
 	defer cancelRun()
@@ -117,7 +130,7 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("codex exited with code %d", result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.GPT56SolModel, result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {
@@ -136,7 +149,7 @@ func commandCodexAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("codex exited with code %d", result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s exited with code %d", config.GPT56SolModel, result.ExitCode)}
 	}
 
 	return nil

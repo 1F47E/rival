@@ -1,14 +1,15 @@
 ---
-name: rival-codex-only
-version: 3.16.0
-description: Run Codex through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-codex.
-argument-hint: "[-re level] [review [scope] | prompt]"
+name: rival-gpt-5-6-sol
+version: 3.18.0
+description: Run gpt-5.6-sol through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-gpt-5-6-sol.
+argument-hint: "[-re low|medium|high|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read
 ---
 
-# Codex Runner (rival binary)
+# gpt-5.6-sol runner
 
-Run OpenAI Codex CLI via the `rival` Go binary. The run is detached and watched in the background — this skill does not block your session.
+Run `gpt-5.6-sol` through the `rival` Go binary. The run is detached and
+watched in the background, so this skill does not block your session.
 
 ## Instructions
 
@@ -19,18 +20,17 @@ Run OpenAI Codex CLI via the `rival` Go binary. The run is detached and watched 
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-codex-only 'explain the auth flow'` — run any prompt via codex
-> - `/rival-codex-only -re xhigh 'find bugs in src/main.go'` — run with xhigh reasoning effort
-> - `/rival-codex-only review` — code review (auto-detects changed files via git)
-> - `/rival-codex-only review src/api/` — review specific scope (bypasses git detection)
-> - `/rival-codex-only -re xhigh review src/api/` — review with xhigh reasoning
-> - `/rival-codex` — show this usage info
+> - `/rival-gpt-5-6-sol 'explain the auth flow'` — run any prompt with `gpt-5.6-sol`
+> - `/rival-gpt-5-6-sol -re ultra 'find bugs in src/main.go'` — use ultra reasoning
+> - `/rival-gpt-5-6-sol review` — code review (auto-detects changed files via git)
+> - `/rival-gpt-5-6-sol review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-gpt-5-6-sol -re ultra review src/api/` — review with ultra reasoning
 >
-> **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `xhigh`
+> **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`
 
 ### Execute — launch detached, then watch in the background
 
-rival serializes runs through a cross-process queue and a review can take many
+Rival serializes runs through a cross-process queue and a review can take many
 minutes, so this skill **does not block**. It launches rival detached (survives
 this context ending), arms a **background watcher**, and then returns control to
 you immediately. The watcher notifies you when the run finishes — you present
@@ -44,7 +44,7 @@ RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX
 cat <<"$DELIM" >"$RIVAL_IN"
 $ARGUMENTS
 $DELIM
-rival command codex --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command gpt-5.6-sol --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

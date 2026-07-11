@@ -19,15 +19,21 @@ import (
 // fails mid-run with an opaque "Missing API key". Failing preflight here turns
 // that into one clear, actionable skip reason instead.
 func OpencodePreflight() error {
+	for _, reviewer := range config.OpencodeReviewerList() {
+		if err := OpencodePreflightModel(reviewer.Model); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// OpencodePreflightModel validates one selected curated OpenCode model.
+func OpencodePreflightModel(model string) error {
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return fmt.Errorf("opencode CLI not installed. Install: https://opencode.ai (brew install sst/tap/opencode)")
 	}
-	if config.OpencodeAPIKey() == "" {
-		for _, r := range config.OpencodeReviewerList() {
-			if strings.HasPrefix(r.Model, "opencode/") {
-				return fmt.Errorf("opencode roster uses OpenCode Zen models (%s) but RIVAL_OPENCODE_API_KEY is not set — export your Zen key, or set RIVAL_OPENCODE_MODELS to non-Zen models", r.Model)
-			}
-		}
+	if strings.HasPrefix(model, "opencode/") && config.OpencodeAPIKey() == "" {
+		return fmt.Errorf("OpenCode Zen model %s requires RIVAL_OPENCODE_API_KEY — export your Zen key", model)
 	}
 	return nil
 }
@@ -55,11 +61,19 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 	if model == "" {
 		model = config.OpencodeModel
 	}
-	variant := config.OpencodeVariantLevel[effort]
-	if variant == "" {
-		variant = "high"
-	}
+	args := opencodeRunArgs(model, effort, workdir)
+	env := opencodeRunEnv(sess.ID, model)
 
+	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
+	// Drop any inherited OPENCODE_PERMISSION / OPENCODE_CONFIG_CONTENT before
+	// appending ours. rival loads the reviewed repo's .env (godotenv) into the
+	// process env, so a malicious repo could otherwise ship a permissive
+	// OPENCODE_PERMISSION or a config that weakens the sandbox. (safeEnv already
+	// strips the OPENCODE_ prefix, so this is belt-and-suspenders.)
+	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, "OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT", "OPENCODE_DB")
+}
+
+func opencodeRunArgs(model, effort, workdir string) []string {
 	args := []string{
 		"run",
 		// --pure runs without external plugins / project-controlled config, so a
@@ -68,9 +82,15 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 		// wins over project config, but this removes all reliance on that.)
 		"--pure",
 		"-m", model,
-		"--variant", variant,
-		"--dir", workdir,
 	}
+	if variant := config.OpencodeVariant(model, effort); variant != "" {
+		args = append(args, "--variant", variant)
+	}
+	args = append(args, "--dir", workdir)
+	return args
+}
+
+func opencodeRunEnv(sessionID, model string) []string {
 	env := []string{
 		"OPENCODE_PERMISSION=" + opencodeReadOnlyPermission,
 		// Give each reviewer its OWN opencode session DB. The megareview runs
@@ -78,7 +98,7 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 		// DB (WAL + 5s busy_timeout), which intermittently loses the write lock —
 		// observed as a reviewer failing with "database is locked" (exit 1). A
 		// per-session DB (keyed on the unique session ID) removes all contention.
-		"OPENCODE_DB=rival-" + sess.ID + ".db",
+		"OPENCODE_DB=rival-" + sessionID + ".db",
 	}
 
 	// If a rival-managed opencode API key is set, inject it into the provider
@@ -91,14 +111,7 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 			env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 		}
 	}
-
-	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
-	// Drop any inherited OPENCODE_PERMISSION / OPENCODE_CONFIG_CONTENT before
-	// appending ours. rival loads the reviewed repo's .env (godotenv) into the
-	// process env, so a malicious repo could otherwise ship a permissive
-	// OPENCODE_PERMISSION or a config that weakens the sandbox. (safeEnv already
-	// strips the OPENCODE_ prefix, so this is belt-and-suspenders.)
-	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, "OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT", "OPENCODE_DB")
+	return env
 }
 
 // opencodeProviderConfig returns an OPENCODE_CONFIG_CONTENT JSON string that sets

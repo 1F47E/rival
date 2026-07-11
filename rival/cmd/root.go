@@ -34,7 +34,7 @@ func (e *ExitCodeError) Unwrap() error { return e.Err }
 
 var rootCmd = &cobra.Command{
 	Use:           "rival",
-	Short:         "Dispatch prompts to external AI CLIs (Codex, Antigravity)",
+	Short:         "Dispatch prompts and reviews to external AI models",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -50,7 +50,7 @@ var rootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)
-		fmt.Printf("  %s — Codex & Antigravity from your terminal\n\n", Version)
+		fmt.Printf("  %s — multi-model AI reviews from your terminal\n\n", Version)
 		cmd.SetOut(os.Stdout)
 		_ = cmd.Usage()
 	},

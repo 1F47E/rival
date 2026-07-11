@@ -89,7 +89,7 @@ func FormatPlanConsole(out *PlanOutput, file string) string {
 
 // formatPlanBody writes the rating/summary/findings/tally for one PlanOutput into
 // sb. It carries no header or File line, so it is shared by both the single-CLI
-// (FormatPlanConsole) and multi-CLI (FormatPlanMultiConsole) renderers.
+// (FormatPlanConsole) and multi-model (FormatPlanMultiConsole) renderers.
 func formatPlanBody(out *PlanOutput, sb *strings.Builder) {
 	fmt.Fprintf(sb, "Rating: %d/10\n\n", out.Rating)
 	if s := strings.TrimSpace(out.Summary); s != "" {
@@ -156,9 +156,9 @@ func formatPlanBody(out *PlanOutput, sb *strings.Builder) {
 }
 
 // FormatPlanResult renders a PlanRunResult for the caller. A single successful
-// CLI reuses the original single-CLI layout (FormatPlanConsole when parsed, else
-// the raw output — preserving the codex-only command's raw fallback). Two or more
-// CLIs use the multi-block layout. Any skipped CLIs are surfaced.
+// model reuses the original single-model layout (FormatPlanConsole when parsed,
+// else the raw output). Two or more models use the multi-block layout. Any
+// skipped models are surfaced.
 func FormatPlanResult(result *PlanRunResult, file string) string {
 	if result == nil || len(result.Results) == 0 {
 		return "No plan review output.\n"
@@ -168,8 +168,9 @@ func FormatPlanResult(result *PlanRunResult, file string) string {
 		if r.Parsed != nil {
 			return FormatPlanConsole(r.Parsed, file)
 		}
-		// Parse failed — return the raw CLI output, matching the prior behaviour.
-		return r.Raw
+		// Parse failed — preserve the raw model output while normalizing any
+		// adapter banner to the concrete model name.
+		return planFailureReason(r.CLI, r.Raw)
 	}
 	return FormatPlanMultiConsole(result.Results, result.Skipped, file)
 }
@@ -184,20 +185,26 @@ type PlanCLIResult struct {
 	Raw    string
 }
 
-// planEngineLabel is the human-facing engine name for a plan block. Fable runs
-// through the Claude CLI (session CLI == "claude"), so it is distinguished by its
-// model id and shown as "claude-fable" rather than the generic "claude".
+// planEngineLabel is the human-facing model name for a plan block. The adapter
+// is intentionally never exposed in plan-review output.
 func planEngineLabel(cli, model string) string {
-	if model == config.FableModel {
-		return "claude-fable"
+	if model != "" {
+		return model
 	}
-	return cli
+	return config.EngineLabel(cli, model)
 }
 
-// FormatPlanMultiConsole renders 2+ CLIs' plan reviews as separate labelled
-// blocks under one header, followed by any skipped CLIs. A result whose Parsed is
-// nil falls back to printing its Raw output so a parse failure never drops the
-// model's work.
+func planSkippedLabel(skipped SkippedCLI) string {
+	if skipped.Model != "" {
+		return skipped.Model
+	}
+	return skipped.Label()
+}
+
+// FormatPlanMultiConsole renders 2+ models' plan reviews as separate labelled
+// blocks under one header, followed by any skipped models. A result whose Parsed
+// is nil falls back to printing its Raw output so a parse failure never drops
+// the model's work.
 func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file string) string {
 	var sb strings.Builder
 
@@ -209,13 +216,13 @@ func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file 
 	fmt.Fprintf(&sb, "File: %s\n", file)
 
 	for i, r := range results {
-		fmt.Fprintf(&sb, "\n── %s (%s) ──\n\n", planEngineLabel(r.CLI, r.Model), r.Model)
+		fmt.Fprintf(&sb, "\n── %s ──\n\n", planEngineLabel(r.CLI, r.Model))
 		if r.Parsed != nil {
 			formatPlanBody(r.Parsed, &sb)
 		} else {
 			// Parse failed — emit the raw CLI output verbatim so nothing is lost.
 			sb.WriteString("(could not parse structured output — raw output below)\n\n")
-			sb.WriteString(strings.TrimSpace(r.Raw))
+			sb.WriteString(strings.TrimSpace(planFailureReason(r.CLI, r.Raw)))
 			sb.WriteString("\n")
 		}
 		if i < len(results)-1 {
@@ -226,7 +233,7 @@ func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file 
 	if len(skipped) > 0 {
 		sb.WriteString("\n")
 		for _, s := range skipped {
-			fmt.Fprintf(&sb, "Skipped: %s — %s\n", s.CLI, s.Reason)
+			fmt.Fprintf(&sb, "Skipped: %s — %s\n", planSkippedLabel(s), s.Reason)
 		}
 	}
 

@@ -17,53 +17,53 @@ func TestGroupSessions(t *testing.T) {
 		wantKind    []string // "" for solo groups
 	}{
 		{
-			name:     "empty",
-			sessions: nil,
+			name:       "empty",
+			sessions:   nil,
 			wantGroups: 0,
 		},
 		{
 			name: "two solo sessions stay separate",
 			sessions: []*session.Session{
-				{ID: "a", CLI: "codex", Model: "gpt-5.5", Status: "completed"},
+				{ID: "a", CLI: "codex", Model: config.GPT56SolModel, Status: "completed"},
 				{ID: "b", CLI: "gemini", Model: "gemini-3.1", Status: "completed"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{false, false},
-			wantCLI:     []string{"codex", "gemini"},
+			wantCLI:     []string{config.GPT56SolModel, "gemini-3.1"},
 			wantKind:    []string{"", ""},
 		},
 		{
 			name: "shared GroupID collapses into one mega row",
 			sessions: []*session.Session{
-				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: "gpt-5.5", Status: "completed"},
+				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
 				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{"codex+antigravity"},
+			wantCLI:     []string{config.GPT56SolModel + "+gemini-3.1"},
 			wantKind:    []string{"megareview"},
 		},
 		{
-			name: "plan group is labelled plan with codex+claude-fable",
+			name: "plan group is labelled with concrete model names",
 			sessions: []*session.Session{
 				{ID: "a", GroupID: "gp", CLI: "codex", Mode: "plan", Model: config.CodexModel, Status: "completed"},
 				{ID: "b", GroupID: "gp", CLI: "fable", Mode: "plan", Model: config.FableModel, Status: "completed"},
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{"codex+claude-fable"},
+			wantCLI:     []string{config.GPT56SolModel + "+" + config.FableModel},
 			wantKind:    []string{"plan"},
 		},
 		{
 			name: "mixed: one mega group + one solo",
 			sessions: []*session.Session{
-				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: "gpt-5.5", Status: "completed"},
+				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
 				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
 				{ID: "c", CLI: "claude", Model: "opus", Status: "running"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{true, false},
-			wantCLI:     []string{"codex+antigravity", "claude"},
+			wantCLI:     []string{config.GPT56SolModel + "+gemini-3.1", "opus"},
 			wantKind:    []string{"megareview", ""},
 		},
 	}
@@ -118,13 +118,13 @@ func TestGroupStatus(t *testing.T) {
 
 func TestGroupModels_Dedupes(t *testing.T) {
 	sessions := []*session.Session{
-		{Model: "gpt-5.5"},
+		{Model: config.GPT56SolModel},
 		{Model: "gemini-3.1"},
-		{Model: "gpt-5.5"}, // duplicate
-		{Model: ""},        // skipped
+		{Model: config.GPT56SolModel}, // duplicate
+		{Model: ""},                   // skipped
 	}
 	got := groupModels(sessions)
-	want := "gpt-5.5 + gemini-3.1"
+	want := config.GPT56SolModel + " + gemini-3.1"
 	if got != want {
 		t.Errorf("groupModels() = %q, want %q", got, want)
 	}

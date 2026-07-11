@@ -124,14 +124,22 @@ func TestClaudeAuth(t *testing.T) {
 	}
 }
 
-func TestOpencodeReviewerList_Default(t *testing.T) {
-	t.Setenv("RIVAL_OPENCODE_MODELS", "")
+func TestOpencodeReviewerList_Curated(t *testing.T) {
+	// The legacy environment override must not reintroduce uncurated models.
+	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode/deepseek-v4-flash")
 	got := OpencodeReviewerList()
 	if len(got) != 3 {
-		t.Fatalf("default roster size = %d, want 3", len(got))
+		t.Fatalf("curated roster size = %d, want 3", len(got))
 	}
-	if got[0].Model != "opencode/glm-5.2" || got[0].Role != "arch_security" {
-		t.Errorf("first default reviewer = %+v", got[0])
+	want := []OpencodeReviewer{
+		{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
+		{Model: OpencodeKimiK27Code, Role: "arch_security"},
+		{Model: OpencodeGLMModel, Role: "code_quality"},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("curated reviewer %d = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 
@@ -146,50 +154,95 @@ func TestOpencodeProviderConfigKeyFromEnv(t *testing.T) {
 	}
 }
 
-func TestOpencodeReviewerList_Override(t *testing.T) {
-	t.Setenv("RIVAL_OPENCODE_MODELS", " opencode-go/glm-5.2:bug_hunter , opencode-go/deepseek-v4-flash , opencode-go/glm-5.2 ")
-	got := OpencodeReviewerList()
-	// glm appears twice → deduped to one; flash gets default role.
-	if len(got) != 2 {
-		t.Fatalf("override roster size = %d, want 2 (deduped), got %+v", len(got), got)
+func TestResolveReviewTargets_DefaultIsCuratedFourModelRoster(t *testing.T) {
+	got, err := ResolveReviewTargets(nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got[0].Model != "opencode-go/glm-5.2" || got[0].Role != "bug_hunter" {
-		t.Errorf("first override reviewer = %+v (want glm:bug_hunter)", got[0])
+	if len(got) != 4 {
+		t.Fatalf("default target count = %d, want 4: %+v", len(got), got)
 	}
-	if got[1].Model != "opencode-go/deepseek-v4-flash" || got[1].Role != "code_quality" {
-		t.Errorf("second override reviewer = %+v (want flash:code_quality default)", got[1])
+	if got[0].CLI != "codex" || got[0].Model != GPT56SolModel {
+		t.Fatalf("first default target = %+v, want %s", got[0], GPT56SolModel)
+	}
+	for _, target := range got[1:] {
+		if target.CLI != "opencode" {
+			t.Fatalf("curated open-model target unexpectedly uses %q: %+v", target.CLI, got)
+		}
+	}
+	if got[1].Model != OpencodeDeepSeekPro || got[2].Model != OpencodeKimiK27Code || got[3].Model != OpencodeGLMModel {
+		t.Fatalf("unexpected default target order: %+v", got)
 	}
 }
 
-func TestOpencodeReviewerList_BlankOverrideFallsBackToDefault(t *testing.T) {
-	t.Setenv("RIVAL_OPENCODE_MODELS", "  , ,  ")
-	if got := OpencodeReviewerList(); len(got) != 3 {
-		t.Fatalf("blank override should fall back to default roster, got %d", len(got))
+func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
+	cases := []struct {
+		selector string
+		model    string
+		role     string
+	}{
+		{"sol", GPT56SolModel, "bug_hunter"},
+		{GPT56SolModel, GPT56SolModel, "bug_hunter"},
+		{"deepseek", OpencodeDeepSeekPro, "bug_hunter"},
+		{"deepseek-pro", OpencodeDeepSeekPro, "bug_hunter"},
+		{"kimi", OpencodeKimiK27Code, "arch_security"},
+		{"kimi-k2.7-code", OpencodeKimiK27Code, "arch_security"},
+		{"glm", OpencodeGLMModel, "code_quality"},
+		{"glm-5.2", OpencodeGLMModel, "code_quality"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.selector, func(t *testing.T) {
+			got, err := ResolveReviewTargets([]string{tc.selector})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].Model != tc.model || got[0].Role != tc.role {
+				t.Fatalf("ResolveReviewTargets(%q) = %+v", tc.selector, got)
+			}
+			wantCLI := "opencode"
+			if tc.model == GPT56SolModel {
+				wantCLI = "codex"
+			}
+			if got[0].CLI != wantCLI {
+				t.Fatalf("ResolveReviewTargets(%q) CLI = %q, want %q", tc.selector, got[0].CLI, wantCLI)
+			}
+		})
+	}
+}
+
+func TestResolveReviewTargets_ExactOrderAndDedup(t *testing.T) {
+	got, err := ResolveReviewTargets([]string{"glm,sol", "kimi", "deepseek", "glm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 || got[0].Model != OpencodeGLMModel || got[1].Model != GPT56SolModel || got[2].Model != OpencodeKimiK27Code || got[3].Model != OpencodeDeepSeekPro {
+		t.Fatalf("unexpected exact roster: %+v", got)
+	}
+}
+
+func TestResolveReviewTargets_RejectsModelsOutsideCuratedSet(t *testing.T) {
+	for _, selector := range []string{"codex", "deepseek-flash", "opencode/kimi-k2.6", "all", ""} {
+		t.Run(selector, func(t *testing.T) {
+			if _, err := ResolveReviewTargets([]string{selector}); err == nil {
+				t.Fatalf("expected %q to be rejected", selector)
+			}
+		})
 	}
 }
 
 func TestEngineLabel(t *testing.T) {
 	cases := []struct{ cli, model, want string }{
-		{"codex", "gpt-5.5", "codex"},
-		{"antigravity", "gemini-3.5-flash", "antigravity"},
-		{"claude", FableModel, "claude-fable"},
+		{"codex", GPT56SolModel, GPT56SolModel},
+		{"antigravity", "gemini-3.5-flash", "gemini-3.5-flash"},
+		{"claude", FableModel, FableModel},
 		{"opencode", "opencode-go/glm-5.2", "glm-5.2"},
 		{"opencode", "opencode-go/deepseek-v4-pro", "deepseek-v4-pro"},
+		{"opencode", OpencodeKimiK27Code, "kimi-k2.7-code"},
 		{"opencode", "", "opencode"},
 	}
 	for _, c := range cases {
 		if got := EngineLabel(c.cli, c.model); got != c.want {
 			t.Errorf("EngineLabel(%q,%q) = %q, want %q", c.cli, c.model, got, c.want)
 		}
-	}
-}
-
-func TestOpencodeReviewerList_UnknownRoleFallsBackToBugHunter(t *testing.T) {
-	// A typo'd role would otherwise reach BuildRolePrompt (no default branch) and
-	// build a reviewer prompt with no role instructions.
-	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode-go/glm-5.2:bughunter")
-	got := OpencodeReviewerList()
-	if len(got) != 1 || got[0].Role != "bug_hunter" {
-		t.Fatalf("unknown role should normalize to bug_hunter, got %+v", got)
 	}
 }

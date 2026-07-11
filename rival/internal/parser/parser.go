@@ -10,21 +10,28 @@ import (
 // ParseResult holds the parsed user arguments.
 type ParseResult struct {
 	Effort      string
+	Models      []string // exact megareview roster selectors; nil means configured default
 	IsReview    bool
-	AutoScope   bool   // true when review has no explicit scope (use git detection)
+	AutoScope   bool // true when review has no explicit scope (use git detection)
 	ReviewScope string
 	Prompt      string
 	IsEmpty     bool
 }
 
-// ParseCodexArgs parses raw arguments for the codex command.
-// Grammar: [-re level] [review [scope] | prompt]
+// ParseGPT56SolArgs parses raw arguments for the gpt-5.6-sol command.
+// Grammar: [-re level] [review [scope] | prompt]. It defaults to high and
+// accepts ultra as the deepest public effort level.
+func ParseGPT56SolArgs(raw string) (*ParseResult, error) {
+	return parseArgsWithEffort(raw, config.DefaultReviewEffort, config.IsValidReviewEffort, config.ReviewEfforts)
+}
+
+// ParseCodexArgs is retained for internal compatibility with older callers.
 func ParseCodexArgs(raw string) (*ParseResult, error) {
-	return parseArgs(raw)
+	return ParseGPT56SolArgs(raw)
 }
 
 // ParseGeminiArgs parses raw arguments for the gemini command.
-// Identical grammar to codex (no -m flag in v1).
+// It uses the common standalone-command grammar (no -m flag in v1).
 func ParseGeminiArgs(raw string) (*ParseResult, error) {
 	return parseArgs(raw)
 }
@@ -46,20 +53,24 @@ func ParseFableArgs(raw string) (*ParseResult, error) {
 }
 
 func parseArgs(raw string) (*ParseResult, error) {
+	return parseArgsWithEffort(raw, config.DefaultEffort, config.IsValidEffort, config.ValidEfforts)
+}
+
+func parseArgsWithEffort(raw, defaultEffort string, validEffort func(string) bool, effortNames []string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return &ParseResult{Effort: config.DefaultEffort, IsEmpty: true}, nil
+		return &ParseResult{Effort: defaultEffort, IsEmpty: true}, nil
 	}
 
-	result := &ParseResult{Effort: config.DefaultEffort}
+	result := &ParseResult{Effort: defaultEffort}
 
 	// Step 1: Parse -re flag.
 	if strings.HasPrefix(s, "-re ") {
 		rest := strings.TrimSpace(s[4:])
 		parts := strings.SplitN(rest, " ", 2)
 		effort := parts[0]
-		if !config.IsValidEffort(effort) {
-			return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", effort, strings.Join(config.ValidEfforts, ", "))
+		if !validEffort(effort) {
+			return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", effort, strings.Join(effortNames, ", "))
 		}
 		result.Effort = effort
 		if len(parts) > 1 {

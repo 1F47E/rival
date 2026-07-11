@@ -9,7 +9,7 @@ const (
 	RoleCodeQuality  Role = "code_quality"
 )
 
-// RoleForCLI returns the default role assigned to each CLI in mega mode.
+// RoleForCLI returns the fallback role for a CLI-backed review session.
 func RoleForCLI(cli string) Role {
 	switch cli {
 	case "codex":
@@ -21,9 +21,8 @@ func RoleForCLI(cli string) Role {
 	case "antigravity":
 		return RoleBugHunter
 	case "opencode":
-		// codex + antigravity both hunt bugs; give opencode (GLM) the
-		// architecture/security lens to diversify the 3-reviewer roster.
-		return RoleArchSecurity
+		// The generic OpenCode fallback model is DeepSeek V4 Pro.
+		return RoleBugHunter
 	default:
 		return RoleBugHunter
 	}

@@ -1,13 +1,11 @@
 # Claude Code CLI in Docker
 
-Run Claude Code CLI inside a Docker container as the 3rd reviewer in rival megareview (alongside Codex and Gemini on host).
+Run the standalone Claude Code CLI through Rival inside a Docker container.
 
 ## Architecture
 
 ```
 Host: rival binary
-├── Codex CLI (native, host)
-├── Gemini CLI (native, host)
 └── Claude CLI (Docker container)
     ├── workdir mounted as /workspace
     └── OAuth token passed via env var
@@ -78,10 +76,8 @@ claude:
 
 ```bash
 # Single Claude review
-rival command claude --workdir /path/to/project 'review'
+printf 'review\n' | rival command claude --workdir /path/to/project
 
-# Full megareview (Codex + Gemini + Claude)
-rival command megareview --workdir /path/to/project
 ```
 
 ## How it works

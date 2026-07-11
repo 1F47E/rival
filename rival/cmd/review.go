@@ -18,9 +18,12 @@ import (
 
 var reviewCmd = &cobra.Command{
 	Use:   "review [scope]",
-	Short: "Run Codex + Antigravity code review with consilium judge",
-	Long: `Run Codex and Antigravity code reviews in parallel with role-specific prompts,
+	Short: "Run a configurable multi-model code review with consilium judge",
+	Long: `Run selected code-review models in parallel with role-specific prompts,
 then merge findings via a consilium judge for a unified verdict.
+
+By default Rival runs GPT-5.6-Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2.
+--model replaces that complete roster for one run.
 
 Without a scope argument, auto-detects changed files via git:
   1. Dirty files (staged + unstaged + untracked) → review those
@@ -32,7 +35,8 @@ With a scope argument, reviews exactly that scope.`,
 }
 
 func init() {
-	reviewCmd.Flags().String("effort", config.DefaultEffort, "reasoning effort (low, medium, high, xhigh)")
+	reviewCmd.Flags().String("effort", config.DefaultReviewEffort, "reasoning effort: low, medium, high, ultra")
+	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: gpt-5.6-sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2")
 	reviewCmd.Flags().String("workdir", ".", "working directory")
 	reviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	rootCmd.AddCommand(reviewCmd)
@@ -40,11 +44,15 @@ func init() {
 
 func reviewAction(cmd *cobra.Command, args []string) error {
 	effort, _ := cmd.Flags().GetString("effort")
+	models, _, err := modelSelectionFlag(cmd)
+	if err != nil {
+		return err
+	}
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
-	if !config.IsValidEffort(effort) {
-		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
+	if !config.IsValidReviewEffort(effort) {
+		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ReviewEfforts)
 	}
 
 	// Build scope from args or auto-detect via git.
@@ -72,11 +80,35 @@ func reviewAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunMegaReview(ctx, scope, effort, workdir, groupID, noQueue)
+	result, err := review.RunMegaReviewWithModels(ctx, scope, effort, workdir, groupID, noQueue, models)
 	if err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprint(os.Stdout, review.FormatConsole(result.Output, result.Inputs, result.Threshold, result.JudgeCLI, result.Skipped))
+	_, _ = fmt.Fprint(os.Stdout, review.FormatConsole(result.Output, result.Inputs, result.Threshold, result.JudgeCLI, result.JudgeModel, result.Skipped))
 	return nil
+}
+
+// modelSelectionFlag distinguishes an omitted StringSlice flag from an
+// explicitly empty --model=. pflag returns an empty slice for both, but the
+// latter must be rejected instead of silently restoring the default roster.
+func modelSelectionFlag(cmd *cobra.Command) (models []string, changed bool, err error) {
+	flag := cmd.Flags().Lookup("model")
+	changed = flag != nil && flag.Changed
+	models, err = cmd.Flags().GetStringSlice("model")
+	if err != nil {
+		return nil, changed, err
+	}
+	if !changed {
+		return nil, false, nil
+	}
+	if len(models) == 0 {
+		return nil, true, fmt.Errorf("option --model requires a value: gpt-5.6-sol, deepseek-v4-pro, kimi-k2.7-code, or glm-5.2")
+	}
+	for _, model := range models {
+		if strings.TrimSpace(model) == "" {
+			return nil, true, fmt.Errorf("model selector cannot be empty")
+		}
+	}
+	return models, true, nil
 }

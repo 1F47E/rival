@@ -2,7 +2,7 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI CLIs from Claude Code. Run GPT-5.5 via Codex, Gemini via Antigravity, GLM-5.2 / DeepSeek V4 via opencode, or Claude Opus 4.8 (1M) via Claude Code CLI — as isolated subagents that keep your main context clean. The default `/rival-review` runs Codex + three opencode models (GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash) in parallel and merges their findings with a consilium judge.
+Dispatch prompts to external AI models from Claude Code as isolated subagents that keep your main context clean. The default `/rival-review` runs GPT-5.6-Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 in parallel and merges their findings with a consilium judge. Use `-m/--model` to run an exact subset for one review.
 
 ## Install
 
@@ -22,39 +22,43 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-codex-only`, `/rival-antigravity-only`, `/rival-plan-codex`, `/rival-plan-fable`, and `/rival-claude-fable` are available in Claude Code. (Install also removes the deprecated `/rival-gemini-only`, `/rival-claude-only`, `/rival-fable-only`, and `/rival-plan` skills.)
+`rival install` copies the Claude Code skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-gpt-5-6-sol`, `/rival-antigravity-only`, `/rival-plan-sol`, `/rival-plan-fable`, and `/rival-claude-fable` are available in Claude Code. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
 
 ### Prerequisites
 
-- [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` + `codex login` — used by megareview, `/rival-codex-only`, and `/rival-plan-codex`
-- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — used by megareview and `/rival-antigravity-only`
-- [opencode CLI](https://opencode.ai) (`opencode`): install + authenticate — used by megareview (3 OpenCode Zen models by default: GLM-5.2, DeepSeek V4 Pro/Flash). Set `RIVAL_OPENCODE_API_KEY` to an OpenCode Zen key for rival to bill Zen; otherwise opencode uses its own stored credential.
+- [GPT-5.6-Sol runtime](https://github.com/openai/codex): install and authenticate it, then use `/rival-review`, `/rival-gpt-5-6-sol`, or `/rival-plan-sol`
+- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — optional, used by `/rival-antigravity-only`
+- DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 runtime: install [opencode](https://opencode.ai) and set `RIVAL_OPENCODE_API_KEY` to a Zen key
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below) — optional standalone
 
-You only need the CLIs for the commands you use. **Megareview uses Codex + opencode (3 models)** — any that are unavailable are skipped. (Antigravity is no longer part of megareview; it remains available as the standalone `/rival-antigravity-only`.) The opencode roster is overridable via `RIVAL_OPENCODE_MODELS` (comma `model[:role]`); the OpenCode Zen key comes from `RIVAL_OPENCODE_API_KEY` (put it in `~/.zshenv` so non-interactive shells inherit it).
+You only need the runtimes for the models you use. **Megareview uses four curated models** — any unavailable selection is skipped, and the run proceeds when at least one succeeds. Put `RIVAL_OPENCODE_API_KEY` in `~/.zshenv` so non-interactive shells inherit it.
 
 ## Usage
 
 ### Claude Code Skills
 
-**Default review** (runs Codex + 3 opencode models + consilium judge):
+**Default review** (runs GPT-5.6-Sol + DeepSeek V4 Pro + Kimi K2.7 Code + GLM-5.2):
 
 ```
-/rival-review                              — review with Codex + opencode (auto-detects changed files)
-/rival-review src/api/                     — review specific scope (bypasses git detection)
-/rival-review -re xhigh src/api/           — all reviewers, max reasoning effort
+/rival-review                              — all four models; auto-detect changed files
+/rival-review -m gpt-5.6-sol src/api/      — GPT-5.6-Sol only
+/rival-review -m deepseek src/api/         — DeepSeek V4 Pro only
+/rival-review -m kimi src/api/             — Kimi K2.7 Code only
+/rival-review -m glm src/api/              — GLM-5.2 only
+/rival-review -m deepseek,kimi src/api/    — exactly those two models
+/rival-review -re ultra src/api/           — highest supported effort
 ```
 
-**Single-CLI skills** (use only when you want one specific CLI):
+**Single-model skills** (use only when you want one specific model):
 
 ```
-/rival-codex-only explain the auth flow in this project
-/rival-codex-only -re xhigh find bugs in src/main.go
-/rival-codex-only review                   — review (auto-detects changed files via git)
-/rival-codex-only review src/api/          — review specific scope
+/rival-gpt-5-6-sol explain the auth flow in this project
+/rival-gpt-5-6-sol -re ultra find bugs in src/main.go
+/rival-gpt-5-6-sol review                  — review (auto-detects changed files via git)
+/rival-gpt-5-6-sol review src/api/         — review specific scope
 ```
 
 ```
@@ -74,22 +78,23 @@ You only need the CLIs for the commands you use. **Megareview uses Codex + openc
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
-/rival-plan-codex path/to/plan.md          — rate the plan 1-10 with codex (xhigh effort), surface bugs + gaps
-/rival-plan-fable path/to/plan.md          — same, with claude-fable (low effort by default — fast/cheap)
+/rival-plan-sol path/to/plan.md             — rate the plan 1-10 with GPT-5.6-Sol at high effort
+/rival-plan-sol -re ultra path/to/plan.md   — use ultra effort
+/rival-plan-fable path/to/plan.md           — same, with claude-fable-5 (low effort by default)
 ```
 
-Each rates the plan 1-10 and returns numbered findings. `/rival-plan-codex` runs at xhigh reasoning effort; `/rival-plan-fable` defaults to **low** effort (override with `rival command plan --cli fable --effort <level>`). The underlying `rival command plan` can still run both engines at once via `--cli codex,fable`, but no dual skill ships.
+Each rates the plan 1-10 and returns numbered findings. `/rival-plan-sol` defaults to **high** and accepts `-re ultra`; `/rival-plan-fable` defaults to **low**. The binary selects exact plan reviewers by model name, for example `rival command plan --model gpt-5.6-sol --effort ultra`.
 
-**Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh` (default). `rival command plan` takes `--effort` (default `xhigh`); the `/rival-plan-fable` skill passes `--effort low`.
+**Model selection** (`-m`, `--model`): `gpt-5.6-sol` (`sol`), `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), and `glm-5.2` (`glm`); comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
 
 ### How Reviews Work
 
-When you run a review, Codex and the opencode models get **full access to your project**. They don't just see a diff — they run as CLI tools inside your workdir with tool use enabled, so they can:
+When you run a review, the selected models get **read-only access to your project**. They don't just see a diff — they run as isolated agents inside your workdir with safe exploration tools enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
 - Explore the full codebase to understand context
-- Run commands to inspect project structure
+- Run inspection commands inside a read-only sandbox without modifying project files
 
 **Smart scope detection.** Running `/rival-review` with no arguments auto-detects what to review via git:
 1. **Dirty files** (staged + unstaged + untracked new files) → reviews those files
@@ -101,9 +106,9 @@ The **scope** is a focus hint, not a restriction. `review src/api/` tells the re
 This means you can use natural language for the scope:
 
 ```
-/rival-codex-only review the files changed in the last commit
-/rival-codex-only review the authentication middleware
-/rival-review -re xhigh the new payment flow in src/billing/
+/rival-gpt-5-6-sol review the files changed in the last commit
+/rival-gpt-5-6-sol review the authentication middleware
+/rival-review -m deepseek -re ultra the new payment flow in src/billing/
 ```
 
 The reviewer will figure out what to look at, explore the relevant code, and give you a review with full project understanding.
@@ -112,15 +117,16 @@ The reviewer will figure out what to look at, explore the relevant code, and giv
 
 Megareview assigns **specialized roles** to each reviewer:
 
-- **Codex → Bug Hunter** — finds concrete code-level defects: logic bugs, broken state transitions, race conditions, missing edge cases. Optimizes for true positives with high confidence.
-- **opencode / GLM-5.2 → Architecture & Security** — attacks from angles a bug hunter misses: architectural regressions, broken cross-file flows, incomplete refactors, concurrency issues, security problems, silent failure gaps.
-- **opencode / DeepSeek V4 Pro → Bug Hunter** and **opencode / DeepSeek V4 Flash → Code Quality** round out the roster.
+- **GPT-5.6-Sol → Bug Hunter** — an independent correctness pass and the first default consilium-judge candidate.
+- **DeepSeek V4 Pro → Bug Hunter** — the primary correctness reviewer for concrete code-level defects, broken state transitions, races, and missing edge cases.
+- **Kimi K2.7 Code → Architecture & Security** — follows multi-step, cross-file flows and looks for architectural regressions, incomplete refactors, and security gaps.
+- **GLM-5.2 → Code Quality** — uses its large-context strength to inspect broad schemas, many tables, and report-generation paths for maintainability and correctness risks.
 
-(The opencode model roster + roles are overridable via `RIVAL_OPENCODE_MODELS`; the OpenCode Zen key comes from `RIVAL_OPENCODE_API_KEY`. All three opencode models share one credential/quota, so under load they may hit a 429 together — rival skips whichever reviewers fail and proceeds with the rest.)
+DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 share one Zen credential/quota. Under load those three may hit a 429 together; Rival skips failed reviewers and proceeds when at least one remains.
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
 
-If a reviewer hits a provider quota/rate limit (a 429 — `agy` exits 0 with empty output on this), rival detects it from the captured log and reports that reviewer as **skipped** with a reason, rather than silently counting it as a clean empty review.
+If a reviewer hits a provider quota/rate limit, Rival detects it from the captured log and reports that concrete model as **skipped** with a reason, rather than silently counting it as a clean empty review.
 
 Role prompts can be customized via `~/.rival/config.yaml`:
 
@@ -132,7 +138,8 @@ roles:
     Your custom code quality instructions...
 ```
 
-A separate **consilium judge** (runs via Codex) then:
+A separate **consilium pass** runs with the highest-priority selected model that
+successfully reviewed (default priority: GPT-5.6-Sol → DeepSeek V4 Pro → Kimi K2.7 Code → GLM-5.2), then:
 - Merges duplicate findings (same file + line + problem → single finding with all reporters in `found_by`)
 - Applies consensus bonus (+2 confidence for findings reported by 2+ reviewers)
 - Filters by confidence threshold (default: ≥6)
@@ -147,34 +154,39 @@ Summary: ...
 [CRITICAL] file.go:42 — Title
   Description...
   Fix: ...
-  Found by: codex, antigravity
+  Found by: deepseek-v4-pro, kimi-k2.7-code
 
 [HIGH] file.go:100 — Title
   ...
 
 Recommendation: request_changes — ...
 
-Reviewed by: codex (bug_hunter), antigravity (arch_security)
-Judge: codex (consilium)
+Reviewed by: gpt-5.6-sol (bug_hunter), deepseek-v4-pro (bug_hunter), kimi-k2.7-code (arch_security), glm-5.2 (code_quality)
+Judge: gpt-5.6-sol (consilium)
 Findings: 5 (threshold: 6)
 ```
 
-The consilium judge runs via Codex, falling back to Antigravity if Codex is unavailable. If only one reviewer is available, the consilium judge falls back to whichever CLI is present. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
+For an explicit multi-model selection, requested order controls judge priority. A single-model review uses that same model for the review and consilium phases. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
 
 ### Direct CLI
 
 ```bash
-# Run with prompt from stdin
-echo 'explain the auth flow' | rival command codex --workdir .
+# Run GPT-5.6-Sol with a prompt from stdin
+echo 'explain the auth flow' | rival command gpt-5.6-sol --workdir .
 echo 'explain the auth flow' | rival command antigravity --workdir .
 
-# Review via megareview (Codex + 3 opencode models in parallel)
+# Review via the default four-model roster
 echo 'src/api/' | rival command megareview --workdir .
 
-# Rate a plan/spec doc 1-10 (codex + claude-fable by default, xhigh effort)
+# Exact one-model review (native binary flag)
+echo 'src/api/' | rival command megareview --model gpt-5.6-sol --workdir .
+echo 'src/api/' | rival command megareview --model deepseek --workdir .
+rival review --model kimi src/api/
+
+# Rate a plan/spec doc 1-10 (GPT-5.6-Sol + claude-fable-5 by default, high effort)
 echo 'docs/plan.md' | rival command plan --workdir .
-echo 'docs/plan.md' | rival command plan --cli codex --workdir .              # codex only
-echo 'docs/plan.md' | rival command plan --cli fable --effort low --workdir . # claude-fable, low effort (as /rival-plan-fable does)
+echo 'docs/plan.md' | rival command plan --model gpt-5.6-sol --effort ultra --workdir .
+echo 'docs/plan.md' | rival command plan --model claude-fable-5 --effort low --workdir .
 ```
 
 ### TUI Dashboard
@@ -185,9 +197,9 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, CLI (◈ codex / △ antigravity / ❯ opencode / ⬡ claude / ▤ plan / ◈△❯ mega), model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into a single row: megareview shows `◈△❯ mega`. Claude sessions show `⬡ claude` for native or `⬡ claude/dk` for Docker mode. Plan reviews (`/rival-plan-codex`, `/rival-plan-fable`) show `▤ plan`.
+**List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`.
 
-**Detail view** shows full metadata (including Mode and Account/subscription type for Claude), prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a megareview group is titled `Megareview` with CLI `codex+glm-5.2+deepseek-v4-pro+deepseek-v4-flash`, a dual plan group is titled `Plan Review` with CLI `codex+claude-fable` and mode `plan`. All member logs are shown.
+**Detail view** shows full metadata, prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a default megareview lists `gpt-5.6-sol+deepseek-v4-pro+kimi-k2.7-code+glm-5.2`, while an explicit subset shows only its selected models. A dual plan group lists `gpt-5.6-sol+claude-fable-5`. All member logs are shown.
 
 #### Keys
 
@@ -277,10 +289,10 @@ Claude skill (async — does not block the session)
     │ 3. hand back to the session and END the turn
     ▼
 rival binary (own process session — survives the skill/fork teardown)
-    ├─ parses arguments (-re flag, review/prompt mode)
+    ├─ parses model selection (-m), effort (-re), and review scope
     ├─ builds review prompt with scope injection
     ├─ waits for a queue slot, then bounds the run by RIVAL_RUN_TIMEOUT
-    ├─ spawns codex/antigravity via subprocess
+    ├─ spawns the selected models via isolated subprocesses
     ├─ pipes prompt to stdin, tees stdout to log file
     └─ writes session JSON + live log to ~/.rival/sessions/
          │
@@ -290,11 +302,11 @@ rival binary (own process session — survives the skill/fork teardown)
 Megareview (roles + consilium):
     rival binary
     ├─ generates shared GroupID (UUID)
-    ├─ assigns roles: codex=bug_hunter, antigravity=arch_security
-    ├─ spawns codex + antigravity concurrently with role-specific prompts
+    ├─ assigns roles: GPT-5.6-Sol/DeepSeek=bug_hunter, Kimi=arch_security, GLM=code_quality
+    ├─ spawns the exact selected roster concurrently with role-specific prompts
     ├─ skips any reviewer that hits a provider quota/rate limit (429)
     ├─ parses structured JSON output from each reviewer
-    ├─ spawns codex again as consilium judge
+    ├─ runs the highest-priority successful selected model as consilium judge
     │   ├─ merges duplicates, applies consensus bonus
     │   ├─ filters by confidence threshold (≥6)
     │   └─ produces unified verdict with found_by attribution
@@ -388,19 +400,21 @@ the key and its credit balance.
 
 ## Models
 
-| CLI | Model | Default Effort | Used by |
-|-----|-------|---------------|---------|
-| Codex | `gpt-5.5` | xhigh | megareview, consilium judge, `/rival-codex-only`, `/rival-plan-codex` |
-| Antigravity | `gemini-3.5-flash` | xhigh | megareview, judge fallback, `/rival-antigravity-only` |
-| opencode (Zen) | `opencode/glm-5.2` (arch/sec), `opencode/deepseek-v4-pro` (bugs), `opencode/deepseek-v4-flash` (quality) | xhigh→max variant | megareview — 3 models in parallel; roster via `RIVAL_OPENCODE_MODELS`, key via `RIVAL_OPENCODE_API_KEY` |
-| Gemini | `gemini-3.1-pro-preview` | xhigh | standalone `rival command gemini` only |
-| Claude | `claude-opus-4-8[1m]` | max | standalone only |
-| claude-fable | `claude-fable-5` | low (via `/rival-plan-fable`) | `/rival-plan-fable` |
+| Model | Default Effort | Used by |
+|-------|----------------|---------|
+| `gpt-5.6-sol` | high; `ultra` supported | `/rival-review`, `/rival-gpt-5-6-sol`, `/rival-plan-sol` |
+| `deepseek-v4-pro` | high; `ultra` maps to max | `/rival-review` |
+| `kimi-k2.7-code` | model default | `/rival-review` |
+| `glm-5.2` | high; `ultra` maps to max | `/rival-review` |
+| `gemini-3.5-flash` | xhigh | `/rival-antigravity-only` |
+| `gemini-3.1-pro-preview` | xhigh | standalone binary command |
+| `claude-opus-4-8[1m]` | max | standalone binary command |
+| `claude-fable-5` | low via `/rival-plan-fable` | `/rival-plan-fable`, optional plan pairing |
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-codex-only ~/.claude/skills/rival-antigravity-only ~/.claude/skills/rival-plan ~/.claude/skills/rival-plan-codex ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review
+rm -rf ~/.claude/skills/rival-gpt-5-6-sol ~/.claude/skills/rival-antigravity-only ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```
