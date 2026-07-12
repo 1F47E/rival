@@ -171,23 +171,34 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	defer cancelRun()
 
 	// Phase 1: Spawn reviewers in parallel with role-specific prompts.
+	type indexedCLIResult struct {
+		index  int
+		result cliResult
+	}
 	var wg sync.WaitGroup
-	results := make(chan cliResult, len(plans))
+	results := make(chan indexedCLIResult, len(plans))
 
-	for _, p := range plans {
+	for i, p := range plans {
 		wg.Add(1)
-		go func(pl reviewerPlan) {
+		go func(index int, pl reviewerPlan) {
 			defer wg.Done()
-			results <- runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, effort, workdir)
-		}(p)
+			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, effort, workdir)}
+		}(i, p)
 	}
 
 	wg.Wait()
 	close(results)
 
+	// Restore requested order after concurrent completion so prompts, console
+	// attribution, and skipped-model reporting stay deterministic.
+	orderedResults := make([]cliResult, len(plans))
+	for result := range results {
+		orderedResults[result.index] = result.result
+	}
+
 	// Collect and parse reviewer outputs.
 	var inputs []ReviewInput
-	for r := range results {
+	for _, r := range orderedResults {
 		label := config.EngineLabel(r.CLI, r.Model)
 		if r.Err != nil {
 			reason := config.PublicRuntimeError(r.CLI, r.Model, r.Err.Error())

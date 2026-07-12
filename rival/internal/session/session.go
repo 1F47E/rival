@@ -204,6 +204,55 @@ func LoadAll() []*Session {
 	return sessions
 }
 
+// SortGroupMembers restores the order in which a grouped run requested its
+// models. QueuedAt is the creation timestamp and, unlike StartTime, is not
+// reset as members are promoted to running. The deterministic fallbacks keep
+// legacy sessions stable when they do not have queue metadata.
+func SortGroupMembers(sessions []*Session) {
+	sort.SliceStable(sessions, func(i, j int) bool {
+		a, b := sessions[i], sessions[j]
+		if rankA, rankB := groupModeRank(a.Mode), groupModeRank(b.Mode); rankA != rankB {
+			return rankA < rankB
+		}
+		if a.QueuedAt != nil && b.QueuedAt != nil && !a.QueuedAt.Equal(*b.QueuedAt) {
+			return a.QueuedAt.Before(*b.QueuedAt)
+		}
+		if rankA, rankB := groupModelRank(a), groupModelRank(b); rankA != rankB {
+			return rankA < rankB
+		}
+		if !a.StartTime.Equal(b.StartTime) {
+			return a.StartTime.Before(b.StartTime)
+		}
+		return a.ID < b.ID
+	})
+}
+
+func groupModeRank(mode string) int {
+	if mode == "consilium" {
+		return 1
+	}
+	return 0
+}
+
+func groupModelRank(s *Session) int {
+	switch config.EngineLabel(s.CLI, s.Model) {
+	case config.SolLabel:
+		return 0
+	case "deepseek-v4-pro":
+		return 1
+	case "kimi-k2.7-code":
+		return 2
+	case "glm-5.2":
+		return 3
+	case config.FableLabel:
+		return 4
+	case config.OpusLabel:
+		return 5
+	default:
+		return 100
+	}
+}
+
 // OpenLog opens the session log file for writing.
 func (s *Session) OpenLog() (*os.File, error) {
 	return os.OpenFile(s.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)

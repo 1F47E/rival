@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/1F47E/rival/internal/session"
 )
 
 func TestClaudeAuthHint(t *testing.T) {
@@ -52,4 +54,18 @@ func TestClaudeAuthHint(t *testing.T) {
 			t.Errorf("want empty, got %q", got)
 		}
 	})
+}
+
+func TestSetClaudeTransportModePreservesPlanTask(t *testing.T) {
+	plan := &session.Session{Mode: "plan"}
+	setClaudeTransportMode(plan, "native")
+	if plan.Mode != "plan" {
+		t.Fatalf("plan mode = %q, want plan", plan.Mode)
+	}
+
+	standalone := &session.Session{Mode: "raw"}
+	setClaudeTransportMode(standalone, "docker")
+	if standalone.Mode != "docker" {
+		t.Fatalf("standalone mode = %q, want docker", standalone.Mode)
+	}
 }

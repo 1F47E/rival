@@ -94,9 +94,12 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 func renderGroupDetailView(item *displayItem, width, height int, promptExpanded bool) string {
 	s := item.Primary()
 
-	var meta strings.Builder
+	var essential strings.Builder
 
-	id := s.ID
+	id := s.GroupID
+	if id == "" {
+		id = s.ID
+	}
 	if len(id) > 8 {
 		id = id[:8]
 	}
@@ -104,80 +107,111 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	if groupIsPlan(item) {
 		title = "Plan Review"
 	}
-	meta.WriteString(titleStyle.Render(fmt.Sprintf("%s %s", title, id)))
-	meta.WriteString("\n\n")
+	essential.WriteString(titleStyle.Render(fmt.Sprintf("%s %s", title, id)))
+	essential.WriteString("\n\n")
 
 	// Shared metadata from primary session — derived from the group's sessions so
 	// a Sol + Fable plan group is not mislabelled a megareview.
-	addField(&meta, "Models", groupCLIs(item), width)
-	addField(&meta, "Effort", s.Effort, width)
-	addField(&meta, "Mode", groupKindLabel(item), width)
-	addStyledField(&meta, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)
-	addField(&meta, "WorkDir", s.WorkDir, width)
-	addField(&meta, "Started", s.StartTime.Format("15:04:05"), width)
+	addField(&essential, "Models", groupCLIs(item), width)
+	addField(&essential, "Effort", s.Effort, width)
+	addField(&essential, "Mode", groupKindLabel(item), width)
+	addStyledField(&essential, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)
+	addField(&essential, "WorkDir", s.WorkDir, width)
+	addField(&essential, "Started", s.StartTime.Format("15:04:05"), width)
 	elapsed := groupElapsed(item)
 	if elapsed != "-" {
-		addField(&meta, "Duration", elapsed, width)
+		addField(&essential, "Duration", elapsed, width)
 	}
 	if s.ReviewScope != "" {
-		addField(&meta, "Review", s.ReviewScope, width)
+		addField(&essential, "Review", s.ReviewScope, width)
 	}
 
-	renderErrorSection(&meta, s, width)
-	renderPromptSection(&meta, s, width, promptExpanded)
-	meta.WriteString("\n")
-
-	metaStr := meta.String()
-	metaLines := strings.Count(metaStr, "\n") + 1
-
-	// Share the remaining height across the selected reviewer and judge logs.
-	remaining := height - metaLines
-	if remaining < 6 {
-		remaining = 6
+	// Logs are the primary content of a grouped detail view. Reserve a heading
+	// and at least one content line for every member before spending space on
+	// the shared prompt, so a normal terminal always exposes every model.
+	minLogLines := len(item.Sessions) * 2
+	maxMetaLines := height - minLogLines
+	if maxMetaLines < 0 {
+		maxMetaLines = 0
+	}
+	metaLines := renderedLines(essential.String())
+	if len(metaLines) > maxMetaLines {
+		metaLines = metaLines[:maxMetaLines]
 	}
 
-	var logSections strings.Builder
-
-	for _, sess := range item.Sessions {
-		// Label each OpenCode session by its concrete short model name so
-		// per-reviewer log blocks remain distinguishable for any selected subset.
-		label := strings.ToUpper(groupEngineLabel(sess)) + " REVIEW"
-		if sess.Status == "failed" && sess.ErrorMsg != "" {
-			label += " (FAILED)"
+	if len(metaLines) < maxMetaLines {
+		var prompt strings.Builder
+		renderPromptSection(&prompt, s, width, promptExpanded)
+		optional := renderedLines(prompt.String())
+		room := maxMetaLines - len(metaLines)
+		if len(optional) > room {
+			optional = optional[:room]
 		}
-		logSections.WriteString(titleStyle.Render(fmt.Sprintf("=== %s ===", label)))
-		logSections.WriteString("\n")
+		metaLines = append(metaLines, optional...)
+	}
 
-		if sess.Status == "failed" && sess.ErrorMsg != "" {
-			message := config.PublicRuntimeError(sess.CLI, sess.Model, sess.ErrorMsg)
-			for _, line := range wrapText(message, width) {
-				logSections.WriteString(failedStyle.Render(line))
-				logSections.WriteString("\n")
+	remaining := height - len(metaLines)
+	for i, sess := range item.Sessions {
+		membersLeft := len(item.Sessions) - i
+		budget := remaining / membersLeft
+		section := groupLogLines(sess, width, budget)
+		metaLines = append(metaLines, section...)
+		remaining -= len(section)
+	}
+	if len(metaLines) > height {
+		metaLines = metaLines[:height]
+	}
+	return strings.Join(metaLines, "\n")
+}
+
+func renderedLines(text string) []string {
+	text = strings.TrimRight(text, "\n")
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
+}
+
+func groupLogLines(sess *session.Session, width, budget int) []string {
+	if budget <= 0 {
+		return nil
+	}
+	label := groupLogLabel(sess)
+	if sess.Status == "failed" && sess.ErrorMsg != "" {
+		label += " (FAILED)"
+	}
+	lines := []string{titleStyle.Render(fmt.Sprintf("=== %s ===", label))}
+	if budget == 1 {
+		return lines
+	}
+
+	if sess.Status == "failed" && sess.ErrorMsg != "" {
+		message := config.PublicRuntimeError(sess.CLI, sess.Model, sess.ErrorMsg)
+		for _, line := range wrapText(message, width) {
+			lines = append(lines, failedStyle.Render(line))
+			if len(lines) == budget {
+				return lines
 			}
 		}
-
-		perLogHeight := remaining/len(item.Sessions) - 2 // title + gap
-		if perLogHeight < 3 {
-			perLogHeight = 3
-		}
-
-		lines := wrapLogLines(sess, width)
-		if len(lines) == 0 {
-			logSections.WriteString(labelStyle.Render("(empty log)"))
-		} else if len(lines) <= perLogHeight {
-			logSections.WriteString(strings.Join(lines, "\n"))
-		} else {
-			logSections.WriteString(strings.Join(lines[len(lines)-perLogHeight:], "\n"))
-		}
-		logSections.WriteString("\n\n")
 	}
 
-	full := metaStr + logSections.String()
-	result := strings.Split(full, "\n")
-	if len(result) > height {
-		result = result[:height]
+	logLines := wrapLogLines(sess, width)
+	if len(logLines) == 0 {
+		return append(lines, labelStyle.Render("(empty log)"))
 	}
-	return strings.Join(result, "\n")
+	room := budget - len(lines)
+	if len(logLines) > room {
+		logLines = logLines[len(logLines)-room:]
+	}
+	return append(lines, logLines...)
+}
+
+func groupLogLabel(sess *session.Session) string {
+	role := "REVIEW"
+	if sess.Mode == "consilium" {
+		role = "JUDGE"
+	}
+	return strings.ToUpper(groupEngineLabel(sess)) + " " + role
 }
 
 // renderErrorSection renders the full error message wrapped across as many

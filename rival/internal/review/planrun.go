@@ -190,21 +190,25 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 	defer cancelRun()
 
 	// Run every CLI concurrently.
+	type indexedRun struct {
+		index int
+		run   planCLIRun
+	}
 	var wg sync.WaitGroup
-	runs := make(chan planCLIRun, len(plans))
-	for _, p := range plans {
+	runs := make(chan indexedRun, len(plans))
+	for i, p := range plans {
 		wg.Add(1)
-		go func(pl plan) {
+		go func(index int, pl plan) {
 			defer wg.Done()
-			runs <- runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, effort, workdir)
-		}(p)
+			runs <- indexedRun{index: index, run: runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, effort, workdir)}
+		}(i, p)
 	}
 	wg.Wait()
 	close(runs)
 
-	batch := make([]planCLIRun, 0, len(plans))
+	batch := make([]planCLIRun, len(plans))
 	for r := range runs {
-		batch = append(batch, r)
+		batch[r.index] = r.run
 	}
 
 	return assemblePlanResults(batch, skipped)
@@ -225,10 +229,8 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 
 	raw, exitCode, err := ex.run(ctx, sess, cli, prompt, effort, workdir)
 
-	// The fable path runs through the Claude executor, which overwrites sess.Mode
-	// with the transport ("native"/"docker"). Restore the task mode so the TUI/web
-	// classify this as a plan session (they key off Mode == "plan"). Done before
-	// Complete/Fail, which persist the session.
+	// Keep this defensive restoration for injected/custom executors. The built-in
+	// Fable executor preserves plan mode throughout the live run.
 	sess.Mode = "plan"
 
 	if err != nil {

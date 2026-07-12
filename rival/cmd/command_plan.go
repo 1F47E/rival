@@ -17,13 +17,15 @@ import (
 )
 
 const planUsage = `Usage:
+  /rival-plan path/to/plan.md — review with Sol and Fable at ultra effort
   /rival-plan-sol path/to/plan.md — review with Sol at ultra effort
   /rival-plan-fable path/to/plan.md — review with Fable
   rival command plan --help — show native command options
 
-Input is a single path to a markdown plan/spec file. The /rival-plan-sol skill
-always uses ultra. Native command effort defaults to high (low for Fable alone).
---model accepts sol and fable. An unavailable model is skipped, not fatal.`
+Input is a single path to a markdown plan/spec file. The /rival-plan and
+/rival-plan-sol skills always use ultra. Native command effort defaults to high
+(low for Fable alone). --model accepts sol and fable. An unavailable model is
+skipped, not fatal.`
 
 var defaultPlanModels = []string{config.SolLabel, config.FableLabel}
 

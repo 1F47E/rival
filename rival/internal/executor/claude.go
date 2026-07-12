@@ -40,10 +40,10 @@ func RunClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, 
 	var result *Result
 	var err error
 	if _, lookErr := exec.LookPath("claude"); lookErr == nil {
-		sess.Mode = "native"
+		setClaudeTransportMode(sess, "native")
 		result, err = runClaudeNative(ctx, sess, prompt, effort, workdir, model, mirror)
 	} else {
-		sess.Mode = "docker"
+		setClaudeTransportMode(sess, "docker")
 		result, err = RunClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
 	}
 	if err != nil {
@@ -51,6 +51,14 @@ func RunClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, 
 		return nil, fmt.Errorf("%s runtime: %s", label, config.PublicRuntimeError("claude", model, err.Error()))
 	}
 	return result, nil
+}
+
+// setClaudeTransportMode records the transport for ordinary model runs while
+// preserving a plan session's task identity throughout its live execution.
+func setClaudeTransportMode(sess *session.Session, transport string) {
+	if sess.Mode != "plan" {
+		sess.Mode = transport
+	}
 }
 
 func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {

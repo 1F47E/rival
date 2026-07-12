@@ -22,17 +22,17 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-antigravity-only`, `/rival-plan-sol`, `/rival-plan-fable`, and `/rival-fable` are available. Install also removes superseded skill names.
+`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, and `/rival-fable` are available. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
 
 ### Prerequisites
 
-- [Sol runtime](https://github.com/openai/codex): install and authenticate it, then use `/rival-review`, `/rival-sol`, or `/rival-plan-sol`
-- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — optional, used by `/rival-antigravity-only`
+- [Sol runtime](https://github.com/openai/codex): install and authenticate it, then use `/rival-review`, `/rival-sol`, `/rival-plan`, or `/rival-plan-sol`
+- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — optional, available through the standalone binary command
 - DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 runtime: install [opencode](https://opencode.ai) and set `RIVAL_OPENCODE_API_KEY` to a Zen key
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
-- [Opus/Fable runtime](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below) — optional standalone
+- [Opus/Fable runtime](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below), then use `/rival-plan`, `/rival-plan-fable`, or `/rival-fable`
 
 You only need the runtimes for the models you use. **Megareview uses four curated models** — any unavailable selection is skipped, and the run proceeds when at least one succeeds. Put `RIVAL_OPENCODE_API_KEY` in `~/.zshenv` so non-interactive shells inherit it.
 
@@ -61,13 +61,6 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 /rival-sol review src/api/                 — review specific scope
 ```
 
-```
-/rival-antigravity-only explain the auth flow
-/rival-antigravity-only -re high analyze this complex algorithm
-/rival-antigravity-only review             — review (auto-detects changed files via git)
-/rival-antigravity-only review src/api/    — review specific scope
-```
-
 **Code review via Fable** (medium effort by default):
 
 ```
@@ -78,11 +71,12 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
+/rival-plan path/to/plan.md                 — review with Sol + Fable at ultra effort
 /rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at ultra effort
 /rival-plan-fable path/to/plan.md           — same, with Fable (low effort by default)
 ```
 
-Each rates the plan 1-10 and returns numbered findings. `/rival-plan-sol` always uses **ultra**; `/rival-plan-fable` defaults to **low**. The native binary defaults to high for Sol and accepts an explicit override, for example `rival command plan --model sol --effort ultra`.
+Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs Sol and Fable in parallel at **ultra** and shows both results. `/rival-plan-sol` also always uses **ultra**; `/rival-plan-fable` defaults to **low**. The native binary defaults to high for Sol and accepts an explicit override, for example `rival command plan --model sol --effort ultra`.
 
 **Model selection** (`-m`, `--model`): `sol`, `deepseek`, `kimi`, and `glm`; comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
 
@@ -196,9 +190,9 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`.
+**List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`.
 
-**Detail view** shows full metadata, prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a default megareview lists `sol+deepseek-v4-pro+kimi-k2.7-code+glm-5.2`, while an explicit subset shows only its selected models. A dual plan group lists `sol+fable`. All member logs are shown.
+**Detail view** shows full metadata, prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a default megareview lists `sol+deepseek-v4-pro+kimi-k2.7-code+glm-5.2`, while an explicit subset shows only its selected models. A dual plan group lists `sol+fable`. All member logs and model-specific failures are shown; `o` opens one combined public log for a grouped run.
 
 #### Keys
 
@@ -209,9 +203,19 @@ rival tui
 | `Esc` | — | Back to list |
 | `g` / `G` | Jump to top / bottom | — |
 | `p` | — | Toggle full prompt |
-| `o` | — | Open log file in editor |
+| `o` | — | Open log (all logs for a group) |
 | `x` | — | Kill running session |
 | `q` | Quit | Quit |
+
+### Web Dashboard
+
+```bash
+rival server --port 3333
+```
+
+The browser dashboard uses the same stable grouping and requested model order as
+the TUI. It shows public model names and icons, labels judge output separately,
+and includes each member's log and failure reason.
 
 ### Session Management
 
@@ -403,19 +407,19 @@ See the [full Opus/Fable Docker setup](docs/opus-fable-docker-setup.md) for arch
 
 | Model | Default Effort | Used by |
 |-------|----------------|---------|
-| Sol | high generally; ultra in `/rival-plan-sol` | `/rival-review`, `/rival-sol`, `/rival-plan-sol` |
+| Sol | high generally; ultra in plan skills | `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol` |
 | `deepseek-v4-pro` | high; `ultra` maps to max | `/rival-review` |
 | `kimi-k2.7-code` | model default | `/rival-review` |
 | `glm-5.2` | high; `ultra` maps to max | `/rival-review` |
-| `gemini-3.5-flash` | xhigh | `/rival-antigravity-only` |
+| `gemini-3.5-flash` | xhigh | standalone binary command |
 | `gemini-3.1-pro-preview` | xhigh | standalone binary command |
 | Opus | max | standalone binary command |
-| Fable | medium for code review; low for plan review | `/rival-fable`, `/rival-plan-fable`, optional plan pairing |
+| Fable | medium for code review; low alone, ultra when paired | `/rival-fable`, `/rival-plan`, `/rival-plan-fable` |
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-sol ~/.claude/skills/rival-antigravity-only ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-fable ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review
+rm -rf ~/.claude/skills/rival-sol ~/.claude/skills/rival-plan ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-fable ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review ~/.claude/skills/rival-antigravity-only
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```
