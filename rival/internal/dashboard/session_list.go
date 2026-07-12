@@ -87,11 +87,11 @@ const (
 
 // cliLabel returns a display label with icon for a CLI name.
 func cliLabel(cli, model, mode string) string {
+	if mode == "plan" {
+		return iconPlan + " plan"
+	}
 	switch cli {
 	case "codex":
-		if mode == "plan" {
-			return iconPlan + " plan"
-		}
 		return iconSol + " " + config.EngineLabel(cli, model)
 	case "gemini":
 		return iconGemini + " " + config.EngineLabel(cli, model)

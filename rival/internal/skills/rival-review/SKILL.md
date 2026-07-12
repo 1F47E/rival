@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.20.0
+version: 3.21.0
 description: Run Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and/or GLM-5.2 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-m sol|deepseek|kimi|glm[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read

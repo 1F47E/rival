@@ -17,16 +17,16 @@ import (
 )
 
 const antigravityUsage = `Usage:
-  /rival-antigravity 'explain the auth flow' — run any prompt via antigravity
-  /rival-antigravity review — ruthless code review of the entire project
-  /rival-antigravity review src/api/ — review specific scope
-  /rival-antigravity — show this usage info
+  echo 'explain the auth flow' | rival command antigravity
+  echo 'review' | rival command antigravity
+  echo 'review src/api/' | rival command antigravity
+  rival command antigravity < prompt.txt
 
 Note: agy uses Gemini 3.5 Flash with fixed reasoning — the -re flag is accepted but ignored.`
 
 var commandAntigravityCmd = &cobra.Command{
 	Use:   "antigravity",
-	Short: "Skill-facing antigravity executor",
+	Short: "Run Antigravity prompts from stdin",
 	RunE:  commandAntigravityAction,
 }
 

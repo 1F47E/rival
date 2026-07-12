@@ -75,7 +75,11 @@
 </div>
 
 <script>
-const CLI_ICONS = { sol: '◈', opus: '⬡', fable: '⬡', gemini: '✦', antigravity: '△', opencode: '❯' };
+const CLI_ICONS = {
+  sol: '◈', opus: '⬡', fable: '⬡', gemini: '✦', antigravity: '△', opencode: '❯',
+  'deepseek-v4-pro': '❯', 'kimi-k2.7-code': '❯', 'glm-5.2': '❯',
+  'gemini-3.1-pro-preview': '✦', 'gemini-3.5-flash': '✦',
+};
 const PLAN_ICON = '▤';
 let pollInterval = 10000;
 let selectedId = null;
@@ -114,7 +118,7 @@ function truncPath(p, len) {
 
 function buildRow(g) {
   const primary = g.sessions[0];
-  const id = primary.id;
+  const id = g.id;
   const tr = document.createElement('tr');
   tr.className = 'session-row border-b border-gray-900' + (selectedId === id ? ' bg-gray-800' : '');
   tr.onclick = () => toggleDetail(id);
@@ -201,7 +205,7 @@ async function toggleDetail(id) {
   if (selectedId === id) { closeDetail(); return; }
   selectedId = id;
 
-  const group = lastGroups.find(g => g.sessions[0].id === id);
+  const group = lastGroups.find(g => g.id === id);
   if (!group) return;
 
   const primary = group.sessions[0];
@@ -218,7 +222,7 @@ async function toggleDetail(id) {
     ['Duration', group.elapsed || elapsed(group)],
   ];
   if (primary.account) fields.push(['Account', primary.account]);
-  if (primary.error) fields.push(['Error', primary.error]);
+  if (!group.is_group && primary.error) fields.push(['Error', primary.error]);
   if (primary.review_scope) fields.push(['Review', truncate(primary.review_scope, 80)]);
   fields.forEach(([k, v]) => {
     const div = document.createElement('div');
@@ -249,14 +253,21 @@ async function toggleDetail(id) {
 
   let logText = '';
   for (const s of group.sessions) {
+    if (group.is_group) {
+      const role = s.mode === 'consilium' ? 'JUDGE' : 'REVIEW';
+      const failed = s.status === 'failed' ? ' (FAILED)' : '';
+      logText += '=== ' + (s.model || group.cli).toUpperCase() + ' ' + role + failed + ' ===\n';
+      if (s.error) logText += 'Error: ' + s.error + '\n';
+    }
     try {
       const logResp = await fetch('/api/sessions/' + s.id + '/log');
-      const t = await logResp.text();
-      if (group.sessions.length > 1) {
-        logText += '=== ' + (s.model || group.cli).toUpperCase() + ' ===\n' + t + '\n\n';
-      } else {
-        logText = t;
+      if (!logResp.ok) {
+        if (!s.error) logText += '(log unavailable: HTTP ' + logResp.status + ')\n';
+        logText += '\n';
+        continue;
       }
+      const t = await logResp.text();
+      logText += group.is_group ? t + '\n\n' : t;
     } catch (e) {
       logText += '\nFailed to load log for ' + s.id;
     }

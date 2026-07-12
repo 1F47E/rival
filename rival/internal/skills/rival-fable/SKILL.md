@@ -1,6 +1,6 @@
 ---
 name: rival-fable
-version: 3.20.0
+version: 3.21.0
 description: Code review via Fable through the rival binary — reviews changed files (or a given scope) at medium effort by default. Detached + watched in the background. Use only when the user explicitly invokes /rival-fable.
 argument-hint: "[scope | -re level [scope]]"
 allowed-tools: Bash, Read

@@ -1,8 +1,10 @@
 package server
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
@@ -87,6 +89,95 @@ func TestGroupSessions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPairedPlanGroupUsesPublicModels(t *testing.T) {
+	created := time.Now()
+	later := created.Add(time.Millisecond)
+	groups := groupSessions([]*session.Session{
+		{ID: "b", GroupID: "paired", CLI: "fable", Mode: "plan", Model: config.FableModel, Status: "completed", QueuedAt: &later},
+		{ID: "a", GroupID: "paired", CLI: "codex", Mode: "plan", Model: config.GPT56SolModel, Status: "completed", QueuedAt: &created},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("paired plan group count = %d, want 1", len(groups))
+	}
+	group := groups[0]
+	if group.ID != "paired" {
+		t.Fatalf("paired plan stable id = %q, want group id", group.ID)
+	}
+	if group.Kind != "plan" || group.CLI != "sol+fable" || group.Models != "sol + fable" {
+		t.Fatalf("paired plan group labels = kind %q cli %q models %q", group.Kind, group.CLI, group.Models)
+	}
+	if len(group.Sessions) != 2 || group.Sessions[0].CLI != "sol" || group.Sessions[0].Model != "sol" || group.Sessions[1].CLI != "fable" || group.Sessions[1].Model != "fable" {
+		t.Fatalf("paired plan public sessions = %+v", group.Sessions)
+	}
+}
+
+func TestSingletonPlanKeepsLogicalGroupIdentity(t *testing.T) {
+	groups := groupSessions([]*session.Session{
+		{ID: "fable", GroupID: "degraded-plan", CLI: "fable", Mode: "plan", Model: config.FableModel, Status: "failed", ErrorMsg: "fable failed"},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("singleton plan group count = %d, want 1", len(groups))
+	}
+	group := groups[0]
+	if !group.IsGroup || group.ID != "degraded-plan" || group.Kind != "plan" || group.CLI != "fable" || group.Sessions[0].ErrorMsg != "fable failed" {
+		t.Fatalf("singleton plan group = %+v", group)
+	}
+}
+
+func TestCuratedReviewGroupUsesPublicModels(t *testing.T) {
+	created := time.Now()
+	times := make([]time.Time, 4)
+	for i := range times {
+		times[i] = created.Add(time.Duration(i) * time.Millisecond)
+	}
+	sessions := []*session.Session{
+		{ID: "d", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeGLMModel, Status: "completed", QueuedAt: &times[3]},
+		{ID: "c", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeKimiK27Code, Status: "failed", ErrorMsg: "kimi failed", QueuedAt: &times[2]},
+		{ID: "b", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed", QueuedAt: &times[1]},
+		{ID: "a", GroupID: "review", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed", QueuedAt: &times[0]},
+	}
+	groups := groupSessions(sessions)
+	if len(groups) != 1 {
+		t.Fatalf("review group count = %d, want 1", len(groups))
+	}
+	group := groups[0]
+	wantLabels := []string{"sol", "deepseek-v4-pro", "kimi-k2.7-code", "glm-5.2"}
+	if group.Kind != "megareview" || group.CLI != strings.Join(wantLabels, "+") || group.Models != strings.Join(wantLabels, " + ") {
+		t.Fatalf("review group labels = kind %q cli %q models %q", group.Kind, group.CLI, group.Models)
+	}
+	gotLabels := make([]string, 0, len(group.Sessions))
+	for _, s := range group.Sessions {
+		if s.CLI != s.Model {
+			t.Fatalf("public session labels disagree: %+v", s)
+		}
+		gotLabels = append(gotLabels, s.Model)
+	}
+	if !slices.Equal(gotLabels, wantLabels) {
+		t.Fatalf("public review sessions = %v, want %v", gotLabels, wantLabels)
+	}
+	if group.Sessions[2].ErrorMsg != "kimi failed" {
+		t.Fatalf("non-primary failure missing from public group: %+v", group.Sessions[2])
+	}
+}
+
+func TestIndexIncludesCuratedModelIcons(t *testing.T) {
+	data, err := indexHTML.ReadFile("templates/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, label := range []string{"sol", "deepseek-v4-pro", "kimi-k2.7-code", "glm-5.2", "fable", "gemini-3.1-pro-preview", "gemini-3.5-flash"} {
+		if !strings.Contains(html, label+"': '") && !strings.Contains(html, label+": '") {
+			t.Errorf("web dashboard has no icon mapping for %q", label)
+		}
+	}
+	for _, behavior := range []string{"const id = g.id", "g => g.id === id", "s.mode === 'consilium' ? 'JUDGE' : 'REVIEW'", "if (s.error) logText += 'Error: '"} {
+		if !strings.Contains(html, behavior) {
+			t.Errorf("web dashboard missing grouped-session behavior %q", behavior)
+		}
 	}
 }
 

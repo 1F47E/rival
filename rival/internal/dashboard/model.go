@@ -21,7 +21,6 @@ const (
 )
 
 // displayItem wraps one or more sessions for display in the TUI.
-// A megareview group has two sessions; everything else has one.
 type displayItem struct {
 	Sessions []*session.Session
 }
@@ -34,9 +33,10 @@ func (d *displayItem) Primary() *session.Session {
 	return d.Sessions[0]
 }
 
-// IsGroup returns true if this item contains multiple sessions.
+// IsGroup returns true for a logical grouped run, including a degraded run
+// where only one requested model passed preflight.
 func (d *displayItem) IsGroup() bool {
-	return len(d.Sessions) > 1
+	return len(d.Sessions) > 1 || (len(d.Sessions) == 1 && d.Sessions[0].GroupID != "")
 }
 
 // groupSessions merges sessions sharing a GroupID into display items.
@@ -63,6 +63,7 @@ func groupSessions(sessions []*session.Session) []displayItem {
 
 	items := make([]displayItem, 0, len(order))
 	for _, key := range order {
+		session.SortGroupMembers(groups[key].Sessions)
 		items = append(items, *groups[key])
 	}
 	return items
@@ -222,7 +223,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "o":
 			if m.viewMode == viewDetail && m.selected < len(m.items) {
 				item := m.items[m.selected]
-				if s := item.Primary(); s != nil && s.LogFile != "" {
+				if item.IsGroup() {
+					openPublicGroupLogs(item.Sessions)
+				} else if s := item.Primary(); s != nil && s.LogFile != "" {
 					openPublicLog(s)
 				}
 			}
@@ -283,6 +286,18 @@ func openPublicLog(s *session.Session) {
 	if err != nil {
 		return
 	}
+	openPublicLogPath(viewPath)
+}
+
+func openPublicGroupLogs(sessions []*session.Session) {
+	viewPath, err := createPublicGroupLogView(sessions)
+	if err != nil {
+		return
+	}
+	openPublicLogPath(viewPath)
+}
+
+func openPublicLogPath(viewPath string) {
 	if err := exec.Command("open", viewPath).Start(); err != nil {
 		_ = os.Remove(viewPath)
 		return
@@ -295,12 +310,43 @@ func createPublicLogView(s *session.Session) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return createPublicTextView(config.PublicRuntimeLog(s.CLI, s.Model, string(data)))
+}
+
+func createPublicGroupLogView(sessions []*session.Session) (string, error) {
+	var content strings.Builder
+	for _, s := range sessions {
+		label := groupLogLabel(s)
+		if s.Status == "failed" && s.ErrorMsg != "" {
+			label += " (FAILED)"
+		}
+		fmt.Fprintf(&content, "=== %s ===\n", label)
+		if s.ErrorMsg != "" {
+			fmt.Fprintf(&content, "Error: %s\n", config.PublicRuntimeError(s.CLI, s.Model, s.ErrorMsg))
+		}
+		data, err := os.ReadFile(s.LogFile)
+		if err != nil {
+			if s.ErrorMsg == "" {
+				fmt.Fprintf(&content, "(log unavailable: %s)\n", err)
+			}
+		} else {
+			content.WriteString(config.PublicRuntimeLog(s.CLI, s.Model, string(data)))
+			if len(data) > 0 && data[len(data)-1] != '\n' {
+				content.WriteByte('\n')
+			}
+		}
+		content.WriteByte('\n')
+	}
+	return createPublicTextView(content.String())
+}
+
+func createPublicTextView(content string) (string, error) {
 	file, err := os.CreateTemp("", "rival-log-*.txt")
 	if err != nil {
 		return "", err
 	}
 	viewPath := file.Name()
-	if _, err := file.WriteString(config.PublicRuntimeLog(s.CLI, s.Model, string(data))); err != nil {
+	if _, err := file.WriteString(content); err != nil {
 		_ = file.Close()
 		_ = os.Remove(viewPath)
 		return "", err
@@ -425,6 +471,9 @@ func (m Model) View() string {
 	headerLines := strings.Count(header, "\n")
 
 	contentHeight := m.height - headerLines - 1 // -1 for help bar
+	if contentHeight < 0 {
+		contentHeight = 0
+	}
 
 	var content string
 	var help string

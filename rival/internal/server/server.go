@@ -148,15 +148,19 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 	result := make([]sessionGroup, 0, len(order))
 	for _, key := range order {
 		b := groups[key]
+		session.SortGroupMembers(b.sessions)
 		primary := b.sessions[0]
 		g := sessionGroup{
 			ID:            primary.ID,
-			IsGroup:       len(b.sessions) > 1,
+			IsGroup:       len(b.sessions) > 1 || primary.GroupID != "",
 			Sessions:      publicSessions(b.sessions),
 			Status:        groupStatus(b.sessions),
 			Effort:        primary.Effort,
 			WorkDir:       primary.WorkDir,
 			PromptPreview: primary.PromptPreview,
+		}
+		if primary.GroupID != "" {
+			g.ID = primary.GroupID
 		}
 
 		if g.IsGroup {

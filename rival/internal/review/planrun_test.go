@@ -241,6 +241,29 @@ func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
 	}
 }
 
+func TestRunPlanReviewPreservesRequestedOrderWhenFableFinishesFirst(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	fableDone := make(chan struct{})
+	ex := planExecutor{
+		preflight: func(string) error { return nil },
+		run: func(_ context.Context, _ *session.Session, cli, _, _, _ string) (string, int, error) {
+			if cli == "fable" {
+				close(fableDone)
+			} else {
+				<-fableDone
+			}
+			return realPlanJSON, 0, nil
+		},
+	}
+	result, err := runPlanReview(context.Background(), ex, "/tmp/plan.md", "ultra", t.TempDir(), "ordered", true, []string{"codex", "fable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Results) != 2 || result.Results[0].CLI != "codex" || result.Results[1].CLI != "fable" {
+		t.Fatalf("plan results lost requested order: %+v", result.Results)
+	}
+}
+
 // errString is a tiny error type so tests can build a planCLIRun.Err without fmt.
 type errString string
 

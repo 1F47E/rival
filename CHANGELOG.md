@@ -4,6 +4,26 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+## [v3.21.0] — 2026-07-12
+
+### Added — paired `/rival-plan` skill
+
+`/rival-plan <path>` runs Sol and Fable plan reviews in parallel at `ultra`
+effort and shows both 1-10 ratings and finding sets. If one model is unavailable,
+the other result is still returned and the missing model is reported as skipped.
+The TUI and web dashboard group paired runs as plan reviews, show public model
+names for every curated reviewer, and render matching model icons. Group members
+stay in requested order with stable IDs; detail views reserve space for every
+log, distinguish judge output, and surface per-model failures.
+
+### Removed — `/rival-antigravity-only` skill
+
+The standalone Antigravity binary command remains available, but the slash-command skill is
+no longer embedded or installed. `rival install` removes existing installed copies during an
+upgrade.
+
+## [v3.20.0] — 2026-07-11
+
 ### Added — first-class per-review model selection
 
 `/rival-review` and both binary entry points now accept `-m/--model` with an exact,
@@ -18,7 +38,7 @@ comma-separated or repeated model list:
 
 An explicit list replaces the complete roster; no reviewer is added implicitly. Model-only
 invocations still auto-detect the git scope, options can be combined in either order, and `--`
-escapes a scope beginning with a dash. The skill is bumped to v3.19.0 so existing installs
+escapes a scope beginning with a dash. The skill version was advanced so existing installs
 receive the new argument contract.
 
 ### Changed — curated four-model megareview roster
@@ -51,8 +71,8 @@ Superseded provider-named skills are removed during `rival install`.
 
 ### Changed — short public model names
 
-The standalone skills are now `/rival-sol` and `/rival-fable`; plan review remains
-`/rival-plan-sol` and `/rival-plan-fable`. Binary commands, selectors, review attribution,
+The standalone skills are now `/rival-sol` and `/rival-fable`; plan review uses
+`/rival-plan`, `/rival-plan-sol`, and `/rival-plan-fable`. Binary commands, selectors, review attribution,
 session lists, and dashboards expose `sol`, `fable`, and `opus`. Exact runtime identifiers are
 internal, and the previous command names remain hidden aliases for script compatibility. The
 Docker image and login container use the public `rival-opus-fable` name.
