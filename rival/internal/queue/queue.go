@@ -1,4 +1,4 @@
-// Package queue serializes review executions across independent rival
+// Package queue coordinates bounded review executions across independent rival
 // processes via ticket files in ~/.rival/queue/ guarded by flock. No daemon:
 // each process scans, reaps dead tickets, and promotes itself when a slot is
 // free, all inside a single flock critical section. Queue ordering depends

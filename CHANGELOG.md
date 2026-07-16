@@ -4,6 +4,15 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+## [v3.22.0] — 2026-07-16
+
+### Changed — two concurrent queue slots by default
+
+The cross-process FIFO queue now runs up to two logical reviews concurrently,
+reducing long waits for independent single-model jobs while retaining bounded
+fan-out and crash-safe slot recovery. Set `RIVAL_MAX_CONCURRENT=1` to restore
+strict serialization; `RIVAL_NO_QUEUE` remains unnecessary for normal use.
+
 ## [v3.21.0] — 2026-07-12
 
 ### Added — paired `/rival-plan` skill

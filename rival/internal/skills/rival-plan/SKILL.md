@@ -1,6 +1,6 @@
 ---
 name: rival-plan
-version: 3.21.0
+version: 3.22.0
 description: Review a plan/spec markdown document with Sol and Fable in parallel at ultra effort via the rival binary. Each rates it 1-10 and finds bugs and gaps; both results are shown. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read
@@ -33,7 +33,7 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 ### Execute — launch detached, then watch in the background
 
-Rival serializes runs through a cross-process queue and a review can take many
+Rival coordinates runs through a bounded cross-process queue and a review can take many
 minutes, so this skill **does not block**. Launch Rival detached, arm a
 **background watcher**, then return control immediately. Present the result
 when the watcher notifies you, possibly several turns later.
