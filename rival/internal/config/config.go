@@ -38,7 +38,7 @@ const (
 	PromptPreviewLen           = 100
 	PromptDetailMaxLines       = 10
 
-	DefaultMaxConcurrent = 1
+	DefaultMaxConcurrent = 2
 	DefaultQueueTimeout  = 30 * time.Minute
 	DefaultRunTimeout    = 30 * time.Minute
 	QueuePollInterval    = 2 * time.Second
@@ -572,7 +572,7 @@ func ClaudeAuth() (string, error) {
 	}
 }
 
-// MaxConcurrent returns how many reviews may run at once (RIVAL_MAX_CONCURRENT, default 1).
+// MaxConcurrent returns how many reviews may run at once (RIVAL_MAX_CONCURRENT, default 2).
 func MaxConcurrent() int {
 	if v := os.Getenv("RIVAL_MAX_CONCURRENT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

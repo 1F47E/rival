@@ -228,8 +228,9 @@ rival version               # show version
 
 Multiple coding-agent sessions (or terminals) invoke `rival` as independent
 processes. Without coordination they launch their provider CLIs at once and hit
-rate limits. rival serializes them through a **cross-process FIFO queue** — by
-default one review runs at a time; the rest wait their turn.
+rate limits. rival coordinates them through a **cross-process FIFO queue** — by
+default two reviews run at a time; the rest wait their turn. Set
+`RIVAL_MAX_CONCURRENT=1` for strict serialization on quota-constrained accounts.
 
 - Each waiting review prints its position to stderr while it waits:
   `rival queue: position 2/3 (1 running), waiting 1m12s`. Skills relay this to you.
@@ -249,7 +250,7 @@ rival queue clear --force   # remove ALL tickets (live waiters re-queue at the t
 
 | Var | Default | Effect |
 |-----|---------|--------|
-| `RIVAL_MAX_CONCURRENT` | `1` | How many reviews may run at once |
+| `RIVAL_MAX_CONCURRENT` | `2` | How many reviews may run at once |
 | `RIVAL_QUEUE_TIMEOUT` | `30m` | Max wait for a slot before the review fails |
 | `RIVAL_RUN_TIMEOUT` | `30m` | Max run time once a slot is held; kills a hung provider CLI (`0` disables) |
 | `RIVAL_NO_QUEUE` | unset | Set to bypass the queue entirely |

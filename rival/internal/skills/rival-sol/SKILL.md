@@ -1,6 +1,6 @@
 ---
 name: rival-sol
-version: 3.21.0
+version: 3.22.0
 description: Run Sol through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-sol.
 argument-hint: "[-re low|medium|high|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read
@@ -30,7 +30,7 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 ### Execute — launch detached, then watch in the background
 
-Rival serializes runs through a cross-process queue and a review can take many
+Rival coordinates runs through a bounded cross-process queue and a review can take many
 minutes, so this skill **does not block**. It launches rival detached (survives
 this context ending), arms a **background watcher**, and then returns control to
 you immediately. The watcher notifies you when the run finishes — you present

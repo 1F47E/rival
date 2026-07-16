@@ -7,6 +7,28 @@ import (
 	"time"
 )
 
+func TestMaxConcurrent(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want int
+	}{
+		{name: "unset uses two", env: "", want: 2},
+		{name: "explicit override", env: "3", want: 3},
+		{name: "zero falls back", env: "0", want: 2},
+		{name: "negative falls back", env: "-1", want: 2},
+		{name: "invalid falls back", env: "many", want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("RIVAL_MAX_CONCURRENT", tt.env)
+			if got := MaxConcurrent(); got != tt.want {
+				t.Errorf("MaxConcurrent()=%d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunTimeout(t *testing.T) {
 	tests := []struct {
 		name string

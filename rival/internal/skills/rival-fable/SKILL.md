@@ -1,6 +1,6 @@
 ---
 name: rival-fable
-version: 3.21.0
+version: 3.22.0
 description: Code review via Fable through the rival binary — reviews changed files (or a given scope) at medium effort by default. Detached + watched in the background. Use only when the user explicitly invokes /rival-fable.
 argument-hint: "[scope | -re level [scope]]"
 allowed-tools: Bash, Read
@@ -31,7 +31,7 @@ Call the constructed line **REVIEW_INPUT** below. Reasoning effort (`-re`): `low
 
 ### Execute — launch detached, then watch in the background
 
-rival serializes runs through a cross-process queue and a review can take many
+rival coordinates runs through a bounded cross-process queue and a review can take many
 minutes, so this skill **does not block**. It launches rival detached (survives
 this context ending), arms a **background watcher**, and then returns control to
 you immediately. The watcher notifies you when the run finishes — you present
