@@ -215,6 +215,19 @@ func LoadAll() []*Session {
 	return sessions
 }
 
+// Load reads one complete session record by id.
+func Load(id string) (*Session, error) {
+	data, err := os.ReadFile(filepath.Join(config.SessionDirPath(), id+".json"))
+	if err != nil {
+		return nil, err
+	}
+	var s Session
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 // SortGroupMembers restores the order in which a grouped run requested its
 // models. QueuedAt is the creation timestamp and, unlike StartTime, is not
 // reset as members are promoted to running. The deterministic fallbacks keep

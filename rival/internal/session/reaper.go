@@ -15,7 +15,7 @@ import (
 // sessions. Sessions from older releases have no owner recorded (OwnerPID 0)
 // and keep the provider-only check.
 func ReapOrphans() {
-	sessions := LoadAll()
+	sessions := LoadAllSummaries()
 	for _, s := range sessions {
 		if s.Status != "running" && s.Status != "queued" {
 			continue
@@ -29,7 +29,19 @@ func ReapOrphans() {
 				msg = "orphaned while queued (process dead)"
 			}
 			log.Info().Str("session", s.ID).Int("pid", s.PID).Str("status", s.Status).Msg("reaping orphaned session")
-			_ = s.Fail(1, msg)
+			// Reload the complete record only for an orphan we will mutate, so
+			// saving the failure preserves its full prompt and all legacy data.
+			full, err := Load(s.ID)
+			if err != nil || (full.Status != "running" && full.Status != "queued") {
+				continue
+			}
+			if full.OwnerPID != 0 && procinfo.Alive(full.OwnerPID, full.OwnerPIDStart) {
+				continue
+			}
+			if procinfo.Alive(full.PID, full.PIDStart) {
+				continue
+			}
+			_ = full.Fail(1, msg)
 		}
 	}
 }
