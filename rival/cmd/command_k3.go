@@ -22,9 +22,9 @@ const k3Usage = `Usage:
   echo 'review src/api/' | rival command k3
   rival command k3 < prompt.txt
 
-Note: k3 runs Kimi K3 (moonshot/kimi-k3 via opencode), a thinking-only model
+Note: k3 runs Kimi K3 (moonshotai/kimi-k3 via opencode), a thinking-only model
 pinned to max reasoning — the -re flag accepts low|medium|high|xhigh|ultra|max
-and ignores the value. Needs KIMI_API in the project .env (or exported).
+and ignores the value. Needs MOONSHOT_API_KEY in the project .env (or exported).
 Review mode runs read-only sandboxed (same profile as megareview reviewers);
 raw prompts run full auto and can edit files and run commands in the workdir.`
 

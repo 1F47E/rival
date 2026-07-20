@@ -20,8 +20,8 @@ import (
 // that into one clear, actionable skip reason instead.
 func OpencodePreflight() error {
 	for _, reviewer := range config.OpencodeReviewerList() {
-		// The curated roster carries no moonshot models, so the empty workdir
-		// (which limits KIMI_API resolution to the process env) is irrelevant.
+		// The curated roster carries no Moonshot models, so the empty workdir
+		// (which limits key resolution to the process env) is irrelevant.
 		if err := OpencodePreflightModel(reviewer.Model, ""); err != nil {
 			return err
 		}
@@ -30,17 +30,17 @@ func OpencodePreflight() error {
 }
 
 // OpencodePreflightModel validates one selected OpenCode model. workdir seeds
-// the KIMI_API .env walk-up for moonshot models (see config.KimiAPIKeyFrom);
+// the Moonshot API-key .env walk-up for K3 (see config.KimiAPIKeyFrom);
 // pass "" when no workdir context exists.
 func OpencodePreflightModel(model, workdir string) error {
 	if _, err := exec.LookPath("opencode"); err != nil {
-		return fmt.Errorf("opencode CLI not installed. Install: https://opencode.ai (brew install sst/tap/opencode)")
+		return fmt.Errorf("opencode CLI not installed. Install: curl -fsSL https://opencode.ai/install | bash")
 	}
 	if strings.HasPrefix(model, "opencode/") && config.OpencodeAPIKey() == "" {
 		return fmt.Errorf("OpenCode Zen model %s requires RIVAL_OPENCODE_API_KEY — export your Zen key", model)
 	}
-	if strings.HasPrefix(model, "moonshot/") && config.KimiAPIKeyFrom(workdir) == "" {
-		return fmt.Errorf("model %s requires KIMI_API (Moonshot provider) — add it to the project .env or export it", model)
+	if strings.HasPrefix(model, "moonshotai/") && config.KimiAPIKeyFrom(workdir) == "" {
+		return fmt.Errorf("model %s requires MOONSHOT_API_KEY — add it to the project .env or export it", model)
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ type OpencodeRunOpts struct {
 }
 
 // RunOpencode executes a prompt through the opencode CLI running the given model
-// (e.g. "opencode-go/glm-5.2"). opencode reads the prompt from stdin in
+// (e.g. "opencode/deepseek-v4-pro"). opencode reads the prompt from stdin in
 // non-interactive `run` mode; the effort is mapped to opencode's --variant
 // (provider-specific reasoning level). It runs under a read-only permission
 // profile (see opencodeReadOnlyPermission) rather than --dangerously-skip-permissions,
@@ -143,18 +143,18 @@ func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) 
 	}
 
 	// Inject an API key into the provider config for THIS model's provider
-	// (e.g. "opencode" = Zen, "moonshot" = Moonshot). The opencode CLI's
+	// (e.g. "opencode" = Zen, "moonshotai" = Moonshot AI). The opencode CLI's
 	// auth.json resolution for the Zen provider is unreliable, but a
 	// provider-config override always works. Callers may supply a
-	// provider-specific key (kimi → KIMI_API); the default is the
+	// provider-specific key (K3 → MOONSHOT_API_KEY); the default is the
 	// rival-managed RIVAL_OPENCODE_API_KEY. Never hardcoded; rides in via
 	// OPENCODE_CONFIG_CONTENT.
 	key := opts.APIKey
 	if key == "" {
-		if strings.HasPrefix(model, "moonshot/") {
+		if strings.HasPrefix(model, "moonshotai/") {
 			// Moonshot models must never receive the Zen key. Without an
-			// explicit override, fall back to KIMI_API (process env, then the
-			// .env walk-up from workdir) — this is what makes the k3
+			// explicit override, fall back to the Moonshot key (process env,
+			// then the .env walk-up from workdir) — this is what makes the k3
 			// megareview selector work, including from subdirectories.
 			key = config.KimiAPIKeyFrom(workdir)
 		} else {
@@ -171,8 +171,8 @@ func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) 
 
 // opencodeProviderConfig returns an OPENCODE_CONFIG_CONTENT JSON string that sets
 // the API key on the provider that serves the given model. The provider id is the
-// part of the model before the first "/" (e.g. "opencode-go/glm-5.2" → provider
-// "opencode-go"); a model with no "/" defaults to the "opencode" (Zen) provider.
+// part of the model before the first "/" (e.g. "opencode/deepseek-v4-pro" →
+// provider "opencode"); a model with no "/" defaults to the Zen provider.
 // Returns "" if the model or key is empty.
 func opencodeProviderConfig(model, key string) string {
 	if model == "" || key == "" {

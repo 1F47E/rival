@@ -24,8 +24,8 @@ const planUsage = `Usage:
 
 Input is a single path to a markdown plan/spec file. The /rival-plan and
 /rival-plan-sol skills always use ultra. Native command effort defaults to high
-(low for Fable alone). --model accepts sol and fable. An unavailable model is
-skipped, not fatal.`
+(low for Fable alone), unless overridden per model in ~/.rival/config.yaml.
+--model accepts sol and fable. An unavailable model is skipped, not fatal.`
 
 var defaultPlanModels = []string{config.SolLabel, config.FableLabel}
 
@@ -44,7 +44,7 @@ func init() {
 		panic(err)
 	}
 	commandCmd.AddCommand(commandPlanCmd)
-	commandPlanCmd.Flags().String("effort", config.DefaultPlanEffort, "reasoning effort: low, medium, high, ultra")
+	commandPlanCmd.Flags().String("effort", config.DefaultPlanEffort, "override reasoning effort for every selected model: low, medium, high, ultra")
 }
 
 // parsePlanModels validates model-facing selectors and maps them to the
@@ -109,8 +109,15 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 	rawModels, _ := cmd.Flags().GetStringSlice("model")
 	rawCLIs, _ := cmd.Flags().GetStringSlice("cli")
 	effort, _ := cmd.Flags().GetString("effort")
+	effortSet := cmd.Flags().Changed("effort")
+	if !effortSet {
+		// Cobra retains the historical high flag default for help/API
+		// compatibility. Keep an omitted invocation empty so each selected
+		// model can resolve its own configured or surface-specific default.
+		effort = ""
+	}
 
-	if !config.IsValidReviewEffort(effort) {
+	if effort != "" && !config.IsValidReviewEffort(effort) {
 		err := fmt.Errorf("invalid effort %q, must be one of: %v", effort, config.ReviewEfforts)
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
@@ -135,10 +142,6 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
-	if !cmd.Flags().Changed("effort") {
-		effort = defaultPlanEffort(clis)
-	}
-
 	// If stdin is a terminal, show usage instead of hanging. Guard against a nil
 	// stat (stdin closed/invalid) so we don't panic dereferencing it.
 	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
@@ -156,7 +159,7 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
-	effort, err = mergePlanEffort(effort, cmd.Flags().Changed("effort"), inputEffort)
+	effort, err = mergePlanEffort(effort, effortSet, inputEffort)
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
@@ -198,13 +201,6 @@ func mergePlanEffort(flagEffort string, flagSet bool, inputEffort string) (strin
 		return "", fmt.Errorf("reasoning effort conflicts: command uses %q but plan arguments request %q", flagEffort, inputEffort)
 	}
 	return inputEffort, nil
-}
-
-func defaultPlanEffort(clis []string) string {
-	if len(clis) == 1 && clis[0] == "fable" {
-		return "low"
-	}
-	return config.DefaultPlanEffort
 }
 
 // parsePlanInput extracts an optional skill-facing -re/--effort prefix while

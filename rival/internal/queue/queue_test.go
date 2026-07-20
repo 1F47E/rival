@@ -307,13 +307,13 @@ func TestPIDReuseGuardReapsRecycledHolder(t *testing.T) {
 	// Plant a running ticket with OUR live pid but a bogus start time.
 	id := "recycled"
 	tk := &Ticket{
-		ID:       id,
-		Mode:     "test",
-		PID:      os.Getpid(),
-		PIDStart: 1, // deliberately wrong — simulates a recycled PID
-		State:    StateRunning,
+		ID:        id,
+		Mode:      "test",
+		PID:       os.Getpid(),
+		PIDStart:  1, // deliberately wrong — simulates a recycled PID
+		State:     StateRunning,
 		CreatedAt: time.Unix(0, 1),
-		file:     ticketFilename(time.Unix(0, 1), os.Getpid(), id),
+		file:      ticketFilename(time.Unix(0, 1), os.Getpid(), id),
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)

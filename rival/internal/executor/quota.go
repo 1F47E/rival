@@ -3,9 +3,8 @@ package executor
 import "strings"
 
 // quotaSignatures are high-precision substrings that indicate a reviewer CLI
-// hit a provider quota/rate limit. agy (Antigravity) exits 0 with empty stdout
-// on a 429 and only writes the error to its log/stderr, so exit code alone
-// cannot detect it. Matching is case-insensitive against the combined
+// hit a provider quota/rate limit. Some providers report these failures only
+// in captured output, so matching is case-insensitive against the combined
 // stdout+stderr log.
 //
 // These are deliberately specific to the provider error envelopes (not bare
@@ -23,8 +22,7 @@ var quotaSignatures = []string{
 }
 
 // IsQuotaExhausted reports whether the captured CLI output indicates the
-// provider rejected the request due to a quota/rate limit. This is the only
-// reliable signal for agy, which exits 0 on a 429.
+// provider rejected the request due to a quota/rate limit.
 func IsQuotaExhausted(output string) bool {
 	lower := strings.ToLower(output)
 	for _, sig := range quotaSignatures {

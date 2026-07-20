@@ -17,8 +17,6 @@ var Names = []string{"rival-sol", "rival-review", "rival-plan", "rival-plan-sol"
 // Deprecated lists legacy or superseded skills that should be removed on
 // install. Re-enable a skill by adding it back to Names and the //go:embed list.
 var Deprecated = []string{
-	"rival-gemini-only",
-	"rival-antigravity-only",
 	"rival-claude-only",
 	"rival-fable-only",
 	"rival-codex-only",

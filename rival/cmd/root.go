@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/queue"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/1F47E/rival/internal/telemetry"
@@ -37,7 +38,10 @@ var rootCmd = &cobra.Command{
 	Short:         "Dispatch prompts and reviews to external AI models",
 	SilenceErrors: true,
 	SilenceUsage:  true,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := config.UserConfigError(); err != nil {
+			return err
+		}
 		// Detach before any side effects: the re-exec'd child redoes this hook.
 		// GetBool errors (flag absent on non-command subcommands) → false.
 		if detach, _ := cmd.Flags().GetBool("detach"); detach {
@@ -47,6 +51,7 @@ var rootCmd = &cobra.Command{
 		session.ReapOrphans()
 		queue.New().ReapDead()
 		update.Check(Version)
+		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(banner)

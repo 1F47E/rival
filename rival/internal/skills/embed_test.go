@@ -52,16 +52,3 @@ func TestPlanSkillRunsBothModelsAtUltra(t *testing.T) {
 		}
 	}
 }
-
-func TestAntigravitySkillIsRemovedAndDeprecated(t *testing.T) {
-	const name = "rival-antigravity-only"
-	if slices.Contains(Names, name) {
-		t.Fatalf("removed skill %q is still active", name)
-	}
-	if !slices.Contains(Deprecated, name) {
-		t.Fatalf("removed skill %q must be cleaned up on install", name)
-	}
-	if _, err := Files.ReadFile(name + "/SKILL.md"); err == nil {
-		t.Fatalf("removed skill %q is still embedded", name)
-	}
-}

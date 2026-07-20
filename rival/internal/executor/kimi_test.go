@@ -32,14 +32,13 @@ func TestDropMatchesPrefixAndExact(t *testing.T) {
 	}
 }
 
-// KIMI_API is rival's Moonshot auth source (godotenv loads it into rival's own
-// env) and no child CLI needs any KIMI_* var — the key reaches opencode via
-// OPENCODE_CONFIG_CONTENT. The prefix block keeps the raw key out of every
-// child environment.
-func TestKimiEnvPrefixIsBlocked(t *testing.T) {
+// Project-loaded Moonshot variables never pass through raw to a child; the key
+// reaches OpenCode only through OPENCODE_CONFIG_CONTENT.
+func TestMoonshotEnvPrefixesAreBlocked(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "sk-secret")
 	t.Setenv("KIMI_API", "sk-secret")
 	for _, kv := range safeEnv() {
-		if strings.HasPrefix(kv, "KIMI_") {
+		if strings.HasPrefix(kv, "KIMI_") || strings.HasPrefix(kv, "MOONSHOT_") {
 			t.Errorf("safeEnv leaked %q", kv)
 		}
 	}
@@ -48,7 +47,7 @@ func TestKimiEnvPrefixIsBlocked(t *testing.T) {
 // Review mode keeps the zero-value read-only reviewer defaults; raw mode goes
 // full-auto with the credential strip. Both carry the Moonshot key.
 func TestKimiRunOptsByMode(t *testing.T) {
-	t.Setenv("KIMI_API", "test-key")
+	t.Setenv("MOONSHOT_API_KEY", "test-key")
 
 	review := kimiRunOpts("review", t.TempDir())
 	if review.Permission != "" {
@@ -73,22 +72,22 @@ func TestKimiRunOptsByMode(t *testing.T) {
 // A moonshot model must receive the Moonshot key, never the Zen key — the
 // provider-config injection is keyed on the model's provider prefix.
 func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
-	t.Setenv("KIMI_API", "sk-moonshot")
+	t.Setenv("MOONSHOT_API_KEY", "sk-moonshot")
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
 
 	env := strings.Join(opencodeRunEnvWith("sess-1", config.KimiModel, "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-moonshot") {
-		t.Errorf("moonshot model env missing KIMI_API key: %s", env)
+		t.Errorf("moonshot model env missing API key: %s", env)
 	}
 	if strings.Contains(env, "sk-zen") {
 		t.Errorf("moonshot model env must not carry the Zen key: %s", env)
 	}
-	if !strings.Contains(env, `"moonshot"`) {
-		t.Errorf("provider config must target the moonshot provider: %s", env)
+	if !strings.Contains(env, `"moonshotai"`) {
+		t.Errorf("provider config must target the built-in moonshotai provider: %s", env)
 	}
 
 	// Zen models keep the Zen key.
-	zen := strings.Join(opencodeRunEnvWith("sess-2", "opencode/glm-5.2", "", OpencodeRunOpts{}), "\n")
+	zen := strings.Join(opencodeRunEnvWith("sess-2", config.OpencodeDeepSeekPro, "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(zen, "sk-zen") {
 		t.Errorf("zen model env missing Zen key: %s", zen)
 	}
@@ -96,12 +95,13 @@ func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
 
 // The megareview k3 path has no explicit APIKey override, so the moonshot
 // fallback must run the .env walk-up from the workdir — a review launched
-// from a project subdirectory has to find the repo-root KIMI_API.
+// from a project subdirectory has to find the repo-root Moonshot key.
 func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "")
 	t.Setenv("KIMI_API", "")
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("KIMI_API=sk-walkup\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("MOONSHOT_API_KEY=sk-walkup\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sub := filepath.Join(root, "sub", "dir")
@@ -121,7 +121,7 @@ func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
 }
 
 func TestKimiRawEnvUsesFullAutoPermission(t *testing.T) {
-	t.Setenv("KIMI_API", "test-key")
+	t.Setenv("MOONSHOT_API_KEY", "test-key")
 	env := strings.Join(opencodeRunEnvWith("sess-3", config.KimiModel, "", kimiRunOpts("raw", t.TempDir())), "\n")
 	if !strings.Contains(env, "OPENCODE_PERMISSION="+opencodeFullAutoPermission) {
 		t.Errorf("raw env missing full-auto permission: %s", env)

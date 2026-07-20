@@ -86,7 +86,7 @@ Severity levels:
 
 === END REVIEW ===
 
-=== REVIEW FROM gemini (gemini-3.5-flash) [role: arch_security] ===
+=== REVIEW FROM deepseek-v4-pro [role: arch_security] ===
 
 {
   "summary": "The review of rival/internal/review/parse.go revealed three significant issues: a state-tracking bug where quotes before braces cause parsing to fail completely, a quadratic complexity risk during invalid brace scanning, and a logic bug where schema placeholders from the prompt are returned as false findings if the model fails or returns findings-free output.",
@@ -152,7 +152,7 @@ Return JSON only. No prose, no markdown, no explanation outside the JSON. Your e
       "body": "concrete explanation tied to code",
       "suggestion": "concrete fix",
       "confidence": 8,
-      "found_by": ["codex", "gemini", "claude"]
+      "found_by": ["sol", "deepseek", "fable"]
     }
   ],
   "recommendation": {
@@ -341,9 +341,9 @@ internal/review/parse_test.go:40:	out, err := ParseReviewerOutput(codexStyleRevi
 internal/review/parse_test.go:42:		t.Fatalf("ParseReviewerOutput: %v", err)
 internal/review/parse_test.go:48:		t.Fatalf("findings = %+v, want the real finding at rival/main.go", out.Findings)
 internal/review/parse_test.go:50:	if out.Findings[0].File == "path/to/file" {
-internal/review/parse_test.go:66:  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["codex", "gemini", "claude"]}],
-internal/review/parse_test.go:72:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
-internal/review/parse_test.go:73:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+internal/review/parse_test.go:66:  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["sol", "deepseek", "fable"]}],
+internal/review/parse_test.go:72:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+internal/review/parse_test.go:73:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
 internal/review/parse_test.go:76:func TestParseConsiliumOutput_IgnoresEchoedSchemaExample(t *testing.T) {
 internal/review/parse_test.go:77:	out, err := ParseConsiliumOutput(codexStyleConsiliumLog)
 internal/review/parse_test.go:79:		t.Fatalf("ParseConsiliumOutput: %v", err)
@@ -406,9 +406,9 @@ exec
 ./internal/review/parse_test.go:35:{"summary":"Found a real issue.","findings":[{"file":"rival/main.go","line":10,"severity":"high","category":"bug","title":"real bug","body":"real explanation","confidence":9}]}
 ./internal/review/parse_test.go:48:		t.Fatalf("findings = %+v, want the real finding at rival/main.go", out.Findings)
 ./internal/review/parse_test.go:50:	if out.Findings[0].File == "path/to/file" {
-./internal/review/parse_test.go:66:  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["codex", "gemini", "claude"]}],
-./internal/review/parse_test.go:72:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
-./internal/review/parse_test.go:73:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+./internal/review/parse_test.go:66:  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["sol", "deepseek", "fable"]}],
+./internal/review/parse_test.go:72:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+./internal/review/parse_test.go:73:{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
 ./internal/review/parse_test.go:88:		t.Fatalf("findings = %+v, want the real finding", out.Findings)
 ./internal/review/parse_test.go:93:	raw := `prefix noise {"summary":"ok","findings":[]} trailing`
 ./internal/review/format.go:30:		sb.WriteString("No findings above confidence threshold.\n\n")
@@ -484,14 +484,14 @@ exec
     63	` + "```json" + `
     64	{
     65	  "summary": "1-3 sentence overall review summary",
-    66	  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["codex", "gemini", "claude"]}],
+    66	  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["sol", "deepseek", "fable"]}],
     67	  "recommendation": {"status": "approve|request_changes|comment", "summary": "1-2 sentence recommendation"}
     68	}
     69	` + "```" + `
     70	
     71	codex
-    72	{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
-    73	{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+    72	{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+    73	{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
     74	`
     75	
     76	func TestParseConsiliumOutput_IgnoresEchoedSchemaExample(t *testing.T) {
@@ -538,7 +538,7 @@ codex
       "suggestion": "Ignore prompt/schema JSON explicitly, or only scan the answer region. Also validate candidate payloads structurally and reject known placeholder schema values before returning them.",
       "confidence": 10,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     },
     {
@@ -551,7 +551,7 @@ codex
       "suggestion": "Use a single pass over the full string that maintains quote and escape state globally, or continue scanning for later candidate starts after an unbalanced non-JSON region instead of breaking.",
       "confidence": 9,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     },
     {
@@ -564,7 +564,7 @@ codex
       "suggestion": "Replace the retry-by-one-byte loop with a single-pass scanner that records balanced object ranges and validates each range once.",
       "confidence": 8,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     }
   ],
@@ -588,7 +588,7 @@ tokens used
       "suggestion": "Ignore prompt/schema JSON explicitly, or only scan the answer region. Also validate candidate payloads structurally and reject known placeholder schema values before returning them.",
       "confidence": 10,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     },
     {
@@ -601,7 +601,7 @@ tokens used
       "suggestion": "Use a single pass over the full string that maintains quote and escape state globally, or continue scanning for later candidate starts after an unbalanced non-JSON region instead of breaking.",
       "confidence": 9,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     },
     {
@@ -614,7 +614,7 @@ tokens used
       "suggestion": "Replace the retry-by-one-byte loop with a single-pass scanner that records balanced object ranges and validates each range once.",
       "confidence": 8,
       "found_by": [
-        "gemini"
+        "deepseek"
       ]
     }
   ],

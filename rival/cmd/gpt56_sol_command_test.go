@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestSolCommandsArePublicAndDefaultHigh(t *testing.T) {
+func TestSolCommandsArePublicAndDeferToConfiguredEffort(t *testing.T) {
 	if commandSolCmd.Use != config.SolLabel || commandSolCmd.Hidden {
 		t.Fatalf("command metadata = use %q hidden %v", commandSolCmd.Use, commandSolCmd.Hidden)
 	}
@@ -18,8 +18,8 @@ func TestSolCommandsArePublicAndDefaultHigh(t *testing.T) {
 	}
 
 	effort := runSolCmd.Flags().Lookup("effort")
-	if effort == nil || effort.DefValue != "high" {
-		t.Fatalf("run effort default = %v, want high", effort)
+	if effort == nil || effort.DefValue != "" {
+		t.Fatalf("run effort default = %v, want configured-default sentinel", effort)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestSolUsageUsesOnlyPublicModelNaming(t *testing.T) {
 			t.Fatalf("usage exposes hidden runtime/model name %q", hidden)
 		}
 	}
-	for _, want := range []string{"high (default)", "ultra"} {
+	for _, want := range []string{"built-in: high", "ultra"} {
 		if !strings.Contains(lower, want) {
 			t.Fatalf("usage missing %q", want)
 		}
@@ -93,7 +93,7 @@ func TestOpusCommandsArePublic(t *testing.T) {
 	if runOpusCmd.Use != config.OpusLabel || runOpusCmd.Hidden {
 		t.Fatalf("run metadata = use %q hidden %v", runOpusCmd.Use, runOpusCmd.Hidden)
 	}
-	if lower := strings.ToLower(opusUsage); strings.Contains(lower, "claude") || !strings.Contains(lower, "rival run opus") || !strings.Contains(lower, "xhigh (default)") {
+	if lower := strings.ToLower(opusUsage); strings.Contains(lower, "claude") || !strings.Contains(lower, "rival run opus") || !strings.Contains(lower, "built-in: xhigh") {
 		t.Fatalf("opus usage exposes an adapter name or lacks public name: %q", lower)
 	}
 }

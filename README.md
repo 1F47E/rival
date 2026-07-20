@@ -5,9 +5,9 @@
 Dispatch prompts to external AI models from your coding session as separate
 reviewer processes. Their repository exploration and tool traces stay out of
 your primary agent's context; Rival returns the final review. The default
-`/rival-review` runs Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 in
-parallel and merges their findings with a consilium judge. Use `-m/--model` to
-run an exact subset.
+`/rival-review` runs Sol and DeepSeek V4 Pro in parallel and merges their
+findings with a consilium judge. Use `-m/--model` to run an exact subset or add
+Kimi K3 as an opt-in reviewer.
 
 ## TL;DR — why Rival?
 
@@ -65,30 +65,104 @@ startup; set `RIVAL_NO_UPDATE_CHECK=1` to disable it.
 
 ### Prerequisites
 
-- [Sol runtime](https://github.com/openai/codex): install and authenticate it, then use `/rival-review`, `/rival-sol`, `/rival-plan`, or `/rival-plan-sol`
-- Antigravity CLI (`agy`): install + authenticate to a quota-bearing account — optional, available through the standalone binary command
-- DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 runtime: install [opencode](https://opencode.ai) and set `RIVAL_OPENCODE_API_KEY` to a Zen key
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
+- [Codex CLI](https://github.com/openai/codex), authenticated with ChatGPT
+  (recommended) or an OpenAI API key, provides Sol.
+- [OpenCode](https://opencode.ai/docs) plus an
+  [OpenCode Zen key](https://opencode.ai/auth) in
+  `RIVAL_OPENCODE_API_KEY` provides DeepSeek V4 Pro.
+- [OpenCode](https://opencode.ai/docs) plus a
+  [Kimi API key](https://platform.kimi.ai/console/api-keys) in
+  `MOONSHOT_API_KEY` provides opt-in Kimi K3.
 - [Opus/Fable runtime](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below), then use `/rival-plan`, `/rival-plan-fable`, or `/rival-fable`
-- Kimi K3 runtime: [opencode](https://opencode.ai) (already required above) + set `KIMI_API=<moonshot api key>` in the project `.env` (or export it), then use `/rival-k3` — runs `moonshot/kimi-k3` at max reasoning
 
-You only need the runtimes for the models you use. **Megareview uses four curated models** — any unavailable selection is skipped, and the run proceeds when at least one succeeds. Put `RIVAL_OPENCODE_API_KEY` in `~/.zshenv` so non-interactive shells inherit it.
+You only need the runtimes for the models you use. **The default review uses two
+curated models** — any unavailable selection is skipped, and the run proceeds
+when at least one succeeds. Put `RIVAL_OPENCODE_API_KEY` in the environment file
+loaded by non-interactive shells (for example `~/.zshenv` for zsh).
+
+## For Claude Code users
+
+Rival is installed into Claude Code as slash-command skills, but those skills
+delegate to local model CLIs. This is the shortest clean setup.
+
+1. Install Rival and its skills:
+
+   ```bash
+   brew install 1F47E/tap/rival
+   rival install
+   ```
+
+2. Install Codex for Sol:
+
+   ```bash
+   npm install -g @openai/codex
+   codex login
+   codex login status
+   ```
+
+   Browser-based ChatGPT login is preferred: it uses your eligible ChatGPT
+   plan and does not put an API key in the project or Rival config. If you
+   intentionally prefer usage-based API billing, create a key in the
+   [OpenAI dashboard](https://platform.openai.com/api-keys), then let Codex
+   store that authentication:
+
+   ```bash
+   export OPENAI_API_KEY='your-key'
+   printenv OPENAI_API_KEY | codex login --with-api-key
+   unset OPENAI_API_KEY
+   codex login status
+   ```
+
+   Rival supports both Codex login methods. Do not put the OpenAI key in the
+   reviewed repository; Rival only needs the resulting Codex login.
+
+3. Install OpenCode for DeepSeek and K3:
+
+   ```bash
+   curl -fsSL https://opencode.ai/install | bash
+   # macOS alternative:
+   brew install anomalyco/tap/opencode
+   ```
+
+4. For the default DeepSeek reviewer, create a key at
+   [OpenCode Zen](https://opencode.ai/auth) and expose it to non-interactive
+   shells:
+
+   ```bash
+   # ~/.zshenv (zsh example)
+   export RIVAL_OPENCODE_API_KEY='your-zen-key'
+   ```
+
+5. For Kimi K3, create a key in the
+   [Kimi API console](https://platform.kimi.ai/console/api-keys). Put it in the
+   project `.env` so Rival can find it when Claude Code runs from any
+   subdirectory:
+
+   ```dotenv
+   MOONSHOT_API_KEY=your-kimi-api-key
+   ```
+
+   Add `.env` to `.gitignore` and never commit it. Exporting
+   `MOONSHOT_API_KEY` from your shell is also supported. Rival injects the key
+   into OpenCode's built-in `moonshotai/kimi-k3` provider at runtime, so no
+   custom OpenCode provider config is required.
+
+Run `rival install --force` after every Rival upgrade, then restart or reload
+Claude Code so it discovers the refreshed skills.
 
 ## Usage
 
 ### Slash-command skills
 
-**Default review** (runs Sol + DeepSeek V4 Pro + Kimi K2.7 Code + GLM-5.2):
+**Default review** (runs Sol + DeepSeek V4 Pro):
 
 ```
-/rival-review                              — all four models; auto-detect changed files
+/rival-review                              — both default models; auto-detect changed files
 /rival-review -m sol src/api/              — Sol only
 /rival-review -m deepseek src/api/         — DeepSeek V4 Pro only
-/rival-review -m kimi src/api/             — Kimi K2.7 Code only
-/rival-review -m glm src/api/              — GLM-5.2 only
-/rival-review -m k3 src/api/               — Kimi K3 only (requires KIMI_API)
-/rival-review -m deepseek,kimi src/api/    — exactly those two models
-/rival-review -re ultra src/api/           — highest supported effort
+/rival-review -m k3 src/api/               — Kimi K3 only (requires MOONSHOT_API_KEY)
+/rival-review -m deepseek,k3 src/api/      — exactly those two models
+/rival-review -re ultra src/api/           — override compatible model defaults
 ```
 
 **Single-model skills** (use only when you want one specific model):
@@ -100,7 +174,7 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 /rival-sol review src/api/                 — review specific scope
 ```
 
-**Code review via Fable** (medium effort by default):
+**Code review via Fable** (built-in medium default, configurable):
 
 ```
 /rival-fable                               — review changed files with Fable (auto-detects via git)
@@ -127,12 +201,44 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 ```
 /rival-plan path/to/plan.md                 — review with Sol + Fable at ultra effort
 /rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at ultra effort
-/rival-plan-fable path/to/plan.md           — same, with Fable (low effort by default)
+/rival-plan-fable path/to/plan.md           — same, with Fable (low fallback unless configured)
 ```
 
-Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs Sol and Fable in parallel at **ultra** and shows both results. `/rival-plan-sol` also always uses **ultra**; `/rival-plan-fable` defaults to **low**. The native binary defaults to high for Sol and accepts an explicit override, for example `rival command plan --model sol --effort ultra`.
+Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs
+Sol and Fable in parallel at **ultra** and shows both results.
+`/rival-plan-sol` also always uses **ultra**. `/rival-plan-fable` uses the
+configured Fable effort when present, otherwise its low fallback. The native
+binary accepts an explicit override, for example
+`rival command plan --model sol --effort ultra`.
 
-**Model selection** (`-m`, `--model`): `sol`, `deepseek`, `kimi`, `glm`, and `k3` (Kimi K3, needs `KIMI_API`); comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
+**Model selection** (`-m`, `--model`): `sol`, `deepseek`, and `k3` (Kimi K3,
+needs `MOONSHOT_API_KEY`); comma-separated or repeated. An explicit list
+replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`,
+`high`, or `ultra`. When omitted, each model uses its own configured default.
+
+### Model effort defaults
+
+Set defaults by stable model label in `~/.rival/config.yaml`:
+
+```yaml
+efforts:
+  sol: high
+  deepseek-v4-pro: high
+  kimi-k3: max
+  opus: xhigh
+  fable: medium
+```
+
+An explicit `--effort` or `-re` wins for every compatible selected model.
+Otherwise Rival uses the configured model value, then that command's built-in
+fallback. Kimi K3 is fixed at `max`, the only reasoning level its provider
+supports. The paired plan skills deliberately request `ultra`; an explicit
+skill choice therefore still wins over this file. When a grouped run uses
+different per-model efforts, the dashboard summary shows `mixed` and each
+member detail shows its actual effort.
+
+Invalid model names or effort values fail before Rival creates sessions or
+touches the queue, with the config path and accepted values in the error.
 
 ### How Reviews Work
 
@@ -170,13 +276,12 @@ Megareview assigns **specialized roles** to each reviewer:
 
 - **Sol → Bug Hunter** — an independent correctness pass and the first default consilium-judge candidate.
 - **DeepSeek V4 Pro → Bug Hunter** — the primary correctness reviewer for concrete code-level defects, broken state transitions, races, and missing edge cases.
-- **Kimi K2.7 Code → Architecture & Security** — follows multi-step, cross-file flows and looks for architectural regressions, incomplete refactors, and security gaps.
-- **GLM-5.2 → Code Quality** — uses its large-context strength to inspect broad schemas, many tables, and report-generation paths for maintainability and correctness risks.
 - **Kimi K3 → Bug Hunter (opt-in)** — adds a Moonshot-backed correctness pass
-  when selected with `-m k3`; it is not part of the default four-model roster.
+  when selected with `-m k3`; it is not part of the default two-model roster.
 
-DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 share one Zen credential/quota. Under load those three may hit a 429 together; Rival skips failed reviewers and proceeds when at least one remains.
-Kimi K3 uses the separate `KIMI_API` credential and Moonshot quota.
+DeepSeek V4 Pro uses the OpenCode Zen credential and quota. Kimi K3 uses the
+separate `MOONSHOT_API_KEY` credential and Moonshot quota. Rival skips failed
+reviewers and proceeds when at least one remains.
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
 
@@ -193,7 +298,7 @@ roles:
 ```
 
 A separate **consilium pass** runs with the highest-priority selected model that
-successfully reviewed (default priority: Sol → DeepSeek V4 Pro → Kimi K2.7 Code → GLM-5.2), then:
+successfully reviewed (default priority: Sol → DeepSeek V4 Pro), then:
 - Merges duplicate findings (same file + line + problem → single finding with all reporters in `found_by`)
 - Applies consensus bonus (+2 confidence for findings reported by 2+ reviewers)
 - Filters by confidence threshold (default: ≥6)
@@ -208,35 +313,34 @@ Summary: ...
 [CRITICAL] file.go:42 — Title
   Description...
   Fix: ...
-  Found by: deepseek-v4-pro, kimi-k2.7-code
+  Found by: sol, deepseek-v4-pro
 
 [HIGH] file.go:100 — Title
   ...
 
 Recommendation: request_changes — ...
 
-Reviewed by: sol (bug_hunter), deepseek-v4-pro (bug_hunter), kimi-k2.7-code (arch_security), glm-5.2 (code_quality)
+Reviewed by: sol (bug_hunter), deepseek-v4-pro (bug_hunter)
 Judge: sol (consilium)
 Findings: 5 (threshold: 6)
 ```
 
 For an explicit multi-model selection, requested order controls judge priority. A single-model review uses that same model for the review and consilium phases. If a reviewer fails to produce structured JSON, the consilium receives a stub with a 2KB debug tail instead of the full raw output (prevents prompt overflow).
 
-### Direct CLI
+### Terminal CLI
 
 ```bash
 # Run Sol with a prompt from stdin
-echo 'explain the auth flow' | rival command sol --workdir .
-echo 'explain the auth flow' | rival command antigravity --workdir .
-echo 'explain the auth flow' | rival command k3 --workdir .   # Kimi K3 via opencode, max reasoning, needs KIMI_API
+echo 'explain the auth flow' | rival run sol --prompt-stdin --workdir .
+echo 'explain the auth flow' | rival run k3 --prompt-stdin --workdir .   # needs MOONSHOT_API_KEY
 
-# Review via the default four-model roster
-echo 'src/api/' | rival command megareview --workdir .
+# Review via the default two-model roster
+rival review src/api/
 
-# Exact one-model review (native binary flag)
-echo 'src/api/' | rival command megareview --model sol --workdir .
-echo 'src/api/' | rival command megareview --model deepseek --workdir .
-rival review --model kimi src/api/
+# Exact one-model reviews
+rival review --model sol src/api/
+rival review --model deepseek src/api/
+rival run k3 --review src/api/ --workdir .
 
 # Rate a plan/spec doc 1-10 (Sol + Fable by default, high effort)
 echo 'docs/plan.md' | rival command plan --workdir .
@@ -254,7 +358,11 @@ rival tui
 
 **List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`.
 
-**Detail view** shows full metadata, prompt, and live-streaming log output. Group titles and metadata are derived from the sessions: a default megareview lists `sol+deepseek-v4-pro+kimi-k2.7-code+glm-5.2`, while an explicit subset shows only its selected models. A dual plan group lists `sol+fable`. All member logs and model-specific failures are shown; `o` opens one combined public log for a grouped run.
+**Detail view** shows full metadata, prompt, and live-streaming log output.
+Group titles and metadata are derived from the sessions: a default megareview
+lists `sol+deepseek-v4-pro`, while an explicit subset shows only its selected
+models. A dual plan group lists `sol+fable`. All member logs and model-specific
+failures are shown; `o` opens one combined public log for a grouped run.
 
 #### Keys
 
@@ -284,12 +392,15 @@ for older history. A fixed detail drawer shows prompt metadata, per-member
 status, queue position, duration, exit code, errors, and a bounded live log
 tail. Details remain usable for queued, running, completed, failed, grouped,
 empty-log, and missing-log sessions, including direct links to older runs.
+Each member log response is limited to the newest 256 KiB.
 
 ### Session Management
 
 ```bash
-rival sessions              # recent sessions as a text table
-rival version               # show version
+rival sessions              # all sessions as a text table
+rival sessions --recent 20  # newest 20
+rival sessions --active     # running sessions only
+rival version                # show version
 ```
 
 ### Review Queue
@@ -322,6 +433,10 @@ rival queue clear --force   # remove ALL tickets (live waiters re-queue at the t
 | `RIVAL_QUEUE_TIMEOUT` | `30m` | Max wait for a slot before the review fails |
 | `RIVAL_RUN_TIMEOUT` | `30m` | Max run time once a slot is held; kills a hung provider CLI (`0` disables) |
 | `RIVAL_NO_QUEUE` | unset | Set to bypass the queue entirely |
+
+`RIVAL_RUN_TIMEOUT` is a per-provider-phase baseline. A megareview receives
+twice that budget for its two sequential phases (parallel reviewers, then the
+consilium judge); a plan or standalone run receives one baseline.
 
 Provider-invoking `review`, `run`, and `command` subcommands also accept
 `--no-queue` to skip the queue for that invocation.
@@ -377,7 +492,7 @@ rival binary (own process session — survives the skill/fork teardown)
 Megareview (roles + consilium):
     rival binary
     ├─ generates shared GroupID (UUID)
-    ├─ assigns roles: Sol/DeepSeek=bug_hunter, Kimi=arch_security, GLM=code_quality
+    ├─ assigns the bug_hunter role to Sol, DeepSeek, and opt-in Kimi K3
     ├─ spawns the exact selected roster concurrently with role-specific prompts
     ├─ skips any reviewer that hits a provider quota/rate limit (429)
     ├─ parses structured JSON output from each reviewer
@@ -480,22 +595,24 @@ See the [full Opus/Fable Docker setup](docs/opus-fable-docker-setup.md) for arch
 
 | Model | Default Effort | Used by |
 |-------|----------------|---------|
-| Sol | high generally; ultra in plan skills | `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol` |
+| Sol | high; ultra is explicit in plan skills | `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol` |
 | `deepseek-v4-pro` | high; `ultra` maps to max | `/rival-review` |
-| `kimi-k2.7-code` | model default | `/rival-review` |
-| `glm-5.2` | high; `ultra` maps to max | `/rival-review` |
-| `gemini-3.5-flash` | xhigh | standalone binary command |
-| `gemini-3.1-pro-preview` | xhigh | standalone binary command |
-| Opus | max | standalone binary command |
-| Fable | medium for code review; low alone, ultra when paired | `/rival-fable`, `/rival-plan`, `/rival-plan-fable` |
+| Opus | xhigh | standalone binary command |
+| Fable | medium for code review; plan commands have surface-specific fallbacks | `/rival-fable`, `/rival-plan`, `/rival-plan-fable` |
 | `kimi-k3` | max (only level the model supports) | `/rival-k3`, `/rival-review -m k3` |
+
+These are built-in fallbacks. The `efforts` map in `~/.rival/config.yaml`
+overrides any omitted model effort; an explicit command or skill effort wins.
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-sol ~/.claude/skills/rival-plan ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-fable ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review ~/.claude/skills/rival-k3 ~/.claude/skills/rival-antigravity-only
+rm -rf ~/.claude/skills/rival-*
 brew uninstall rival        # if installed via brew
-# or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
+# source install:
+RIVAL_BIN_DIR="$(go env GOBIN)"
+[ -n "$RIVAL_BIN_DIR" ] || RIVAL_BIN_DIR="$(go env GOPATH)/bin"
+rm "$RIVAL_BIN_DIR/rival"
 ```
 
 ## License

@@ -19,17 +19,16 @@ import (
 // OPENCODE_ is blocked because a reviewed repo's .env could otherwise set
 // OPENCODE_PERMISSION (or OPENCODE_CONFIG*) to defeat the read-only reviewer
 // sandbox — the reviewer must never take permission/config from the code it reviews.
-// KIMI_ is blocked because KIMI_API is rival's Moonshot auth source (godotenv
-// loads it from .env into rival's own env) and no child CLI needs any KIMI_*
-// var — the key reaches opencode via OPENCODE_CONFIG_CONTENT instead. Keeping
-// the prefix out of every child env stops the raw key from leaking to
-// unrelated provider CLIs.
+// Moonshot credentials are blocked because godotenv may load them from a
+// reviewed repo. The key reaches OpenCode through OPENCODE_CONFIG_CONTENT
+// instead, so no child needs the raw source variable.
 var blockedEnvPrefixes = []string{
 	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 	"http_proxy", "https_proxy", "all_proxy", "no_proxy",
 	"NODE_OPTIONS", "LD_PRELOAD", "DYLD_",
 	"OPENCODE_",
 	"KIMI_",
+	"MOONSHOT_",
 }
 
 // safeEnv returns os.Environ() filtered to block dangerous overrides

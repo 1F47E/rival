@@ -34,22 +34,22 @@ func TestGroupSessions(t *testing.T) {
 			name: "two solo sessions stay separate",
 			sessions: []*session.Session{
 				{ID: "a", CLI: "codex", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", CLI: "gemini", Model: "gemini-3.1", Status: "completed"},
+				{ID: "b", CLI: "opencode", Model: config.OpencodeDeepSeekPro, Status: "completed"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{false, false},
-			wantCLI:     []string{config.SolLabel, "gemini-3.1"},
+			wantCLI:     []string{config.SolLabel, "deepseek-v4-pro"},
 			wantKind:    []string{"", ""},
 		},
 		{
 			name: "shared GroupID collapses into one mega row",
 			sessions: []*session.Session{
 				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
+				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed"},
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{config.SolLabel + "+gemini-3.1"},
+			wantCLI:     []string{config.SolLabel + "+deepseek-v4-pro"},
 			wantKind:    []string{"megareview"},
 		},
 		{
@@ -67,12 +67,12 @@ func TestGroupSessions(t *testing.T) {
 			name: "mixed: one mega group + one solo",
 			sessions: []*session.Session{
 				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "antigravity", Mode: "megareview", Model: "gemini-3.1", Status: "completed"},
+				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed"},
 				{ID: "c", CLI: "claude", Model: "opus", Status: "running"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{true, false},
-			wantCLI:     []string{config.SolLabel + "+gemini-3.1", "opus"},
+			wantCLI:     []string{config.SolLabel + "+deepseek-v4-pro", "opus"},
 			wantKind:    []string{"megareview", ""},
 		},
 	}
@@ -133,15 +133,14 @@ func TestSingletonPlanKeepsLogicalGroupIdentity(t *testing.T) {
 	}
 }
 
-func TestCuratedReviewGroupUsesPublicModels(t *testing.T) {
+func TestSelectedReviewGroupUsesPublicModels(t *testing.T) {
 	created := time.Now()
-	times := make([]time.Time, 4)
+	times := make([]time.Time, 3)
 	for i := range times {
 		times[i] = created.Add(time.Duration(i) * time.Millisecond)
 	}
 	sessions := []*session.Session{
-		{ID: "d", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeGLMModel, Status: "completed", QueuedAt: &times[3]},
-		{ID: "c", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeKimiK27Code, Status: "failed", ErrorMsg: "kimi failed", QueuedAt: &times[2]},
+		{ID: "c", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.KimiModel, Status: "failed", ErrorMsg: "k3 failed", QueuedAt: &times[2]},
 		{ID: "b", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed", QueuedAt: &times[1]},
 		{ID: "a", GroupID: "review", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed", QueuedAt: &times[0]},
 	}
@@ -150,7 +149,7 @@ func TestCuratedReviewGroupUsesPublicModels(t *testing.T) {
 		t.Fatalf("review group count = %d, want 1", len(groups))
 	}
 	group := groups[0]
-	wantLabels := []string{"sol", "deepseek-v4-pro", "kimi-k2.7-code", "glm-5.2"}
+	wantLabels := []string{"sol", "deepseek-v4-pro", "kimi-k3"}
 	if group.Kind != "megareview" || group.CLI != strings.Join(wantLabels, "+") || group.Models != strings.Join(wantLabels, " + ") {
 		t.Fatalf("review group labels = kind %q cli %q models %q", group.Kind, group.CLI, group.Models)
 	}
@@ -164,8 +163,21 @@ func TestCuratedReviewGroupUsesPublicModels(t *testing.T) {
 	if !slices.Equal(gotLabels, wantLabels) {
 		t.Fatalf("public review sessions = %v, want %v", gotLabels, wantLabels)
 	}
-	if group.Sessions[2].ErrorMsg != "kimi failed" {
+	if group.Sessions[2].ErrorMsg != "k3 failed" {
 		t.Fatalf("non-primary failure missing from public group: %+v", group.Sessions[2])
+	}
+}
+
+func TestGroupSessionsReportsMixedEffort(t *testing.T) {
+	groups := groupSessions([]*session.Session{
+		{ID: "a", GroupID: "review", CLI: "codex", Model: config.GPT56SolModel, Effort: "ultra"},
+		{ID: "b", GroupID: "review", CLI: "opencode", Model: config.OpencodeDeepSeekPro, Effort: "low"},
+	})
+	if len(groups) != 1 || groups[0].Effort != "mixed" {
+		t.Fatalf("group effort = %+v, want mixed", groups)
+	}
+	if groups[0].Sessions[0].Effort != "ultra" || groups[0].Sessions[1].Effort != "low" {
+		t.Fatalf("member efforts = %+v, want ultra and low", groups[0].Sessions)
 	}
 }
 
@@ -175,7 +187,7 @@ func TestIndexIncludesCuratedModelIcons(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(data)
-	for _, label := range []string{"sol", "deepseek-v4-pro", "kimi-k2.7-code", "glm-5.2", "fable", "gemini-3.1-pro-preview", "gemini-3.5-flash"} {
+	for _, label := range []string{"sol", "deepseek-v4-pro", "kimi-k3", "fable"} {
 		if !strings.Contains(html, label+"': '") && !strings.Contains(html, label+": '") {
 			t.Errorf("web dashboard has no icon mapping for %q", label)
 		}
@@ -191,6 +203,7 @@ func TestIndexIncludesCuratedModelIcons(t *testing.T) {
 		"syncOpenDetail(selected)",
 		"state.detailGroup",
 		"member-status",
+		"if (group.is_group && s.effort) facts.push('effort ' + s.effort)",
 		"window.addEventListener('hashchange'",
 		"byId('detail-drawer').scrollTop = 0",
 		"fetchRun(id",
@@ -232,12 +245,12 @@ func TestGroupStatus(t *testing.T) {
 func TestGroupModels_Dedupes(t *testing.T) {
 	sessions := []*session.Session{
 		{Model: config.GPT56SolModel},
-		{Model: "gemini-3.1"},
+		{Model: config.FableModel},
 		{Model: config.GPT56SolModel}, // duplicate
 		{Model: ""},                   // skipped
 	}
 	got := groupModels(sessions)
-	want := config.SolLabel + " + gemini-3.1"
+	want := config.SolLabel + " + " + config.FableLabel
 	if got != want {
 		t.Errorf("groupModels() = %q, want %q", got, want)
 	}

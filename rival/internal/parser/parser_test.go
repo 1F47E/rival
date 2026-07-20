@@ -3,8 +3,6 @@ package parser
 import (
 	"strings"
 	"testing"
-
-	"github.com/1F47E/rival/internal/config"
 )
 
 func TestParseArgs_Empty(t *testing.T) {
@@ -16,8 +14,8 @@ func TestParseArgs_Empty(t *testing.T) {
 		if !r.IsEmpty {
 			t.Errorf("expected IsEmpty for %q", input)
 		}
-		if r.Effort != config.DefaultReviewEffort {
-			t.Errorf("expected default effort, got %q", r.Effort)
+		if r.Effort != "" {
+			t.Errorf("expected omitted effort for configured default resolution, got %q", r.Effort)
 		}
 	}
 }
@@ -33,8 +31,8 @@ func TestParseArgs_RawPrompt(t *testing.T) {
 	if r.Prompt != "explain the auth flow" {
 		t.Errorf("unexpected prompt: %q", r.Prompt)
 	}
-	if r.Effort != config.DefaultReviewEffort {
-		t.Errorf("unexpected effort: %q", r.Effort)
+	if r.Effort != "" {
+		t.Errorf("expected omitted effort for configured default resolution, got %q", r.Effort)
 	}
 }
 
@@ -196,8 +194,8 @@ func TestParseReviewArgs_AutoScope(t *testing.T) {
 	if !r.AutoScope || r.IsEmpty {
 		t.Fatalf("empty megareview args should auto-scope, got %+v", r)
 	}
-	if r.Effort != config.DefaultReviewEffort {
-		t.Fatalf("empty megareview effort = %q, want %q", r.Effort, config.DefaultReviewEffort)
+	if r.Effort != "" {
+		t.Fatalf("empty megareview effort = %q, want configured-default sentinel", r.Effort)
 	}
 
 	// Empty scope in megareview → AutoScope=true
@@ -241,18 +239,18 @@ func TestParseReviewArgs_ModelSelection(t *testing.T) {
 	})
 
 	t.Run("flags in either order and comma list", func(t *testing.T) {
-		r, err := ParseReviewArgs("--model=kimi,glm --effort high src/api and reports")
+		r, err := ParseReviewArgs("--model=k3,deepseek --effort high src/api and reports")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if r.Effort != "high" || r.AutoScope || r.ReviewScope != "src/api and reports" {
 			t.Fatalf("unexpected parse result: %+v", r)
 		}
-		if len(r.Models) != 2 || r.Models[0] != "kimi" || r.Models[1] != "glm" {
+		if len(r.Models) != 2 || r.Models[0] != "k3" || r.Models[1] != "deepseek" {
 			t.Fatalf("unexpected models: %v", r.Models)
 		}
 
-		r, err = ParseReviewArgs("-re low -m glm -m deepseek src/")
+		r, err = ParseReviewArgs("-re low -m k3 -m deepseek src/")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +268,7 @@ func TestParseReviewArgs_ModelSelection(t *testing.T) {
 	})
 
 	t.Run("double dash escapes scope", func(t *testing.T) {
-		r, err := ParseReviewArgs("-m kimi -- -generated/path")
+		r, err := ParseReviewArgs("-m k3 -- -generated/path")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +279,7 @@ func TestParseReviewArgs_ModelSelection(t *testing.T) {
 }
 
 func TestParseReviewArgs_ModelOptionErrors(t *testing.T) {
-	for _, raw := range []string{"-m", "--model=", "-m -re high", "--model glm,,kimi", "--unknown value"} {
+	for _, raw := range []string{"-m", "--model=", "-m -re high", "--model k3,,deepseek", "--unknown value"} {
 		t.Run(raw, func(t *testing.T) {
 			if _, err := ParseReviewArgs(raw); err == nil {
 				t.Fatalf("expected %q to fail", raw)
@@ -299,15 +297,5 @@ func TestParseReviewArgs_Help(t *testing.T) {
 		if !r.IsEmpty {
 			t.Fatalf("%s should request usage output, got %+v", raw, r)
 		}
-	}
-}
-
-func TestParseGeminiArgs_Identical(t *testing.T) {
-	r, err := ParseGeminiArgs("-re xhigh review src/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Effort != "xhigh" || !r.IsReview || r.ReviewScope != "src/" {
-		t.Errorf("gemini parser mismatch: effort=%q review=%v scope=%q", r.Effort, r.IsReview, r.ReviewScope)
 	}
 }

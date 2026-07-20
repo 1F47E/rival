@@ -13,12 +13,12 @@ func TestFormatConsole_UsesConcreteSelectedModelLabels(t *testing.T) {
 		Recommendation: Recommendation{Status: "approve", Summary: "solid"},
 	}
 	inputs := []ReviewInput{{
-		CLI: "opencode", Model: config.OpencodeGLMModel, Role: "code_quality",
+		CLI: "opencode", Model: config.OpencodeDeepSeekPro, Role: "code_quality",
 	}}
-	got := FormatConsole(output, inputs, 6, "opencode", config.OpencodeGLMModel, nil)
+	got := FormatConsole(output, inputs, 6, "opencode", config.OpencodeDeepSeekPro, nil)
 	for _, want := range []string{
-		"Reviewed by: glm-5.2 (code_quality)",
-		"Judge: glm-5.2 (consilium)",
+		"Reviewed by: deepseek-v4-pro (code_quality)",
+		"Judge: deepseek-v4-pro (consilium)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("formatted review missing %q:\n%s", want, got)
@@ -50,9 +50,9 @@ func TestFormatConsole_UsesSolName(t *testing.T) {
 func TestFormatSkipped_DistinguishesOpenCodeModels(t *testing.T) {
 	got := formatSkipped([]SkippedCLI{
 		{CLI: "opencode", Model: config.OpencodeDeepSeekPro, Reason: "failed"},
-		{CLI: "opencode", Model: config.OpencodeKimiK27Code, Reason: "failed"},
+		{CLI: "opencode", Model: config.KimiModel, Reason: "failed"},
 	})
-	if !strings.Contains(got, "deepseek-v4-pro: failed") || !strings.Contains(got, "kimi-k2.7-code: failed") {
+	if !strings.Contains(got, "deepseek-v4-pro: failed") || !strings.Contains(got, "kimi-k3: failed") {
 		t.Fatalf("skipped models are not distinguishable: %s", got)
 	}
 }

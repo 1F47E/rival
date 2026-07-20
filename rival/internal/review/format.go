@@ -34,8 +34,8 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 
 	sb.WriteString(fmt.Sprintf("Recommendation: %s — %s\n\n", output.Recommendation.Status, output.Recommendation.Summary))
 
-	// Reviewer info — label by engine so opencode's 3 models are distinct
-	// (glm-5.2, deepseek-v4-pro, …) instead of 3× "opencode".
+	// Reviewer info — label by model so selected OpenCode reviewers stay
+	// distinct instead of appearing as repeated "opencode" entries.
 	var reviewers []string
 	for _, input := range inputs {
 		reviewers = append(reviewers, fmt.Sprintf("%s (%s)", config.EngineLabel(input.CLI, input.Model), input.Role))

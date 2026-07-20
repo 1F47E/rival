@@ -11,5 +11,4 @@ secrets.*
 .rival/
 oauth_link.txt
 *oauth*link*
-.antigravitycli/
 .playwright-cli/

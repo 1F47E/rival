@@ -18,7 +18,7 @@ import (
 // with a dash can still be reviewed.
 func ParseReviewArgs(raw string) (*ParseResult, error) {
 	s := strings.TrimSpace(raw)
-	result := &ParseResult{Effort: config.DefaultReviewEffort, IsReview: true}
+	result := &ParseResult{IsReview: true}
 	var scopeParts []string
 
 	for s != "" {

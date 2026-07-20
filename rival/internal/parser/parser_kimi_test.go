@@ -26,13 +26,13 @@ func TestParseKimiArgsRejectsUnknownEffort(t *testing.T) {
 	}
 }
 
-func TestParseKimiArgsDefaultsToMax(t *testing.T) {
+func TestParseKimiArgsLeavesDefaultForConfigResolution(t *testing.T) {
 	parsed, err := ParseKimiArgs("review src/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Effort != "max" {
-		t.Errorf("default effort = %q, want max", parsed.Effort)
+	if parsed.Effort != "" {
+		t.Errorf("default effort = %q, want configured-default sentinel", parsed.Effort)
 	}
 	if !parsed.IsReview || parsed.ReviewScope != "src/" {
 		t.Errorf("review parse broken: %+v", parsed)

@@ -47,7 +47,7 @@ func init() {
 }
 
 func configureRunGPT56SolFlags(cmd *cobra.Command) {
-	cmd.Flags().String("effort", config.DefaultReviewEffort, "reasoning effort: low, medium, high, ultra")
+	cmd.Flags().String("effort", "", "reasoning effort override: low, medium, high, ultra")
 	cmd.Flags().String("workdir", ".", "working directory")
 	cmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
 	cmd.Flags().String("review", "", "review scope (enables review mode)")
@@ -61,8 +61,12 @@ func runGPT56SolAction(cmd *cobra.Command, args []string) error {
 	reviewScope, _ := cmd.Flags().GetString("review")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
-	if !config.IsValidReviewEffort(effort) {
+	if effort != "" && !config.IsValidReviewEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ReviewEfforts)
+	}
+	effort, err := config.ResolveEffort(config.CodexModel, effort, config.DefaultReviewEffort)
+	if err != nil {
+		return err
 	}
 
 	if err := executor.CodexPreflight(); err != nil {
