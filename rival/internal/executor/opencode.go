@@ -20,22 +20,26 @@ import (
 // that into one clear, actionable skip reason instead.
 func OpencodePreflight() error {
 	for _, reviewer := range config.OpencodeReviewerList() {
-		if err := OpencodePreflightModel(reviewer.Model); err != nil {
+		// The curated roster carries no moonshot models, so the empty workdir
+		// (which limits KIMI_API resolution to the process env) is irrelevant.
+		if err := OpencodePreflightModel(reviewer.Model, ""); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// OpencodePreflightModel validates one selected curated OpenCode model.
-func OpencodePreflightModel(model string) error {
+// OpencodePreflightModel validates one selected OpenCode model. workdir seeds
+// the KIMI_API .env walk-up for moonshot models (see config.KimiAPIKeyFrom);
+// pass "" when no workdir context exists.
+func OpencodePreflightModel(model, workdir string) error {
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return fmt.Errorf("opencode CLI not installed. Install: https://opencode.ai (brew install sst/tap/opencode)")
 	}
 	if strings.HasPrefix(model, "opencode/") && config.OpencodeAPIKey() == "" {
 		return fmt.Errorf("OpenCode Zen model %s requires RIVAL_OPENCODE_API_KEY — export your Zen key", model)
 	}
-	if strings.HasPrefix(model, "moonshot/") && config.KimiAPIKeyFrom("") == "" {
+	if strings.HasPrefix(model, "moonshot/") && config.KimiAPIKeyFrom(workdir) == "" {
 		return fmt.Errorf("model %s requires KIMI_API (Moonshot provider) — add it to the project .env or export it", model)
 	}
 	return nil
@@ -53,11 +57,14 @@ func OpencodePreflightModel(model string) error {
 // out-of-workdir reads are blocked by the external_directory deny rule.
 const opencodeReadOnlyPermission = `{"read":"allow","grep":"allow","glob":"allow","list":"allow","external_directory":"deny","edit":"deny","bash":"deny","task":"deny","webfetch":"deny","websearch":"deny"}`
 
-// opencodeFullAutoPermission allows every tool. Used only by the standalone
-// kimi runner's raw-prompt mode, where the user explicitly asked for a
-// full-auto agent that can edit files and run commands in the workdir.
-// Review mode never uses this — it keeps the read-only reviewer profile.
-const opencodeFullAutoPermission = `{"read":"allow","grep":"allow","glob":"allow","list":"allow","external_directory":"allow","edit":"allow","bash":"allow","task":"allow","webfetch":"allow","websearch":"allow"}`
+// opencodeFullAutoPermission allows every tool except out-of-workdir native
+// reads. Used only by the standalone kimi runner's raw-prompt mode, where the
+// user explicitly asked for a full-auto agent that can edit files and run
+// commands in the workdir. external_directory is denied to keep the native
+// file tools on the documented "in the workdir" promise — bash being allowed
+// means this is defense-in-depth, not containment (a shell can read anything
+// the user can). Review mode never uses this profile.
+const opencodeFullAutoPermission = `{"read":"allow","grep":"allow","glob":"allow","list":"allow","external_directory":"deny","edit":"allow","bash":"allow","task":"allow","webfetch":"allow","websearch":"allow"}`
 
 // OpencodeRunOpts customizes one opencode execution beyond the reviewer
 // defaults. Zero values keep megareview behavior exactly: read-only
@@ -87,7 +94,7 @@ func RunOpencodeWith(ctx context.Context, sess *session.Session, prompt, effort,
 		model = config.OpencodeModel
 	}
 	args := opencodeRunArgs(model, effort, workdir)
-	env := opencodeRunEnvWith(sess.ID, model, opts)
+	env := opencodeRunEnvWith(sess.ID, model, workdir, opts)
 
 	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	// Drop any inherited OPENCODE_PERMISSION / OPENCODE_CONFIG_CONTENT before
@@ -117,10 +124,10 @@ func opencodeRunArgs(model, effort, workdir string) []string {
 }
 
 func opencodeRunEnv(sessionID, model string) []string {
-	return opencodeRunEnvWith(sessionID, model, OpencodeRunOpts{})
+	return opencodeRunEnvWith(sessionID, model, "", OpencodeRunOpts{})
 }
 
-func opencodeRunEnvWith(sessionID, model string, opts OpencodeRunOpts) []string {
+func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) []string {
 	permission := opts.Permission
 	if permission == "" {
 		permission = opencodeReadOnlyPermission
@@ -146,10 +153,10 @@ func opencodeRunEnvWith(sessionID, model string, opts OpencodeRunOpts) []string 
 	if key == "" {
 		if strings.HasPrefix(model, "moonshot/") {
 			// Moonshot models must never receive the Zen key. Without an
-			// explicit override, fall back to KIMI_API from the process env
-			// (godotenv loads the invocation directory's .env at startup) —
-			// this is what makes the k3 megareview selector work.
-			key = config.KimiAPIKeyFrom("")
+			// explicit override, fall back to KIMI_API (process env, then the
+			// .env walk-up from workdir) — this is what makes the k3
+			// megareview selector work, including from subdirectories.
+			key = config.KimiAPIKeyFrom(workdir)
 		} else {
 			key = config.OpencodeAPIKey()
 		}

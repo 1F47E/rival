@@ -25,7 +25,8 @@ vars stay blocked from child environments.
 
 Permissions: `review` runs under the same mechanical read-only
 `OPENCODE_PERMISSION` sandbox as the megareview reviewers. Raw prompts run
-full auto (every tool allowed) with known credential env vars stripped
+full auto (edit/bash/web allowed; native file tools stay inside the workdir
+via `external_directory: deny`) with known credential env vars stripped
 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the whole `AWS_*` family via prefix
 matching, `GOOGLE_APPLICATION_CREDENTIALS`, GitHub/GitLab tokens, rival's own
 provider keys) — `RunSubprocess` dropEnv entries ending in `_` match as
