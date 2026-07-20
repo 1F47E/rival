@@ -19,11 +19,17 @@ import (
 // OPENCODE_ is blocked because a reviewed repo's .env could otherwise set
 // OPENCODE_PERMISSION (or OPENCODE_CONFIG*) to defeat the read-only reviewer
 // sandbox — the reviewer must never take permission/config from the code it reviews.
+// KIMI_ is blocked because KIMI_API is rival's Moonshot auth source (godotenv
+// loads it from .env into rival's own env) and no child CLI needs any KIMI_*
+// var — the key reaches opencode via OPENCODE_CONFIG_CONTENT instead. Keeping
+// the prefix out of every child env stops the raw key from leaking to
+// unrelated provider CLIs.
 var blockedEnvPrefixes = []string{
 	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 	"http_proxy", "https_proxy", "all_proxy", "no_proxy",
 	"NODE_OPTIONS", "LD_PRELOAD", "DYLD_",
 	"OPENCODE_",
+	"KIMI_",
 }
 
 // safeEnv returns os.Environ() filtered to block dangerous overrides
@@ -64,24 +70,35 @@ func (sw *syncWriter) Write(p []byte) (int, error) {
 	return sw.w.Write(p)
 }
 
+// dropMatches reports whether kv (a KEY=VALUE entry) is named by dropEnv. An
+// entry ending in "_" is a prefix match ("AWS_" drops every AWS_* var — exact
+// name lists rot as providers add credential vars); any other entry matches
+// that exact variable name.
+func dropMatches(kv string, dropEnv []string) bool {
+	for _, name := range dropEnv {
+		if strings.HasSuffix(name, "_") {
+			if strings.HasPrefix(kv, name) {
+				return true
+			}
+		} else if strings.HasPrefix(kv, name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 // RunSubprocess executes a command, pipes prompt to stdin, tees stdout to log + optional mirror.
 // dropEnv names vars to remove from the inherited environment before `env` is
 // appended — used e.g. to keep ANTHROPIC_API_KEY away from a subscription-authed
-// claude CLI, which would silently prefer the key.
+// claude CLI, which would silently prefer the key. An entry ending in "_"
+// drops every variable with that prefix (see dropMatches).
 func RunSubprocess(ctx context.Context, sess *session.Session, binary string, args []string, env []string, prompt string, mirror io.Writer, dropEnv ...string) (*Result, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
 	base := safeEnv()
 	if len(dropEnv) > 0 {
 		kept := base[:0]
 		for _, kv := range base {
-			dropped := false
-			for _, name := range dropEnv {
-				if strings.HasPrefix(kv, name+"=") {
-					dropped = true
-					break
-				}
-			}
-			if !dropped {
+			if !dropMatches(kv, dropEnv) {
 				kept = append(kept, kv)
 			}
 		}

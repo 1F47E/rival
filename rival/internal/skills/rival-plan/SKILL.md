@@ -3,7 +3,7 @@ name: rival-plan
 version: 3.22.0
 description: Review a plan/spec markdown document with Sol and Fable in parallel at ultra effort via the rival binary. Each rates it 1-10 and finds bugs and gaps; both results are shown. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, Write
 ---
 
 # Paired plan reviewer
@@ -41,11 +41,8 @@ when the watcher notifies you, possibly several turns later.
 **Step 1 — launch (foreground, returns in seconds):**
 
 ```bash
-DELIM="RIVAL_INPUT_$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n' | head -c 16)"
-RIVAL_IN="$(mktemp -t rival_in.XXXXXX)"; RIVAL_OUT="$(mktemp -t rival_out.XXXXXX)"; RIVAL_ERR="$(mktemp -t rival_err.XXXXXX)"
-cat <<"$DELIM" >"$RIVAL_IN"
-$ARGUMENTS
-$DELIM
+RIVAL_IN="/tmp/rival_in_<8-random-hex>.txt"   # the file you created with the Write tool
+RIVAL_OUT="$(mktemp -t rival_out.XXXXXX)"; RIVAL_ERR="$(mktemp -t rival_err.XXXXXX)"
 rival command plan --model sol,fable --effort ultra --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
@@ -53,8 +50,7 @@ RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | hea
 [ -n "$RIVAL_PID" ] && echo "rival_pid=$RIVAL_PID" || { echo "DETACH FAILED:"; tail -n 5 "$RIVAL_ERR"; exit 1; }
 ```
 
-Replace `$ARGUMENTS` with the actual path verbatim. The heredoc-to-file prevents
-shell injection. Capture the printed `rival_out` and `rival_err` paths.
+Replace `$ARGUMENTS` with the actual path verbatim. **Create `RIVAL_IN` with the Write tool FIRST**: write `$ARGUMENTS` verbatim to a new file `/tmp/rival_in_<8 fresh random hex chars>.txt`, then put that literal path in the `RIVAL_IN=` line. Never create this file with echo/printf/heredoc — the Write tool bypasses the shell entirely, so no character of the content can be shell-interpreted. Capture the printed `rival_out` and `rival_err` paths.
 
 **Step 2 — arm the background watcher (`run_in_background: true`):**
 

@@ -22,7 +22,7 @@ rival install
 
 > **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
 
-`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, and `/rival-fable` are available. Install also removes superseded skill names.
+`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, and `/rival-k3` are available. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -33,6 +33,7 @@ Use `rival install --force` to overwrite without prompting.
 - DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 runtime: install [opencode](https://opencode.ai) and set `RIVAL_OPENCODE_API_KEY` to a Zen key
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli` + set `GEMINI_API_KEY` — optional, only for the standalone `rival command gemini`
 - [Opus/Fable runtime](https://docs.anthropic.com/en/docs/claude-code/overview): install + authenticate (or use Docker — see below), then use `/rival-plan`, `/rival-plan-fable`, or `/rival-fable`
+- Kimi K3 runtime: [opencode](https://opencode.ai) (already required above) + set `KIMI_API=<moonshot api key>` in the project `.env` (or export it), then use `/rival-k3` — runs `moonshot/kimi-k3` at max reasoning
 
 You only need the runtimes for the models you use. **Megareview uses four curated models** — any unavailable selection is skipped, and the run proceeds when at least one succeeds. Put `RIVAL_OPENCODE_API_KEY` in `~/.zshenv` so non-interactive shells inherit it.
 
@@ -68,6 +69,20 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 /rival-fable src/api/                      — review a specific scope
 ```
 
+**Kimi K3** (thinking-only model, always max reasoning, via opencode's Moonshot provider):
+
+```
+/rival-k3 explain the auth flow in this project
+/rival-k3 review                           — review changed files with Kimi K3 (auto-detects via git)
+/rival-k3 review src/api/                  — review a specific scope
+```
+
+> `review` runs under the same mechanical read-only sandbox as the megareview
+> reviewers. Raw prompts run **full auto** — every tool call allowed, so the
+> agent can edit files and run commands in the workdir; rival strips known
+> credential env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the whole `AWS_*`
+> family, tokens, …) from that child as blast-radius reduction.
+
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
@@ -78,7 +93,7 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 
 Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs Sol and Fable in parallel at **ultra** and shows both results. `/rival-plan-sol` also always uses **ultra**; `/rival-plan-fable` defaults to **low**. The native binary defaults to high for Sol and accepts an explicit override, for example `rival command plan --model sol --effort ultra`.
 
-**Model selection** (`-m`, `--model`): `sol`, `deepseek`, `kimi`, and `glm`; comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
+**Model selection** (`-m`, `--model`): `sol`, `deepseek`, `kimi`, `glm`, and `k3` (Kimi K3, needs `KIMI_API`); comma-separated or repeated. An explicit list replaces the complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`.
 
 ### How Reviews Work
 
@@ -167,6 +182,7 @@ For an explicit multi-model selection, requested order controls judge priority. 
 # Run Sol with a prompt from stdin
 echo 'explain the auth flow' | rival command sol --workdir .
 echo 'explain the auth flow' | rival command antigravity --workdir .
+echo 'explain the auth flow' | rival command k3 --workdir .   # Kimi K3 via opencode, max reasoning, needs KIMI_API
 
 # Review via the default four-model roster
 echo 'src/api/' | rival command megareview --workdir .
@@ -416,11 +432,12 @@ See the [full Opus/Fable Docker setup](docs/opus-fable-docker-setup.md) for arch
 | `gemini-3.1-pro-preview` | xhigh | standalone binary command |
 | Opus | max | standalone binary command |
 | Fable | medium for code review; low alone, ultra when paired | `/rival-fable`, `/rival-plan`, `/rival-plan-fable` |
+| `kimi-k3` | max (only level the model supports) | `/rival-k3`, `/rival-review -m k3` |
 
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/rival-sol ~/.claude/skills/rival-plan ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-fable ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review ~/.claude/skills/rival-antigravity-only
+rm -rf ~/.claude/skills/rival-sol ~/.claude/skills/rival-plan ~/.claude/skills/rival-plan-sol ~/.claude/skills/rival-fable ~/.claude/skills/rival-plan-fable ~/.claude/skills/rival-review ~/.claude/skills/rival-k3 ~/.claude/skills/rival-antigravity-only
 brew uninstall rival        # if installed via brew
 # or: rm "$(go env GOPATH)/bin/rival"   # if installed from source
 ```
