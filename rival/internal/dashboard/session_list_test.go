@@ -16,8 +16,7 @@ func TestCLILabelUsesPublicModelNames(t *testing.T) {
 	}{
 		{"codex", config.GPT56SolModel, iconSol + " " + config.SolLabel},
 		{"opencode", config.OpencodeDeepSeekPro, iconOpencode + " deepseek-v4-pro"},
-		{"opencode", config.OpencodeKimiK27Code, iconOpencode + " kimi-k2.7-code"},
-		{"opencode", config.OpencodeGLMModel, iconOpencode + " glm-5.2"},
+		{"opencode", config.KimiModel, iconOpencode + " kimi-k3"},
 		{"fable", config.FableModel, iconOpusFable + " " + config.FableLabel},
 	}
 	for _, tc := range tests {
@@ -85,6 +84,20 @@ func TestGroupIconReflectsSelectedReviewerCount(t *testing.T) {
 				t.Fatalf("groupIcon() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestGroupEffortShowsMixedDefaults(t *testing.T) {
+	item := &displayItem{Sessions: []*session.Session{
+		{Effort: "ultra"},
+		{Effort: "low"},
+	}}
+	if got := groupEffort(item); got != "mixed" {
+		t.Fatalf("groupEffort() = %q, want mixed", got)
+	}
+	item.Sessions[1].Effort = "ultra"
+	if got := groupEffort(item); got != "ultra" {
+		t.Fatalf("groupEffort() = %q, want ultra", got)
 	}
 }
 

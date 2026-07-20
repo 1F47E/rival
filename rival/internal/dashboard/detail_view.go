@@ -113,7 +113,7 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 	// Shared metadata from primary session — derived from the group's sessions so
 	// a Sol + Fable plan group is not mislabelled a megareview.
 	addField(&essential, "Models", groupCLIs(item), width)
-	addField(&essential, "Effort", s.Effort, width)
+	addField(&essential, "Effort", groupEffort(item), width)
 	addField(&essential, "Mode", groupKindLabel(item), width)
 	addStyledField(&essential, "Status", groupStatus(item), statusStyle(groupStatus(item)), width)
 	addField(&essential, "WorkDir", s.WorkDir, width)
@@ -211,7 +211,11 @@ func groupLogLabel(sess *session.Session) string {
 	if sess.Mode == "consilium" {
 		role = "JUDGE"
 	}
-	return strings.ToUpper(groupEngineLabel(sess)) + " " + role
+	label := strings.ToUpper(groupEngineLabel(sess)) + " " + role
+	if sess.Effort != "" {
+		label += " · EFFORT " + sess.Effort
+	}
+	return label
 }
 
 // renderErrorSection renders the full error message wrapped across as many

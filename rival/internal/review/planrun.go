@@ -117,10 +117,12 @@ func planModelForCLI(cli string) string {
 }
 
 // RunPlanReview reviews the plan/spec file at absPath with each CLI in clis,
-// concurrently, under a single queue ticket. There is no consilium judge — each
-// CLI's structured 1-10 rating + findings are returned independently. A CLI that
-// is unavailable, fails, or hits quota is recorded in Skipped rather than
-// aborting the run; only when every CLI is unusable does this return an error.
+// concurrently, under a single queue ticket. effort is an optional invocation
+// override; when empty, each model resolves its own configured/default effort.
+// There is no consilium judge — each CLI's structured 1-10 rating + findings
+// are returned independently. A CLI that is unavailable, fails, or hits quota
+// is recorded in Skipped rather than aborting the run; only when every CLI is
+// unusable does this return an error.
 func RunPlanReview(ctx context.Context, absPath, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
 	return runPlanReview(ctx, defaultPlanExecutor(), absPath, effort, workdir, groupID, noQueue, clis)
 }
@@ -161,9 +163,18 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 			skipped = append(skipped, SkippedCLI{CLI: cli, Model: model, Reason: reason})
 			continue
 		}
-		sess, err := session.NewQueued(cli, "plan", planModelForCLI(cli), effort, workdir, prompt, absPath, groupID)
+		model := planModelForCLI(cli)
+		fallbackEffort := config.DefaultPlanEffort
+		if len(clis) == 1 && cli == "fable" {
+			fallbackEffort = "low"
+		}
+		effectiveEffort, err := config.ResolveEffort(model, effort, fallbackEffort)
 		if err != nil {
-			return nil, fmt.Errorf("create %s plan session: %w", config.EngineLabel(cli, planModelForCLI(cli)), err)
+			return nil, fmt.Errorf("resolve %s plan effort: %w", config.EngineLabel(cli, model), err)
+		}
+		sess, err := session.NewQueued(cli, "plan", model, effectiveEffort, workdir, prompt, absPath, groupID)
+		if err != nil {
+			return nil, fmt.Errorf("create %s plan session: %w", config.EngineLabel(cli, model), err)
 		}
 		if cli == "fable" {
 			sess.Account = config.ClaudeSubscription()
@@ -200,7 +211,7 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 		wg.Add(1)
 		go func(index int, pl plan) {
 			defer wg.Done()
-			runs <- indexedRun{index: index, run: runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, effort, workdir)}
+			runs <- indexedRun{index: index, run: runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, workdir)}
 		}(i, p)
 	}
 	wg.Wait()
@@ -216,7 +227,7 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 
 // runPlanCLI executes one CLI's plan review and finalizes its session, returning
 // the raw outcome for assemblePlanResults to interpret.
-func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli, prompt, effort, workdir string) planCLIRun {
+func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli, prompt, workdir string) planCLIRun {
 	model := planModelForCLI(cli)
 
 	defer func() {
@@ -227,7 +238,7 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 
 	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Msg("starting plan reviewer")
 
-	raw, exitCode, err := ex.run(ctx, sess, cli, prompt, effort, workdir)
+	raw, exitCode, err := ex.run(ctx, sess, cli, prompt, sess.Effort, workdir)
 
 	// Keep this defensive restoration for injected/custom executors. The built-in
 	// Fable executor preserves plan mode throughout the live run.

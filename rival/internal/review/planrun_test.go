@@ -2,6 +2,8 @@ package review
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,7 +102,7 @@ func TestAssemblePlanResults_ParseFailKeepsRaw(t *testing.T) {
 
 func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
 	// An exit-0 run that wrote nothing must be skipped, not treated as a
-	// successful (but empty) plan review. (Found by opencode/GLM in review.)
+	// successful (but empty) plan review.
 	batch := []planCLIRun{
 		{CLI: "fable", Model: config.FableModel, Raw: "   \n  ", ExitCode: 0},
 		{CLI: "codex", Model: config.GPT56SolModel, Raw: realPlanJSON, ExitCode: 0},
@@ -171,7 +173,7 @@ func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 			{CLI: "codex", Model: config.GPT56SolModel, Parsed: &PlanOutput{Summary: "cx", Rating: 6}},
 			{CLI: "fable", Model: config.FableModel, Parsed: nil, Raw: "Claude raw dump"},
 		},
-		Skipped: []SkippedCLI{{CLI: "antigravity", Model: config.AntigravityModel, Reason: "n/a"}},
+		Skipped: []SkippedCLI{{CLI: "opencode", Model: config.OpencodeDeepSeekPro, Reason: "n/a"}},
 	}
 	out := FormatPlanResult(res, "/tmp/plan.md")
 	if !strings.Contains(out, "RIVAL PLAN REVIEW ("+config.SolLabel+" + "+config.FableLabel+")") {
@@ -187,7 +189,7 @@ func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 	if !strings.Contains(out, "Fable runtime raw dump") {
 		t.Errorf("fable raw fallback missing:\n%s", out)
 	}
-	if !strings.Contains(out, "Skipped: "+config.AntigravityModel+" — n/a") {
+	if !strings.Contains(out, "Skipped: deepseek-v4-pro — n/a") {
 		t.Errorf("skipped line missing:\n%s", out)
 	}
 	if strings.Contains(strings.ToLower(out), "codex") {
@@ -232,12 +234,96 @@ func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
 			return realPlanJSON, 0, nil
 		},
 	}
-	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", "high", t.TempDir())
+	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", t.TempDir())
 	if out.ExitCode != 0 {
 		t.Fatalf("run failed: %+v", out)
 	}
 	if sess.Mode != "plan" {
 		t.Fatalf("sess.Mode = %q, want plan (restored after fable transport overwrote it)", sess.Mode)
+	}
+}
+
+func TestRunPlanReviewResolvesPerModelEfforts(t *testing.T) {
+	tests := []struct {
+		name       string
+		configYAML string
+		override   string
+		clis       []string
+		want       map[string]string
+	}{
+		{
+			name: "sol uses native fallback",
+			clis: []string{"codex"},
+			want: map[string]string{"codex": "high"},
+		},
+		{
+			name: "fable alone uses low native fallback",
+			clis: []string{"fable"},
+			want: map[string]string{"fable": "low"},
+		},
+		{
+			name: "paired native plan uses high for both",
+			clis: []string{"codex", "fable"},
+			want: map[string]string{"codex": "high", "fable": "high"},
+		},
+		{
+			name:       "configured defaults resolve independently",
+			configYAML: "efforts:\n  sol: low\n  fable: ultra\n",
+			clis:       []string{"codex", "fable"},
+			want:       map[string]string{"codex": "low", "fable": "ultra"},
+		},
+		{
+			name:       "explicit override wins for every model",
+			configYAML: "efforts:\n  sol: low\n  fable: medium\n",
+			override:   "ultra",
+			clis:       []string{"codex", "fable"},
+			want:       map[string]string{"codex": "ultra", "fable": "ultra"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			loadPlanTestConfig(t, tc.configYAML)
+
+			type observation struct {
+				cli           string
+				sessionEffort string
+				runEffort     string
+			}
+			observed := make(chan observation, len(tc.clis))
+			ex := planExecutor{
+				preflight: func(string) error { return nil },
+				run: func(_ context.Context, sess *session.Session, cli, _, effort, _ string) (string, int, error) {
+					observed <- observation{cli: cli, sessionEffort: sess.Effort, runEffort: effort}
+					return realPlanJSON, 0, nil
+				},
+			}
+
+			_, err := runPlanReview(
+				context.Background(),
+				ex,
+				"/tmp/plan.md",
+				tc.override,
+				t.TempDir(),
+				"efforts",
+				true,
+				tc.clis,
+			)
+			if err != nil {
+				t.Fatalf("runPlanReview: %v", err)
+			}
+
+			for range tc.clis {
+				got := <-observed
+				want := tc.want[got.cli]
+				if got.sessionEffort != want {
+					t.Errorf("%s session effort = %q, want %q", got.cli, got.sessionEffort, want)
+				}
+				if got.runEffort != got.sessionEffort {
+					t.Errorf("%s executor effort = %q, want session effort %q", got.cli, got.runEffort, got.sessionEffort)
+				}
+			}
+		})
 	}
 }
 
@@ -261,6 +347,30 @@ func TestRunPlanReviewPreservesRequestedOrderWhenFableFinishesFirst(t *testing.T
 	}
 	if len(result.Results) != 2 || result.Results[0].CLI != "codex" || result.Results[1].CLI != "fable" {
 		t.Fatalf("plan results lost requested order: %+v", result.Results)
+	}
+}
+
+func loadPlanTestConfig(t *testing.T, contents string) {
+	t.Helper()
+
+	home := t.TempDir()
+	// Restore the process-global config only after t.Setenv has restored HOME.
+	t.Cleanup(config.LoadUserConfig)
+	t.Setenv("HOME", home)
+
+	if contents != "" {
+		dir := filepath.Join(home, ".rival")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("create config dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(contents), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+	}
+
+	config.LoadUserConfig()
+	if err := config.UserConfigError(); err != nil {
+		t.Fatalf("load config: %v", err)
 	}
 }
 

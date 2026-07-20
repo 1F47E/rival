@@ -1,16 +1,16 @@
 ---
 name: rival-review
-version: 3.22.0
-description: Run Sol, DeepSeek V4 Pro, Kimi K2.7 Code, GLM-5.2, and/or opt-in Kimi K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
-argument-hint: "[-m sol|deepseek|kimi|glm|k3[,model...]] [-re high|ultra] [scope]"
+version: 3.23.0
+description: Run Sol, DeepSeek V4 Pro, and/or opt-in Kimi K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+argument-hint: "[-m sol|deepseek|k3[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
 ---
 
 # Megareview Runner (rival binary)
 
 Run the curated reviewers via the `rival` Go binary. The default roster is
-Sol + DeepSeek V4 Pro + Kimi K2.7 Code + GLM-5.2; `-m/--model` replaces
-that roster for one invocation. Returns a single combined answer.
+Sol + DeepSeek V4 Pro; `-m/--model` replaces that roster for one invocation.
+Returns a single combined answer.
 
 ## Instructions
 
@@ -19,21 +19,20 @@ that roster for one invocation. Returns a single combined answer.
 ### Usage
 
 Pass `$ARGUMENTS` through verbatim. Empty arguments are valid and review the
-git-detected scope with all four models. If `$ARGUMENTS` is `-h` or `--help`,
+git-detected scope with both default models. If `$ARGUMENTS` is `-h` or `--help`,
 respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-review` — all four models; auto-detect changed files via git
+> - `/rival-review` — both default models; auto-detect changed files via git
 > - `/rival-review -m sol src/api/` — Sol only
 > - `/rival-review -m deepseek src/api/` — DeepSeek V4 Pro only
-> - `/rival-review -m kimi src/api/` — Kimi K2.7 Code only
-> - `/rival-review -m glm src/api/` — GLM-5.2 only
-> - `/rival-review -m k3 src/api/` — Kimi K3 only (requires `KIMI_API`)
-> - `/rival-review -m deepseek,kimi src/api/` — exactly those two models
-> - `/rival-review -re ultra src/api/` — highest supported effort
+> - `/rival-review -m k3 src/api/` — Kimi K3 only (requires `MOONSHOT_API_KEY`)
+> - `/rival-review -m deepseek,k3 src/api/` — exactly those two models
+> - `/rival-review -re ultra src/api/` — override compatible model defaults
 >
-> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), `glm-5.2` (`glm`), `kimi-k3` (`k3`, requires `KIMI_API`)
-> **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high` (default), `ultra`
+> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`)
+> **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high`, `ultra`;
+> omitted uses per-model defaults from `~/.rival/config.yaml`.
 >
 > An explicit model list is exact; no other reviewer is added implicitly. A
 > single selected model performs both the review and consilium pass.

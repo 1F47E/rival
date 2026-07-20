@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,18 +17,14 @@ import (
 const (
 	GPT56SolModel        = "gpt-5.6-sol"
 	CodexModel           = GPT56SolModel // legacy internal alias
-	GeminiModel          = "gemini-3.1-pro-preview"
 	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	SolLabel             = "sol"
 	OpusLabel            = "opus"
 	FableLabel           = "fable"
-	AntigravityModel     = "gemini-3.5-flash"
-	KimiModel            = "moonshot/kimi-k3" // Kimi K3 via opencode's first-party Moonshot provider
+	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
 	OpencodeDeepSeekPro  = "opencode/deepseek-v4-pro"
 	OpencodeModel        = OpencodeDeepSeekPro
-	OpencodeKimiK27Code  = "opencode/kimi-k2.7-code"
-	OpencodeGLMModel     = "opencode/glm-5.2"
 	ClaudeDockerImage    = "rival-opus-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
@@ -65,24 +62,16 @@ var ClaudeEffortLevel = map[string]string{
 }
 
 // OpencodeVariant returns the provider-supported reasoning variant for a
-// curated model and Rival effort. Kimi K2.7 Code currently advertises no named
-// variants, so it must be launched without --variant. GLM exposes only high/max;
-// DeepSeek exposes the full low/medium/high/max ladder.
+// curated model and Rival effort. DeepSeek exposes the full
+// low/medium/high/max ladder.
 func OpencodeVariant(model, effort string) string {
 	switch model {
-	case OpencodeKimiK27Code:
-		return ""
 	case KimiModel:
 		// Kimi K3 is thinking-only and its API accepts exactly one reasoning
 		// level; opencode accepts --variant max for it (verified live). Every
 		// rival effort — including the "max" the kimi path records — pins to
 		// max. Without this case the default branch would send --variant high.
 		return "max"
-	case OpencodeGLMModel:
-		if effort == "xhigh" || effort == "ultra" {
-			return "max"
-		}
-		return "high"
 	default: // DeepSeek V4 Pro and the generic OpenCode fallback.
 		switch effort {
 		case "low", "medium", "high":
@@ -296,8 +285,8 @@ func publicReviewHeader(line string) string {
 }
 
 // OpencodeShortLabel strips the opencode provider prefix from a model id for
-// display, e.g. "opencode-go/glm-5.2" → "glm-5.2", "opencode/deepseek-v4-pro" →
-// "deepseek-v4-pro". An empty model falls back to "opencode".
+// display, e.g. "opencode/deepseek-v4-pro" → "deepseek-v4-pro". An empty model
+// falls back to "opencode".
 func OpencodeShortLabel(model string) string {
 	if model == "" {
 		return "opencode"
@@ -309,20 +298,17 @@ func OpencodeShortLabel(model string) string {
 }
 
 // OpencodeReviewer is one opencode-provided model run as a megareview reviewer.
-// Model is the opencode model id (e.g. "opencode-go/glm-5.2"); Role is the
-// review lens (a review.Role string) so the roster can diversify coverage across
-// the models.
+// Model is the concrete opencode model id; Role is the review lens (a
+// review.Role string) so the roster can diversify coverage across the models.
 type OpencodeReviewer struct {
 	Model string
 	Role  string
 }
 
-// defaultOpencodeReviewers is the intentionally curated three-model roster,
+// defaultOpencodeReviewers is the intentionally curated OpenCode roster,
 // ordered by judge preference. Each model gets a distinct review lens.
 var defaultOpencodeReviewers = []OpencodeReviewer{
 	{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
-	{Model: OpencodeKimiK27Code, Role: "arch_security"},
-	{Model: OpencodeGLMModel, Role: "code_quality"},
 }
 
 // ReviewTarget is one concrete reviewer selected for a megareview run. CLI is
@@ -334,7 +320,7 @@ type ReviewTarget struct {
 	Role  string
 }
 
-// DefaultReviewTargets returns the curated four-model megareview roster. The
+// DefaultReviewTargets returns the curated two-model megareview roster. The
 // order is also the consilium judge preference order.
 func DefaultReviewTargets() []ReviewTarget {
 	targets := []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
@@ -352,8 +338,7 @@ func DefaultReviewTargets() []ReviewTarget {
 // Friendly aliases:
 //   - sol (the exact runtime model id remains accepted for compatibility)
 //   - deepseek, deepseek-pro, deepseek-v4-pro
-//   - kimi, kimi-code, kimi-k2.7-code
-//   - glm, glm-5.2
+//   - k3, kimi-k3
 //
 // Per-run selection intentionally stays on this curated set.
 func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
@@ -391,16 +376,11 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
 		case "deepseek", "deepseek-pro", "deepseek-v4-pro":
 			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeDeepSeekPro, Role: "bug_hunter"}}
-		case "kimi", "kimi-code", "kimi-k2.7", "kimi-k2.7-code":
-			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeKimiK27Code, Role: "arch_security"}}
-		case "glm", "glm-5.2":
-			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeGLMModel, Role: "code_quality"}}
 		case "k3", "kimi-k3":
-			// Kimi K3 via the Moonshot provider (needs KIMI_API). Distinct from
-			// the "kimi" alias, which stays on the curated kimi-k2.7-code.
+			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
 			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2, kimi-k3", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k3", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
@@ -420,19 +400,17 @@ func OpencodeAPIKey() string {
 	return strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_API_KEY"))
 }
 
-// KimiAPIKeyFrom returns the Moonshot AI API key for kimi CLI runs: KIMI_API
-// from the process env first (godotenv loads the invocation directory's .env
-// at startup), then a KIMI_API entry in a .env found by walking up from
-// workdir toward the filesystem root (stopping after the home directory, max 8
-// levels — the same spirit as git's .git discovery). The walk exists because
-// rival is routinely invoked from a subdirectory of the project that holds the
-// key (observed twice in live use: runs from rival/ missed the repo-root .env
-// and preflight failed). The key is injected per run into opencode's moonshot
-// provider via OPENCODE_CONFIG_CONTENT (see executor.opencodeRunEnvWith) —
-// never written to any on-disk config.
+// KimiAPIKeyFrom returns the Moonshot AI API key for K3 runs.
+// MOONSHOT_API_KEY is the canonical OpenCode variable; KIMI_API remains a
+// backward-compatible alias. Rival checks the process environment first, then
+// walks up from workdir looking for either entry in a project .env. The key is
+// injected per run into OpenCode's built-in moonshotai provider through
+// OPENCODE_CONFIG_CONTENT and is never written to on-disk OpenCode config.
 func KimiAPIKeyFrom(workdir string) string {
-	if key := strings.TrimSpace(os.Getenv("KIMI_API")); key != "" {
-		return key
+	for _, name := range []string{"MOONSHOT_API_KEY", "KIMI_API"} {
+		if key := strings.TrimSpace(os.Getenv(name)); key != "" {
+			return key
+		}
 	}
 	if workdir == "" {
 		return ""
@@ -444,8 +422,10 @@ func KimiAPIKeyFrom(workdir string) string {
 	home, _ := os.UserHomeDir()
 	for i := 0; i < 8; i++ {
 		if vars, err := godotenv.Read(filepath.Join(dir, ".env")); err == nil {
-			if key := strings.TrimSpace(vars["KIMI_API"]); key != "" {
-				return key
+			for _, name := range []string{"MOONSHOT_API_KEY", "KIMI_API"} {
+				if key := strings.TrimSpace(vars[name]); key != "" {
+					return key
+				}
 			}
 		}
 		parent := filepath.Dir(dir)
@@ -475,15 +455,6 @@ Use your tools to read files, run git commands, and explore the codebase as need
 func BuildWorkdirPreamble(workdir string) string {
 	abs, _ := filepath.Abs(workdir)
 	return strings.ReplaceAll(WorkdirPreamble, "{WORKDIR}", abs)
-}
-
-// Gen3 only — thinkingLevel mapping.
-var GeminiThinkingLevel = map[string]string{
-	"low":    "LOW",
-	"medium": "MEDIUM",
-	"high":   "HIGH",
-	"xhigh":  "HIGH",
-	"ultra":  "HIGH",
 }
 
 // DiffReviewPreamble is prepended to ReviewPrompt when git auto-detects changed files.
@@ -697,14 +668,18 @@ type ClaudeConfig struct {
 
 // UserConfig holds optional user configuration from ~/.rival/config.yaml.
 type UserConfig struct {
-	Claude ClaudeConfig      `yaml:"claude"`
-	Roles  map[string]string `yaml:"roles"`
+	Claude  ClaudeConfig      `yaml:"claude"`
+	Efforts map[string]string `yaml:"efforts"`
+	Roles   map[string]string `yaml:"roles"`
 }
 
 var userConfig *UserConfig
+var userConfigErr error
 
 // LoadUserConfig reads ~/.rival/config.yaml if it exists.
 func LoadUserConfig() {
+	userConfig = nil
+	userConfigErr = nil
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
@@ -712,13 +687,40 @@ func LoadUserConfig() {
 	path := filepath.Join(home, ".rival", "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			userConfigErr = fmt.Errorf("read %s: %w", path, err)
+		}
 		return
 	}
 	var cfg UserConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		userConfigErr = fmt.Errorf("parse %s: %w", path, err)
 		return
 	}
+	for label, raw := range cfg.Efforts {
+		effort := strings.ToLower(strings.TrimSpace(raw))
+		if !knownEffortModel(label) {
+			userConfigErr = fmt.Errorf("invalid effort model %q in %s; use one of: sol, deepseek-v4-pro, kimi-k3, opus, fable", label, path)
+			return
+		}
+		if !validConfiguredModelEffort(label, effort) {
+			allowed := "low, medium, high, xhigh, ultra"
+			if label == "kimi-k3" {
+				allowed = "max"
+			}
+			userConfigErr = fmt.Errorf("invalid effort %q for %s in %s; use one of: %s", raw, label, path, allowed)
+			return
+		}
+		cfg.Efforts[label] = effort
+	}
 	userConfig = &cfg
+}
+
+// UserConfigError reports an invalid ~/.rival/config.yaml. Commands fail
+// before doing any queue, session, or provider work rather than silently
+// ignoring a typo in a requested model default.
+func UserConfigError() error {
+	return userConfigErr
 }
 
 // RolePromptOverride returns the user-configured prompt for a role, if any.
@@ -728,6 +730,97 @@ func RolePromptOverride(role string) (string, bool) {
 	}
 	v, ok := userConfig.Roles[role]
 	return v, ok
+}
+
+// DefaultEffortForModel returns the configured default for a concrete model id
+// or public model label. Invalid user configuration is reported by
+// UserConfigError before command side effects begin.
+//
+// Kimi K3 is thinking-only and supports exactly max. Other current models
+// accept Rival's low/medium/high/xhigh/ultra ladder.
+func DefaultEffortForModel(model string) string {
+	label := ModelLabel(model)
+	builtin := builtinModelEffort(label)
+	if userConfig == nil {
+		return builtin
+	}
+	effort, ok := userConfig.Efforts[label]
+	if !ok {
+		return builtin
+	}
+	return effort
+}
+
+func builtinModelEffort(label string) string {
+	switch label {
+	case SolLabel, "deepseek-v4-pro":
+		return DefaultReviewEffort
+	case "kimi-k3":
+		return "max"
+	case OpusLabel:
+		return DefaultEffort
+	case FableLabel:
+		return "medium"
+	default:
+		return DefaultReviewEffort
+	}
+}
+
+func knownEffortModel(label string) bool {
+	switch label {
+	case SolLabel, "deepseek-v4-pro", "kimi-k3", OpusLabel, FableLabel:
+		return true
+	default:
+		return false
+	}
+}
+
+func validConfiguredModelEffort(label, effort string) bool {
+	if label == "kimi-k3" {
+		return effort == "max"
+	}
+	return IsValidReviewEffort(effort)
+}
+
+// ResolveEffort applies the documented precedence for one concrete model:
+// explicit invocation override, then ~/.rival/config.yaml, then the supplied
+// surface-specific fallback. Kimi K3 remains pinned to max because that
+// provider exposes no other reasoning level.
+func ResolveEffort(model, override, fallback string) (string, error) {
+	label := ModelLabel(model)
+	override = strings.ToLower(strings.TrimSpace(override))
+	if override != "" {
+		if label == "kimi-k3" {
+			return "max", nil
+		}
+		if !IsValidReviewEffort(override) {
+			return "", fmt.Errorf("invalid effort %q for %s", override, label)
+		}
+		return override, nil
+	}
+	if userConfig != nil {
+		if effort, ok := userConfig.Efforts[label]; ok {
+			return effort, nil
+		}
+	}
+	fallback = strings.ToLower(strings.TrimSpace(fallback))
+	if fallback == "" {
+		fallback = builtinModelEffort(label)
+	}
+	if label == "kimi-k3" {
+		return "max", nil
+	}
+	if !IsValidReviewEffort(fallback) {
+		return "", fmt.Errorf("invalid fallback effort %q for %s", fallback, label)
+	}
+	return fallback, nil
+}
+
+// EffectiveEffort resolves an optional invocation override against the
+// model's built-in default. Callers with a surface-specific legacy default
+// should use ResolveEffort directly.
+func EffectiveEffort(model, override string) (string, error) {
+	return ResolveEffort(model, override, "")
 }
 
 // ClaudeSubscription returns the configured subscription type ("team", "personal", or "").

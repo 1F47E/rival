@@ -6,24 +6,23 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [v3.23.0] — 2026-07-20
 
-### Added — Kimi K3 via opencode (`/rival-k3`)
+### Added — Kimi K3 via OpenCode (`/rival-k3`)
 
-New standalone runner for Moonshot's Kimi K3, served through the opencode
-CLI's first-party Moonshot provider (`moonshot/kimi-k3`, 1M context):
+New standalone runner for Moonshot's Kimi K3, served through OpenCode's
+built-in Moonshot AI provider (`moonshotai/kimi-k3`, 1M context):
 `rival command k3`, `rival run k3`, and the `/rival-k3` skill (detached +
 background watcher, same async pattern as `/rival-sol`). K3 is a thinking-only
 model whose API accepts a single reasoning level, so every run pins
 `--variant max` regardless of `-re`; sessions record `cli: opencode`,
-`model: moonshot/kimi-k3`, `effort: max` truthfully. `k3`/`kimi-k3` are also
-selectable review models (`/rival-review -m k3`); the historical `kimi` alias
-stays on Kimi K2.7 Code.
+`model: moonshotai/kimi-k3`, `effort: max` truthfully. `k3`/`kimi-k3` are also
+selectable review models (`/rival-review -m k3`).
 
-Auth: the Moonshot API key is read from `KIMI_API` — process env first
+Auth: the Moonshot API key is read from `MOONSHOT_API_KEY` — process env first
 (godotenv loads the invocation directory's `.env`), then a `.env` found by
 walking up from `--workdir` toward root — and injected per run into the
-moonshot provider via `OPENCODE_CONFIG_CONTENT`, never written to any on-disk
-config. Moonshot models never receive the Zen key. All inherited `KIMI_*`
-vars stay blocked from child environments.
+`moonshotai` provider via `OPENCODE_CONFIG_CONTENT`, never written to any
+on-disk config. Moonshot models never receive the Zen key. Inherited Moonshot
+credentials stay blocked from child environments.
 
 Permissions: `review` runs under the same mechanical read-only
 `OPENCODE_PERMISSION` sandbox as the megareview reviewers. Raw prompts run
@@ -34,6 +33,22 @@ matching, `GOOGLE_APPLICATION_CREDENTIALS`, GitHub/GitLab tokens, rival's own
 provider keys) — `RunSubprocess` dropEnv entries ending in `_` match as
 prefixes. Prompts travel via stdin like every other opencode run (no argv
 size cap). TUI/web show `❯ kimi-k3`.
+
+### Added — configurable per-model effort defaults
+
+`~/.rival/config.yaml` now accepts an `efforts` map for `sol`,
+`deepseek-v4-pro`, `kimi-k3`, `opus`, and `fable`. Explicit command or skill
+effort flags take precedence, then the per-model setting, then Rival's built-in
+default. Invalid model names or effort values fail before queue, session, or
+provider work begins. K3 remains pinned to its only supported value, `max`.
+
+### Documentation — Claude Code onboarding and project rationale
+
+The README now opens with a concise explanation of why Rival is useful and adds
+a dedicated Claude Code setup guide. It covers installing Rival, Codex, and
+OpenCode; preferring Codex subscription login while documenting API-key auth;
+obtaining a Moonshot API key; and placing `MOONSHOT_API_KEY` in a project
+`.env` or the shell environment.
 
 ### Changed — rebuilt web dashboard
 
@@ -56,6 +71,13 @@ review output before making any follow-up tool calls. This prevents background
 results from being dropped by the harness and keeps findings visible before
 fixes or triage begin.
 
+### Removed — retired legacy reviewer integrations
+
+Obsolete reviewer commands, executors, selectors, dashboard icons, tests, and
+documentation were removed. Rival's maintained review paths are now explicit:
+Sol and DeepSeek for the default review, optional K3, plus Opus and Fable
+standalone and plan workflows.
+
 ### Fixed — skill input heredoc was shell-injectable (all 7 skills)
 
 Every shipped SKILL.md piped arguments through `cat <<"$DELIM"` with a
@@ -74,7 +96,7 @@ alongside the provider child PID, and `ReapOrphans` only reaps a session when
 BOTH are dead. Previously, in the window between the provider CLI exiting and
 rival writing the final status, a concurrent rival invocation's startup reap
 saw "running + dead PID" and marked a successful run `failed: orphaned
-(process dead)` (observed live with a detached kimi run). A live owner always
+(process dead)` (observed live with a detached K3 run). A live owner always
 finalizes its own sessions; sessions from older releases keep the old
 provider-only check.
 
@@ -99,11 +121,10 @@ names for every curated reviewer, and render matching model icons. Group members
 stay in requested order with stable IDs; detail views reserve space for every
 log, distinguish judge output, and surface per-model failures.
 
-### Removed — `/rival-antigravity-only` skill
+### Removed — obsolete standalone reviewer skill
 
-The standalone Antigravity binary command remains available, but the slash-command skill is
-no longer embedded or installed. `rival install` removes existing installed copies during an
-upgrade.
+An obsolete standalone reviewer skill is no longer embedded or installed.
+`rival install` removes existing installed copies during an upgrade.
 
 ## [v3.20.0] — 2026-07-11
 
@@ -113,28 +134,25 @@ upgrade.
 comma-separated or repeated model list:
 
 - `/rival-review -m deepseek src/api/`
-- `/rival-review -m kimi src/api/`
-- `/rival-review -m glm src/api/`
 - `/rival-review -m sol src/api/`
-- `/rival-review -m deepseek,kimi src/api/`
-- `rival review --model kimi src/api/`
+- `/rival-review -m deepseek,sol src/api/`
+- `rival review --model deepseek src/api/`
 
 An explicit list replaces the complete roster; no reviewer is added implicitly. Model-only
 invocations still auto-detect the git scope, options can be combined in either order, and `--`
 escapes a scope beginning with a dash. The skill version was advanced so existing installs
 receive the new argument contract.
 
-### Changed — curated four-model megareview roster
+### Changed — expanded curated megareview roster
 
-The default roster is now exactly **Sol + DeepSeek V4 Pro + Kimi K2.7 Code +
-GLM-5.2**. Sol and DeepSeek are independent bug hunters, Kimi covers
-architecture/security, and GLM covers code quality. Default judge priority follows that same
-order. Per-run selection is intentionally limited to these four curated models.
+The default roster expanded to four complementary reviewers. Sol and DeepSeek
+were independent bug hunters, with additional architecture/security and code
+quality lenses. Default judge priority followed roster order, and per-run
+selection was limited to the curated set available in that release.
 
 Code review and the native Sol plan command default to `high` effort and accept `ultra`.
-The `/rival-plan-sol` skill pins Sol to `ultra`; DeepSeek V4 Pro and GLM-5.2 map
-`ultra` to their maximum variant, while Kimi K2.7 Code keeps its model default.
-A Fable-only plan retains its low default.
+The `/rival-plan-sol` skill pins Sol to `ultra`; compatible OpenCode reviewers
+map `ultra` to their maximum variant. A Fable-only plan retains its low default.
 
 The process-wide `RIVAL_OPENCODE_MODELS` roster override is retired; use the
 per-invocation `-m/--model` interface instead.
@@ -171,24 +189,26 @@ superseded by it.
 
 The megareview runs several opencode processes at once; they otherwise share one
 SQLite session DB and one intermittently lost the write lock, failing with
-`database is locked` (exit 1 — observed as `Skipped: glm-5.2 (exited with code 1)`).
+`database is locked` (exit 1, observed as a skipped reviewer).
 Each opencode reviewer now gets its own `OPENCODE_DB` (keyed on the session ID), so
 the parallel processes never contend.
 
 ### Fixed — clear preflight error when a Zen model has no API key
 
-Because DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 use the same Zen credential, their
-preflight requires `RIVAL_OPENCODE_API_KEY` and fails with an actionable message ("export your
-Zen key…") instead of each reviewer failing mid-run with an opaque "Missing API key". (Root cause of an
-observed `Skipped: glm-5.2 (exited with code 1)` — the key was in `~/.zshrc`, which
-non-interactive shells don't source; it belongs in `~/.zshenv`.)
+OpenCode Zen reviewers use the same credential, so their preflight requires
+`RIVAL_OPENCODE_API_KEY` and fails with an actionable message ("export your
+Zen key…") instead of each reviewer failing mid-run with an opaque "Missing
+API key". This fixed an observed reviewer failure caused by a key living in
+`~/.zshrc`, which non-interactive shells do not source; it belongs in
+`~/.zshenv`.
 
 ## [v3.16.0] — 2026-07-03
 
 ### Added — OpenCode Zen provider + API key
 
-The opencode reviewer roster now targets the **OpenCode Zen** provider (`opencode/*` models:
-GLM-5.2, DeepSeek V4 Pro, DeepSeek V4 Flash). The Zen API key is supplied via
+The opencode reviewer roster now targets the **OpenCode Zen** provider
+(`opencode/*` models, including DeepSeek V4 Pro and complementary alternatives).
+The Zen API key is supplied via
 `RIVAL_OPENCODE_API_KEY` — rival injects it into the opencode provider config per run (the
 opencode CLI's own Zen auth resolution is unreliable, so a provider-config override via
 `OPENCODE_CONFIG_CONTENT` is used instead). The key is read only from that env var, never
@@ -198,23 +218,24 @@ stored credential.
 
 ### Added — multiple opencode models as parallel megareview reviewers
 
-Megareview now runs a **roster of opencode models** in parallel instead of a single one, so a
-default review is **five reviewers**: Codex + Antigravity + three opencode models —
-GLM-5.2 (arch/security), DeepSeek V4 Pro (bug hunter), DeepSeek V4 Flash (code quality) —
-all merged by the consilium judge. (No Docker: each `opencode run` is already an isolated
-process with its own server + session, so N models parallelize as goroutines.)
+Megareview now runs a **roster of opencode models** in parallel instead of a
+single one, expanding the reviewer pool across bug-hunting,
+architecture/security, and code-quality lenses. All results are merged by the
+consilium judge. No Docker is required: each `opencode run` is already an
+isolated process with its own server and session, so models parallelize as
+goroutines.
 
 - `config.OpencodeReviewerList()` — the roster, overridable via `RIVAL_OPENCODE_MODELS`
   (comma list of `model[:role]`; role defaults to `code_quality`; duplicates dropped; a
   blank value falls back to the default roster).
-- `executor.RunOpencode` takes the model as a parameter (was hardcoded to GLM-5.2).
+- `executor.RunOpencode` takes the model as a parameter instead of being hardcoded.
 - Runner: one reviewer per roster model, all under the single `opencode` cli — the cli
   string stays `"opencode"` (one dispatch case, one display branch) while the model + role
   are carried per session. `pickJudge` returns the concrete model too, so an opencode judge
   uses a model that actually produced a review (not a 429'd one).
-- Display: TUI, web, and the console "Reviewed by" line label opencode reviewers by their
-  short model name (`glm-5.2`, `deepseek-v4-pro`, …) so the three are distinguishable rather
-  than three identical `opencode` rows (`config.EngineLabel`).
+- Display: TUI, web, and the console "Reviewed by" line label opencode
+  reviewers by their short model name so parallel reviewers are distinguishable
+  rather than identical `opencode` rows (`config.EngineLabel`).
 - Correlated-failure signal: all opencode models share one `opencode-go` credential/quota, so
   a 429 tends to take out the whole family; when every opencode reviewer fails, that is logged
   distinctly from losing a single reviewer.
@@ -229,37 +250,36 @@ the sandbox. Both found by the megareview reviewing this change's own diff.
 
 - `runConsilium` now dispatches an opencode judge with the correct concrete model (the
   v3.15.0 plan generalized only the reviewer switch, so a re-selected opencode judge would
-  have hit the `unsupported judge CLI` path — exactly in the codex+antigravity-both-429
-  degradation case). Caught by opencode/GLM reviewing this change's plan.
+  have hit the `unsupported judge CLI` path when every higher-priority judge
+  was unavailable). Caught while reviewing this change's plan.
 - Opencode judge selection is **deterministic** — the highest-priority successful model in
   the roster order judges, not whichever model's goroutine finished first (that let the
   fastest/weakest model judge over a preferred one).
 - An unknown role in `RIVAL_OPENCODE_MODELS` (a typo) is normalized to `bug_hunter` instead
   of building a reviewer prompt with no role instructions.
-- Skipped opencode reviewers are labelled by model (`glm-5.2`, `deepseek-v4-pro`, …) so the
-  three failures are distinguishable rather than three identical `opencode` entries.
+- Skipped opencode reviewers are labelled by model so parallel failures are
+  distinguishable rather than identical `opencode` entries.
 
 ## [v3.15.0] — 2026-07-02
 
-### Added — opencode / GLM-5.2 as a third megareview reviewer
+### Added — OpenCode as an additional megareview reviewer
 
-Megareview now runs **three reviewers in parallel — Codex + Antigravity + opencode
-(GLM-5.2)** — and merges all of them through the consilium judge. opencode is wired
-the same way as antigravity: a preflight, a reviewer session, and a run adapter.
+Megareview now runs an expanded set of reviewers in parallel, including an
+OpenCode model, and merges all results through the consilium judge. OpenCode is
+wired with a preflight, reviewer session, and run adapter.
 
 - New `internal/executor/opencode.go`: `OpencodePreflight` (LookPath `opencode`) +
-  `RunOpencode` → `opencode run -m opencode-go/glm-5.2 --variant <effort> --dir
+  `RunOpencode` → `opencode run -m <configured-model> --variant <effort> --dir
   <workdir> --dangerously-skip-permissions` (the skip-permissions flag is required —
   without it opencode auto-rejects file reads and produces nothing).
-- `config.OpencodeModel = "opencode-go/glm-5.2"` + `OpencodeVariantLevel` effort→variant
-  map (low/medium→minimal, high→high, xhigh→max).
+- A configured OpenCode model and `OpencodeVariantLevel` effort-to-variant map
+  (low/medium→minimal, high→high, xhigh→max).
 - Runner: `opencodeOK` preflight, a reviewer plan, and `case "opencode"` in the run and
   judge switches + `modelForCLI`. Any reviewer that is unavailable is skipped, not fatal.
-  The consilium judge preference is now codex → antigravity → opencode.
-- Role: opencode gets the `arch_security` lens (codex + antigravity are both bug hunters),
-  diversifying the three-reviewer roster.
-- TUI/web: `❯ opencode` icon + label; the grouped megareview glyph is now `◈△❯`, and group
-  CLI reads `codex+antigravity+opencode`.
+  The consilium judge follows the successful reviewer preference order.
+- OpenCode receives the `arch_security` lens, diversifying the reviewer roster.
+- TUI/web add an `❯ opencode` icon and label; grouped megareviews derive their
+  visible engines from the participating sessions.
 
 opencode runs **read-only** (via `OPENCODE_PERMISSION` — read/grep/glob/list allowed,
 edit/bash/task/web denied) rather than `--dangerously-skip-permissions`, matching codex's
@@ -272,8 +292,8 @@ ship a permissive `OPENCODE_PERMISSION`/`OPENCODE_CONFIG` in its `.env` to escap
 
 - **Judge is re-selected from reviewers that actually produced output.** The consilium judge
   was chosen from preflight availability, so a reviewer that preflighted OK but then 429'd at
-  runtime could fail the whole review; the judge is now picked (codex → antigravity → opencode)
-  from the successful reviewers.
+  runtime could fail the whole review; the judge is now picked from the
+  successful reviewers in preference order.
 - **Consilium judge session is marked complete only after its output parses** — an empty or
   unparseable verdict now fails the session instead of showing "completed" in the dashboard.
 - **Reviewer/judge session cleanup is registered before creation**, so a mid-creation failure
@@ -284,7 +304,7 @@ ship a permissive `OPENCODE_PERMISSION`/`OPENCODE_CONFIG` in its `.env` to escap
 ### Fixed — megareview reviewer that produces no output
 
 A reviewer CLI can exit 0 while writing nothing at all (empty stdout + empty log,
-no 429 envelope) — e.g. `agy` on a silent auth/session failure. rival previously
+no 429 envelope), such as on a silent auth/session failure. rival previously
 marked that session `completed` and fed the empty result to the consilium, so the
 TUI detail view showed only a blank `(empty log)` block ("no results"). An
 empty-output reviewer is now marked **failed** with the reason
@@ -318,8 +338,8 @@ injectable executor plus a pure, unit-tested `assemblePlanResults`.
 
 ### Changed — TUI/web group labels derived from sessions
 
-Grouped rows/detail panels previously hardcoded `Megareview` / `codex+antigravity` /
-`megareview` for **any** multi-session group. They now derive the kind, engines, and mode
+Grouped rows/detail panels previously hardcoded one fixed set of megareview
+labels for **any** multi-session group. They now derive the kind, engines, and mode
 from the sessions, so a dual plan group renders as `Plan Review` / `codex+claude-fable` /
 mode `plan`. Megareview output is unchanged. The web API group object gains a `kind` field.
 
@@ -412,8 +432,7 @@ the skills' background watcher and available to any script/CI:
   timed out. Default `--timeout` 75m.
 
 ### Changed — skills are now async (launch + background watch, never block)
-All active skills (`rival-review`, `rival-codex-only`, `rival-antigravity-only`,
-`rival-fable-only`, `rival-plan`) rewritten to **not block the session**. They
+All active skills were rewritten to **not block the session**. They
 drop `context: fork`, launch rival `--detach` (foreground, returns in seconds),
 arm a **background `rival wait --log …` watcher** (`run_in_background: true`),
 then hand control back immediately and end the turn. When the watcher exits, the
@@ -471,7 +490,8 @@ A queued-then-run sequence can exceed the 600s foreground Bash cap. All skills n
 - Claude bumped to `opus-4-8`; CI is now the sole release publisher.
 
 ## [v3.11.0] — 2026-06-09
-- Web dashboard server, `/rival-plan`, provider quota/429 detection; megareview is now Codex + Antigravity (Gemini dropped from the default review).
+- Web dashboard server, `/rival-plan`, provider quota/429 detection, and a
+  revised default megareview roster.
 
 ## [v3.10.0] — 2026-03-21
 - Rival skills became directly Skill-tool invocable (the old Agent-tool/binary workaround is no longer needed).

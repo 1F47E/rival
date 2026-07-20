@@ -2,7 +2,7 @@ package review
 
 // ReviewerOutput is the structured JSON every reviewer must emit.
 type ReviewerOutput struct {
-	Summary  string           `json:"summary"`
+	Summary  string            `json:"summary"`
 	Findings []ReviewerFinding `json:"findings"`
 }
 

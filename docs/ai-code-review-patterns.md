@@ -90,32 +90,41 @@ When multiple agents work in parallel (worktrees, branches), these bugs appear o
 
 ---
 
-## Applying to Multi-Agent Review Systems (like rival)
+## Current Rival implementation
 
-### Role prompt enhancements
+### Role prompt checklists
 
-Inject the 6 bug patterns as explicit checklist items into reviewer role prompts:
+Rival's role templates include the six bug patterns as explicit checklist
+items. The current curated code-review roster assigns the bug-hunter role to
+its reviewers; the other templates remain implemented but are not assigned by
+the default roster.
 
-**Bug Hunter role** — add:
+**Bug Hunter role** checks:
+
 - Check for hallucinated imports (packages not in dependency tree)
 - Verify error handling on every external call (DB, API, filesystem)
 - Look for N+1 patterns (queries/API calls inside loops)
 - Verify test assertions check specific values, not just truthiness
 
-**Architecture & Security role** — add:
+**Architecture & Security role** checks:
+
 - Search for security anti-patterns (string interpolation in queries, innerHTML, hardcoded secrets)
 - Flag missing auth middleware on new routes
 - Flag over-abstraction (new abstraction layers not requested by spec)
 - Check for unbounded queries without pagination
 
-**Code Quality role** — add:
+**Code Quality role** checks:
+
 - Flag commented-out code with TODO/FIXME (half-finished work)
 - Count new files vs scope — flag if disproportionate
 - Check for unnecessary abstraction layers (factory/interface/helper that can be inlined)
 
 ### Diff context in review preamble
 
-Add `git diff --stat` output to the review preamble alongside the file list. Gives reviewers scope awareness:
+When Rival auto-detects a Git review scope, it includes `git diff --stat`
+output in the review preamble alongside the file list. This gives reviewers
+scope awareness:
+
 ```
 Changed files (3 files, +45 -12):
   src/api/handler.go    | 30 ++++++--
@@ -123,9 +132,11 @@ Changed files (3 files, +45 -12):
   internal/auth/middleware.go | 2 +-
 ```
 
-### Consilium judge enhancements
+### Possible future extension: retry guidance
 
-Add a `retry_guidance` field to the consilium output:
+Rival's current recommendation contains `status` and `summary`. A future schema
+could add a `retry_guidance` field:
+
 ```json
 {
   "recommendation": {
@@ -136,7 +147,8 @@ Add a `retry_guidance` field to the consilium output:
 }
 ```
 
-This tells the user (or automation) whether to fix inline, re-prompt the agent, or start over.
+That extension could tell the user or automation whether to fix inline,
+re-prompt an agent, or start over. It is not part of the v3.23 output contract.
 
 ---
 

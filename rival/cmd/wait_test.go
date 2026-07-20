@@ -31,7 +31,7 @@ func TestParseLogFile(t *testing.T) {
 			name: "megareview multi-id deduped",
 			content: "rival: detached pid=99\n" +
 				`{"session":"` + id1 + `","cli":"codex","role":"bug_hunter","message":"starting reviewer"}` + "\n" +
-				`{"session":"` + id2 + `","cli":"antigravity","role":"bug_hunter","message":"starting reviewer"}` + "\n" +
+				`{"session":"` + id2 + `","cli":"opencode","role":"bug_hunter","message":"starting reviewer"}` + "\n" +
 				`{"session":"` + id1 + `","cli":"codex","message":"starting reviewer"}` + "\n", // dup
 			wantPID: 99,
 			wantIDs: []string{id1, id2},

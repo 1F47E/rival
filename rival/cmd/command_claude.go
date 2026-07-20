@@ -24,7 +24,8 @@ const opusUsage = `Usage:
   rival run opus --review src/api/ --effort high
   rival command opus --help — show native command options
 
-Reasoning effort (--effort): low, medium, high, xhigh (default)`
+Reasoning effort (--effort): low, medium, high, xhigh.
+Omitted uses efforts.opus from ~/.rival/config.yaml (built-in: xhigh).`
 
 var commandOpusCmd = &cobra.Command{
 	Use:   config.OpusLabel,
@@ -82,6 +83,10 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	if parsed.IsReview && parsed.AutoScope {
 		resolveGitScope(parsed, workdir)
 	}
+	effort, err := config.ResolveEffort(config.ClaudeModel, parsed.Effort, config.DefaultEffort)
+	if err != nil {
+		return err
+	}
 
 	if err := executor.ClaudePreflight(); err != nil {
 		return err
@@ -92,7 +97,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		mode = "review"
 	}
 
-	sess, err := session.NewQueued("claude", mode, config.ClaudeModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	sess, err := session.NewQueued("claude", mode, config.ClaudeModel, effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err == nil {
 		sess.Account = config.ClaudeSubscription()
 	}
@@ -106,7 +111,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting opus (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Str("mode", mode).Msg("starting opus (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -124,7 +129,7 @@ func commandClaudeAction(cmd *cobra.Command, args []string) error {
 	defer cancelRun()
 
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunClaude(runCtx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunClaude(runCtx, sess, parsed.Prompt, effort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")

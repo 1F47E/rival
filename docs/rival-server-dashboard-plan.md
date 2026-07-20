@@ -26,23 +26,23 @@ The previous dashboard did not degrade gracefully as session history grew:
 
 ## Implemented
 
-1. Introduce a metadata cache for the web server. Refresh only session JSON files
-   whose size or modification time changed, and avoid retaining full prompts in
-   the list cache. Large legacy session files are summarized from bounded file
-   edges so their embedded prompts are never loaded into memory.
-2. Return a dedicated public summary DTO from the list API. Default to the 100
-   newest grouped runs, support a bounded `limit`, and include pagination
-   metadata while keeping aggregate status counts over all sessions.
-3. Add a bounded prompt-detail endpoint and change log delivery to a UTF-8-safe
-   256 KiB tail with an explicit truncation header. Keep runtime/model
-   normalization on returned log text.
-4. Replace the Tailwind CDN page with self-contained HTML, CSS, and JavaScript.
-   Use the canonical logo, a responsive session table, clear loading/error/empty
-   states, and accessible keyboard-selectable rows.
-5. Put details in a fixed side drawer so they open immediately in the viewport.
-   Load member logs in parallel, cancel stale requests when selection changes,
-   show member-specific failures, and refresh live logs without rebuilding the
-   drawer.
+1. Introduced a metadata cache for the web server. It refreshes only session
+   JSON files whose size or modification time changed and does not retain full
+   prompts in the list cache. Large legacy session files are summarized from
+   bounded file edges, so their embedded prompts are never loaded into memory.
+2. Returned a dedicated public summary DTO from the list API. The endpoint
+   defaults to the 100 newest grouped runs, supports a bounded `limit`, includes
+   pagination metadata, and keeps aggregate status counts over all sessions.
+3. Added a bounded prompt-detail endpoint and changed log delivery to a
+   UTF-8-safe 256 KiB tail with an explicit truncation header. Returned log text
+   keeps runtime/model normalization.
+4. Replaced the Tailwind CDN page with self-contained HTML, CSS, and JavaScript.
+   The page uses the canonical logo, a responsive session table, clear
+   loading/error/empty states, and accessible keyboard-selectable rows.
+5. Moved details into a fixed side drawer so they open immediately in the
+   viewport. Member logs load in parallel, stale requests are canceled when the
+   selection changes, member-specific failures are shown, and live logs refresh
+   without rebuilding the drawer.
 6. Added direct run lookup so session links still work after a run moves beyond
    the newest page, plus explicit feedback for invalid or deleted runs.
 7. Added server tests for summary loading, pagination and payload privacy,

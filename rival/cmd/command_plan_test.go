@@ -121,7 +121,7 @@ func TestParsePlanModels(t *testing.T) {
 		{"comma separated", []string{"sol,fable"}, []string{"codex", "fable"}, false},
 		{"dedup preserves order", []string{"fable", "sol", "gpt-5.6-sol"}, []string{"fable", "codex"}, false},
 		{"trims and lowercases", []string{" GPT-5.6-SOL ", "FABLE"}, []string{"codex", "fable"}, false},
-		{"unknown model", []string{"gemini"}, nil, true},
+		{"unknown model", []string{"unsupported"}, nil, true},
 		{"empty model", []string{"sol,"}, nil, true},
 		{"no models", nil, nil, true},
 	}
@@ -144,18 +144,6 @@ func TestParsePlanModels(t *testing.T) {
 	}
 }
 
-func TestDefaultPlanEffort(t *testing.T) {
-	if got := defaultPlanEffort([]string{"codex"}); got != "high" {
-		t.Fatalf("sol plan default = %q, want high", got)
-	}
-	if got := defaultPlanEffort([]string{"codex", "fable"}); got != "high" {
-		t.Fatalf("multi-model plan default = %q, want high", got)
-	}
-	if got := defaultPlanEffort([]string{"fable"}); got != "low" {
-		t.Fatalf("fable plan default = %q, want low", got)
-	}
-}
-
 func TestMergePlanEffort(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -165,8 +153,9 @@ func TestMergePlanEffort(t *testing.T) {
 		want        string
 		wantErr     bool
 	}{
+		{"omitted", "", false, "", "", false},
 		{"flag only", "ultra", true, "", "ultra", false},
-		{"input only", "high", false, "ultra", "ultra", false},
+		{"input only", "", false, "ultra", "ultra", false},
 		{"matching duplicate", "ultra", true, "ultra", "ultra", false},
 		{"conflicting duplicate", "ultra", true, "high", "", true},
 	}
@@ -247,7 +236,7 @@ func TestParsePlanCLIs(t *testing.T) {
 		{"dedup + order", []string{"fable", "codex", "fable"}, []string{"fable", "codex"}, false},
 		{"trims + lowercases", []string{" Codex ", "FABLE"}, []string{"codex", "fable"}, false},
 		{"drops empties", []string{"codex", ""}, []string{"codex"}, false},
-		{"unknown value errors", []string{"codex", "gemini"}, nil, true},
+		{"unknown value errors", []string{"codex", "unsupported"}, nil, true},
 		{"all empty errors", []string{"", "  "}, nil, true},
 	}
 	for _, tc := range cases {

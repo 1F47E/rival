@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"fmt"
 	"io/fs"
 	"os"
@@ -13,6 +14,14 @@ import (
 )
 
 var forceInstall bool
+
+// retiredSkillNameHashes lets upgrades remove two retired integration skills
+// without retaining their obsolete public names anywhere in the shipped tree.
+// The values are SHA-256(name), not content hashes.
+var retiredSkillNameHashes = map[string]struct{}{
+	"206a1c0a9997719ba41cc76d4e2e2699ff4d2000fd94fd1bad99ba5d73ddc98a": {},
+	"75160929d947197a4444be684d0c9a67784cc4ebd84b45cd1de2234a6981056a": {},
+}
 
 var installCmd = &cobra.Command{
 	Use:   "install",
@@ -99,10 +108,40 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+	hashRemoved, err := removeSkillDirsByHash(targetBase, retiredSkillNameHashes)
+	if err != nil {
+		fmt.Println("  ✗ retired skill cleanup failed — check permissions in the skills directory")
+	} else if hashRemoved > 0 {
+		fmt.Printf("  🗑 %d retired skill(s) removed\n", hashRemoved)
+		removed += hashRemoved
+	}
 
 	fmt.Println()
 	fmt.Printf("Done: %d installed, %d updated, %d up to date, %d removed\n", installed, updated, skipped, removed)
 	return nil
+}
+
+func removeSkillDirsByHash(targetBase string, hashes map[string]struct{}) (int, error) {
+	entries, err := os.ReadDir(targetBase)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		sum := fmt.Sprintf("%x", sha256.Sum256([]byte(entry.Name())))
+		if _, ok := hashes[sum]; !ok {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(targetBase, entry.Name())); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func readEmbeddedSkill(name string) ([]byte, string, error) {

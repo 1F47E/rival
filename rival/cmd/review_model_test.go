@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/1F47E/rival/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -27,21 +26,18 @@ func TestReviewCommandsExposeModelFlag(t *testing.T) {
 	}
 }
 
-func TestReviewCommandDefaultsToHighEffort(t *testing.T) {
+func TestReviewCommandDefersToConfiguredModelEfforts(t *testing.T) {
 	flag := reviewCmd.Flags().Lookup("effort")
 	if flag == nil {
 		t.Fatal("review command has no --effort flag")
 	}
-	if flag.DefValue != config.DefaultReviewEffort {
-		t.Fatalf("review effort default = %q, want %q", flag.DefValue, config.DefaultReviewEffort)
-	}
-	if flag.DefValue != "high" {
-		t.Fatalf("review effort default = %v, want high", flag)
+	if flag.DefValue != "" {
+		t.Fatalf("review effort default = %q, want configured-model sentinel", flag.DefValue)
 	}
 }
 
-func TestMegareviewUsageNamesModelsAndUltra(t *testing.T) {
-	for _, want := range []string{"Sol", "DeepSeek V4 Pro", "Kimi K2.7 Code", "GLM-5.2", "high (default)", "ultra"} {
+func TestMegareviewUsageNamesModelsAndEffortConfig(t *testing.T) {
+	for _, want := range []string{"Sol", "DeepSeek V4 Pro", "Kimi K3", "model defaults", "ultra"} {
 		if !strings.Contains(megareviewUsage, want) {
 			t.Errorf("megareview usage missing %q", want)
 		}
@@ -69,14 +65,14 @@ func TestModelSelectionFlag_RejectsExplicitEmpty(t *testing.T) {
 func TestModelSelectionFlag_ParsesCommaList(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().StringSliceP("model", "m", nil, "models")
-	if err := cmd.ParseFlags([]string{"-m", "deepseek,kimi"}); err != nil {
+	if err := cmd.ParseFlags([]string{"-m", "deepseek,k3"}); err != nil {
 		t.Fatal(err)
 	}
 	models, changed, err := modelSelectionFlag(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !changed || len(models) != 2 || models[0] != "deepseek" || models[1] != "kimi" {
+	if !changed || len(models) != 2 || models[0] != "deepseek" || models[1] != "k3" {
 		t.Fatalf("unexpected selection: changed=%v models=%v", changed, models)
 	}
 }

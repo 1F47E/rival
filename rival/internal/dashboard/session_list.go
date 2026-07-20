@@ -77,12 +77,10 @@ func formatItemRow(item *displayItem, width int) string {
 
 // CLI icons — Unicode symbols for visual distinction.
 const (
-	iconSol         = "◈" // Sol
-	iconGemini      = "✦" // Google / Gemini
-	iconOpusFable   = "⬡" // Opus / Fable
-	iconAntigravity = "△" // Google / Antigravity
-	iconOpencode    = "❯" // OpenCode model
-	iconPlan        = "▤" // Plan/spec review
+	iconSol       = "◈" // Sol
+	iconOpusFable = "⬡" // Opus / Fable
+	iconOpencode  = "❯" // OpenCode model
+	iconPlan      = "▤" // Plan/spec review
 )
 
 // cliLabel returns a display label with icon for a CLI name.
@@ -93,16 +91,12 @@ func cliLabel(cli, model, mode string) string {
 	switch cli {
 	case "codex":
 		return iconSol + " " + config.EngineLabel(cli, model)
-	case "gemini":
-		return iconGemini + " " + config.EngineLabel(cli, model)
 	case "claude", "fable":
 		// The second value is retained for sessions written by older releases.
 		if mode == "docker" {
 			return iconOpusFable + " " + config.EngineLabel(cli, model) + "/dk"
 		}
 		return iconOpusFable + " " + config.EngineLabel(cli, model)
-	case "antigravity":
-		return iconAntigravity + " " + config.EngineLabel(cli, model)
 	case "opencode", "kimi":
 		// "kimi" is read-compat for sessions written by the short-lived
 		// kimi-cli transport (removed; K3 now runs through opencode).
@@ -137,11 +131,24 @@ func formatGroupRow(item *displayItem, width int) string {
 		coloredStatus,
 		cols.cli, groupIcon(item),
 		cols.model, truncate(groupModels(item), cols.model),
-		cols.effort, s.Effort,
+		cols.effort, groupEffort(item),
 		cols.elapsed, elapsed,
 		cols.workdir, wd,
 		prompt,
 	)
+}
+
+func groupEffort(item *displayItem) string {
+	if len(item.Sessions) == 0 {
+		return ""
+	}
+	effort := item.Sessions[0].Effort
+	for _, s := range item.Sessions[1:] {
+		if s.Effort != effort {
+			return "mixed"
+		}
+	}
+	return effort
 }
 
 // groupIsPlan reports whether a group is a plan review (any session mode "plan").
@@ -199,7 +206,7 @@ func groupCLIs(item *displayItem) string {
 	return strings.Join(clis, "+")
 }
 
-// groupModels returns a combined model string like "gpt-5.5 + gemini-3.1-pro".
+// groupModels returns the distinct public model names in display order.
 func groupModels(item *displayItem) string {
 	var models []string
 	seen := map[string]bool{}

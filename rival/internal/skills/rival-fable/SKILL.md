@@ -1,7 +1,7 @@
 ---
 name: rival-fable
-version: 3.22.0
-description: Code review via Fable through the rival binary — reviews changed files (or a given scope) at medium effort by default. Detached + watched in the background. Use only when the user explicitly invokes /rival-fable.
+version: 3.23.0
+description: Code review via Fable through the rival binary — reviews changed files (or a given scope) at its configured effort. Detached + watched in the background. Use only when the user explicitly invokes /rival-fable.
 argument-hint: "[scope | -re level [scope]]"
 allowed-tools: Bash, Read, Write
 ---
@@ -9,9 +9,9 @@ allowed-tools: Bash, Read, Write
 # Fable reviewer (rival binary)
 
 Ruthless code review with Fable via the `rival` Go binary. Reviews the changed
-files (git auto-detected) or an explicit scope, and **defaults to medium
-reasoning effort** (a balance of depth vs cost/speed). The run is detached and
-watched in the background — this skill does not block your session.
+files (git auto-detected) or an explicit scope. Omitted effort uses the `fable`
+default in `~/.rival/config.yaml`, with a built-in medium fallback. The run is
+detached and watched in the background — this skill does not block your session.
 
 For a Fable review of a plan/spec *document* (rated 1-10) use `/rival-plan-fable`.
 
@@ -21,13 +21,17 @@ For a Fable review of a plan/spec *document* (rated 1-10) use `/rival-plan-fable
 
 ### Build the review input
 
-This skill always runs a **code review** at **medium effort by default**. Construct the input line that gets piped to `rival command fable`:
+This skill always runs a **code review**. Construct the input line that gets
+piped to `rival command fable`:
 
-- No arguments → `-re medium review` (reviews git-detected changed files).
-- A scope (e.g. `src/api/`, or natural language like `the auth middleware`) → `-re medium review <scope>`.
-- The user explicitly asked for a different effort (e.g. "review at high", `-re high`) → use that effort instead of medium: `-re <effort> review <scope-if-any>`. A user-supplied effort always wins over the medium default.
+- No arguments → `review` (reviews git-detected changed files).
+- A scope (e.g. `src/api/`, or natural language like `the auth middleware`) →
+  `review <scope>`.
+- The user explicitly asked for an effort (e.g. "review at high", `-re high`) →
+  `-re <effort> review <scope-if-any>`. A user-supplied effort always wins.
 
-Call the constructed line **REVIEW_INPUT** below. Reasoning effort (`-re`): `low`, `medium` (default here), `high`, `xhigh`.
+Call the constructed line **REVIEW_INPUT** below. Reasoning effort (`-re`):
+`low`, `medium`, `high`, `xhigh`; omitted uses the configured model default.
 
 ### Execute — launch detached, then watch in the background
 
@@ -49,7 +53,12 @@ RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | hea
 [ -n "$RIVAL_PID" ] && echo "rival_pid=$RIVAL_PID" || { echo "DETACH FAILED:"; tail -n 5 "$RIVAL_ERR"; exit 1; }
 ```
 
-**Replace `REVIEW_INPUT` with the constructed line** (e.g. `-re medium review` or `-re medium review src/api/`). **Create `RIVAL_IN` with the Write tool FIRST**: write `REVIEW_INPUT` verbatim to a new file `/tmp/rival_in_<8 fresh random hex chars>.txt`, then put that literal path in the `RIVAL_IN=` line. Never create this file with echo/printf/heredoc — the Write tool bypasses the shell entirely, so no character of the content can be shell-interpreted.
+**Replace `REVIEW_INPUT` with the constructed line** (e.g. `review` or
+`review src/api/`). **Create `RIVAL_IN` with the Write tool FIRST**: write
+`REVIEW_INPUT` verbatim to a new file `/tmp/rival_in_<8 fresh random hex
+chars>.txt`, then put that literal path in the `RIVAL_IN=` line. Never create
+this file with echo/printf/heredoc — the Write tool bypasses the shell entirely,
+so no character of the content can be shell-interpreted.
 **Capture the printed `rival_out` / `rival_err` paths.** They are the literal values to use everywhere below.
 
 **Step 2 — arm the background watcher (`run_in_background: true`):**

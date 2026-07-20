@@ -19,10 +19,10 @@ type ParseResult struct {
 }
 
 // ParseGPT56SolArgs parses raw arguments for the gpt-5.6-sol command.
-// Grammar: [-re level] [review [scope] | prompt]. It defaults to high and
-// accepts ultra as the deepest public effort level.
+// Grammar: [-re level] [review [scope] | prompt]. An omitted effort stays
+// empty so the command can apply the configured Sol default.
 func ParseGPT56SolArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, config.DefaultReviewEffort, config.IsValidReviewEffort, config.ReviewEfforts)
+	return parseArgsWithEffort(raw, "", config.IsValidReviewEffort, config.ReviewEfforts)
 }
 
 // ParseCodexArgs is retained for internal compatibility with older callers.
@@ -30,26 +30,15 @@ func ParseCodexArgs(raw string) (*ParseResult, error) {
 	return ParseGPT56SolArgs(raw)
 }
 
-// ParseGeminiArgs parses raw arguments for the gemini command.
-// It uses the common standalone-command grammar (no -m flag in v1).
-func ParseGeminiArgs(raw string) (*ParseResult, error) {
-	return parseArgs(raw)
-}
-
 // ParseClaudeArgs parses raw arguments for the claude command.
 func ParseClaudeArgs(raw string) (*ParseResult, error) {
-	return parseArgs(raw)
-}
-
-// ParseAntigravityArgs parses raw arguments for the antigravity command.
-func ParseAntigravityArgs(raw string) (*ParseResult, error) {
-	return parseArgs(raw)
+	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
 // ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
 // Identical grammar to claude.
 func ParseFableArgs(raw string) (*ParseResult, error) {
-	return parseArgs(raw)
+	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
 // kimiEffortNames is the accepted -re ladder for the kimi command. Every value
@@ -62,7 +51,7 @@ var kimiEffortNames = []string{"low", "medium", "high", "xhigh", "ultra", "max"}
 // accepted for grammar consistency, but the executor always runs Kimi K3 at
 // max reasoning — the model supports no other level.
 func ParseKimiArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, "max", func(e string) bool {
+	return parseArgsWithEffort(raw, "", func(e string) bool {
 		for _, v := range kimiEffortNames {
 			if v == e {
 				return true
@@ -70,10 +59,6 @@ func ParseKimiArgs(raw string) (*ParseResult, error) {
 		}
 		return false
 	}, kimiEffortNames)
-}
-
-func parseArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, config.DefaultEffort, config.IsValidEffort, config.ValidEfforts)
 }
 
 func parseArgsWithEffort(raw, defaultEffort string, validEffort func(string) bool, effortNames []string) (*ParseResult, error) {

@@ -968,10 +968,9 @@
 
 <script>
 const CLI_ICONS = {
-  sol: '◈', opus: '⬡', fable: '⬡', gemini: '✦', antigravity: '△', opencode: '❯',
+  sol: '◈', opus: '⬡', fable: '⬡', opencode: '❯',
   kimi: '☾', 'kimi-k3': '☾',
-  'deepseek-v4-pro': '❯', 'kimi-k2.7-code': '❯', 'glm-5.2': '❯',
-  'gemini-3.1-pro-preview': '✦', 'gemini-3.5-flash': '✦',
+  'deepseek-v4-pro': '❯',
 };
 const PLAN_ICON = '▤';
 const PAGE_SIZE = 100;
@@ -1112,7 +1111,7 @@ function buildRow(g) {
   row.appendChild(reviewerCell);
 
   row.appendChild(createCell('', truncate(g.models, 36), g.models));
-  row.appendChild(createCell('effort', primary.effort || g.effort));
+  row.appendChild(createCell('effort', g.effort || primary.effort));
 
   const timeCell = createCell('time', elapsed(g));
   timeCell.dataset.elapsedGroup = id;
@@ -1288,7 +1287,7 @@ function renderDetailMeta(group) {
   addMeta(meta, 'Status', group.status, { status: true });
   addMeta(meta, group.is_group ? 'Reviewers' : 'Reviewer', group.cli);
   addMeta(meta, 'Model', group.models);
-  addMeta(meta, 'Effort', primary.effort || group.effort);
+  addMeta(meta, 'Effort', group.effort || primary.effort);
   addMeta(meta, 'Started', formatDate(primary.start_time));
   addMeta(meta, 'Duration', elapsed(group));
   addMeta(meta, 'Workdir', primary.work_dir || group.work_dir, { wrap: true });
@@ -1354,6 +1353,7 @@ function renderLogCards(group) {
       ? 'queued #' + s.queue_position
       : (s.status || 'unknown');
     const facts = [];
+    if (group.is_group && s.effort) facts.push('effort ' + s.effort);
     if (s.duration) facts.push(s.duration);
     if (s.exit_code !== undefined && s.exit_code !== null) facts.push('exit ' + s.exit_code);
     if (s.output_lines) facts.push(s.output_lines + ' lines');

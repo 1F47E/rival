@@ -37,7 +37,7 @@ func init() {
 }
 
 func configureRunOpusFlags(cmd *cobra.Command) {
-	cmd.Flags().String("effort", config.DefaultEffort, "reasoning effort (low, medium, high, xhigh)")
+	cmd.Flags().String("effort", "", "reasoning effort override (low, medium, high, xhigh)")
 	cmd.Flags().String("workdir", ".", "working directory")
 	cmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
 	cmd.Flags().String("review", "", "review scope (enables review mode)")
@@ -51,8 +51,12 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	reviewScope, _ := cmd.Flags().GetString("review")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
-	if !config.IsValidEffort(effort) {
+	if effort != "" && !config.IsValidEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
+	}
+	effort, err := config.ResolveEffort(config.ClaudeModel, effort, config.DefaultEffort)
+	if err != nil {
+		return err
 	}
 
 	if err := executor.ClaudePreflight(); err != nil {

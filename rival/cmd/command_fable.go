@@ -17,14 +17,16 @@ import (
 )
 
 const fableUsage = `Usage:
-  /rival-fable 'explain the auth flow' — run any prompt with Fable (max effort)
+  /rival-fable 'explain the auth flow' — run any prompt with Fable
   /rival-fable -re medium 'find bugs in src/main.go' — run with a lower reasoning effort
   /rival-fable review — ruthless code review of the entire project
   /rival-fable review src/api/ — review specific scope
   /rival-fable -re medium review src/api/ — review with medium reasoning
   /rival-fable — show this usage info
 
-Reasoning effort (-re): low, medium, high, xhigh — default maps to max.`
+Reasoning effort (-re): low, medium, high, xhigh.
+Omitted uses efforts.fable from ~/.rival/config.yaml (review fallback: medium;
+raw-prompt fallback: xhigh).`
 
 var commandFableCmd = &cobra.Command{
 	Use:   "fable",
@@ -69,6 +71,14 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 	if parsed.IsReview && parsed.AutoScope {
 		resolveGitScope(parsed, workdir)
 	}
+	fallbackEffort := config.DefaultEffort
+	if parsed.IsReview {
+		fallbackEffort = "medium"
+	}
+	effort, err := config.ResolveEffort(config.FableModel, parsed.Effort, fallbackEffort)
+	if err != nil {
+		return err
+	}
 
 	// Fable runs through the claude binary (native or docker) and the same auth.
 	if err := executor.ClaudePreflight(); err != nil {
@@ -82,7 +92,7 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 
 	// CLI is "claude" — fable is a model inside the Claude Code CLI, not a
 	// separate CLI; the model field (claude-fable-5) is what distinguishes it.
-	sess, err := session.NewQueued("claude", mode, config.FableModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	sess, err := session.NewQueued("claude", mode, config.FableModel, effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err == nil {
 		sess.Account = config.ClaudeSubscription()
 	}
@@ -96,7 +106,7 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting fable (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Str("mode", mode).Msg("starting fable (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -114,7 +124,7 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 	defer cancelRun()
 
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunFable(runCtx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunFable(runCtx, sess, parsed.Prompt, effort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")

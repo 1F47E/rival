@@ -24,7 +24,8 @@ const solUsage = `Usage:
   /rival-sol -re ultra review src/api/ — review with ultra reasoning
   /rival-sol — show this usage info
 
-Reasoning effort (-re): low, medium, high (default), ultra`
+Reasoning effort (-re): low, medium, high, ultra.
+Omitted uses efforts.sol from ~/.rival/config.yaml (built-in: high).`
 
 var commandSolCmd = &cobra.Command{
 	Use:   config.SolLabel,
@@ -92,6 +93,10 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	if parsed.IsReview && parsed.AutoScope {
 		resolveGitScope(parsed, workdir)
 	}
+	effort, err := config.ResolveEffort(config.CodexModel, parsed.Effort, config.DefaultReviewEffort)
+	if err != nil {
+		return err
+	}
 
 	if err := executor.CodexPreflight(); err != nil {
 		return err
@@ -102,7 +107,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 		mode = "review"
 	}
 
-	sess, err := session.NewQueued("codex", mode, config.CodexModel, parsed.Effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
+	sess, err := session.NewQueued("codex", mode, config.CodexModel, effort, workdir, parsed.Prompt, parsed.ReviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
@@ -113,7 +118,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", parsed.Effort).Str("mode", mode).Msg("starting sol (command mode)")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Str("mode", mode).Msg("starting sol (command mode)")
 
 	// Cancel the queue wait / child process on SIGINT/SIGTERM so the deferred Fail runs.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -131,7 +136,7 @@ func commandGPT56SolAction(cmd *cobra.Command, args []string) error {
 	defer cancelRun()
 
 	// No stdout mirror in command mode — skill reads final output.
-	result, err := executor.RunCodex(runCtx, sess, parsed.Prompt, parsed.Effort, workdir, nil)
+	result, err := executor.RunCodex(runCtx, sess, parsed.Prompt, effort, workdir, nil)
 	if err != nil {
 		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")

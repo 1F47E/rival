@@ -2,6 +2,8 @@ package session
 
 import (
 	"testing"
+
+	"github.com/1F47E/rival/internal/config"
 )
 
 // deadPID is above the darwin PID ceiling (~99998) and far beyond typical linux
@@ -31,7 +33,7 @@ func reloadByID(t *testing.T, id string) *Session {
 func TestReapOrphansSparesDeadProviderWithLiveOwner(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", "moonshot/kimi-k3", "max", t.TempDir(), "prompt", "", "")
+	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func TestReapOrphansSparesDeadProviderWithLiveOwner(t *testing.T) {
 func TestReapOrphansReapsWhenOwnerAndProviderDead(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", "moonshot/kimi-k3", "max", t.TempDir(), "prompt", "", "")
+	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestReapOrphansReapsWhenOwnerAndProviderDead(t *testing.T) {
 func TestReapOrphansReapsLegacySessionWithoutOwner(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", "moonshot/kimi-k3", "max", t.TempDir(), "prompt", "", "")
+	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

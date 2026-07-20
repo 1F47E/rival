@@ -264,14 +264,12 @@ func groupModelRank(s *Session) int {
 		return 0
 	case "deepseek-v4-pro":
 		return 1
-	case "kimi-k2.7-code":
+	case "kimi-k3":
 		return 2
-	case "glm-5.2":
-		return 3
 	case config.FableLabel:
-		return 4
+		return 3
 	case config.OpusLabel:
-		return 5
+		return 4
 	default:
 		return 100
 	}

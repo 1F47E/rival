@@ -1,6 +1,6 @@
 ---
 name: rival-sol
-version: 3.22.0
+version: 3.23.0
 description: Run Sol through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-sol.
 argument-hint: "[-re low|medium|high|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write
@@ -26,7 +26,8 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 > - `/rival-sol review src/api/` — review specific scope (bypasses git detection)
 > - `/rival-sol -re ultra review src/api/` — review with ultra reasoning
 >
-> **Reasoning effort** (`-re`): `low`, `medium`, `high` (default), `ultra`
+> **Reasoning effort** (`-re`): `low`, `medium`, `high`, `ultra`. Omitted uses
+> the `sol` default in `~/.rival/config.yaml` (built-in fallback: `high`).
 
 ### Execute — launch detached, then watch in the background
 

@@ -33,7 +33,7 @@ archives:
 brews:
   - name: rival
     homepage: https://github.com/1F47E/rival
-    description: "Dispatch prompts to Sol, Gemini, Opus, and Fable with session tracking and TUI/web dashboard"
+    description: "Dispatch prompts to AI coding agents with session tracking and TUI/web dashboards"
     license: MIT
     # directory omitted → formula written to the repo root (rival.rb)
     repository:

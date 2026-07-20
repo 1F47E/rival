@@ -1,6 +1,6 @@
 ---
 name: rival-plan-fable
-version: 3.22.0
+version: 3.23.0
 description: Review a plan/spec markdown document with Fable only via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-fable.
 argument-hint: "[-re low|high|ultra] <path-to-plan.md>"
 allowed-tools: Bash, Read, Write
@@ -9,9 +9,10 @@ allowed-tools: Bash, Read, Write
 # Plan reviewer — Fable
 
 Review a single plan/spec markdown file with Fable. It rates the plan
-1-10 and returns numbered findings (crit/high/med/low). Reasoning effort defaults
-to **low**; the user can request **high** or **ultra**. The run is detached
-and watched in the background — this skill does not block your session.
+1-10 and returns numbered findings (crit/high/med/low). Omitted effort uses the
+configured `fable` default, with a built-in **low** fallback for this plan
+surface; the user can request **high** or **ultra**. The run is detached and
+watched in the background — this skill does not block your session.
 
 For a Sol review instead, use `/rival-plan-sol`.
 
@@ -24,13 +25,14 @@ For a Sol review instead, use `/rival-plan-sol`.
 If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-plan-fable path/to/plan.md` — review a plan/spec with Fable at low effort
+> - `/rival-plan-fable path/to/plan.md` — review with the configured Fable effort (low fallback)
 > - `/rival-plan-fable -re high path/to/plan.md` — use high effort
 > - `/rival-plan-fable -re ultra path/to/plan.md` — use ultra effort
 > - `/rival-plan-fable` — show this usage info
 >
-> Input is a single path to a markdown plan/spec file. Reasoning effort defaults
-> to `low`; supported skill values are `low`, `high`, and `ultra`.
+> Input is a single path to a markdown plan/spec file. Omitted effort reads
+> `efforts.fable` from `~/.rival/config.yaml` and otherwise falls back to `low`;
+> supported explicit skill values are `low`, `high`, and `ultra`.
 
 ### Execute — launch detached, then watch in the background
 

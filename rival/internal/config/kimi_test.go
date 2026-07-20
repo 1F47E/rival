@@ -7,9 +7,10 @@ import (
 )
 
 func TestKimiAPIKeyFromPrefersEnv(t *testing.T) {
-	t.Setenv("KIMI_API", "env-key")
+	t.Setenv("MOONSHOT_API_KEY", "env-key")
+	t.Setenv("KIMI_API", "legacy-key")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KIMI_API=file-key\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("MOONSHOT_API_KEY=file-key\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if got := KimiAPIKeyFrom(dir); got != "env-key" {
@@ -20,9 +21,10 @@ func TestKimiAPIKeyFromPrefersEnv(t *testing.T) {
 // rival is routinely invoked from a subdirectory of the project holding the
 // key; the workdir .env fallback keeps preflight working there.
 func TestKimiAPIKeyFromFallsBackToWorkdirEnvFile(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "")
 	t.Setenv("KIMI_API", "")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KIMI_API=file-key\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("MOONSHOT_API_KEY=file-key\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if got := KimiAPIKeyFrom(dir); got != "file-key" {
@@ -30,6 +32,14 @@ func TestKimiAPIKeyFromFallsBackToWorkdirEnvFile(t *testing.T) {
 	}
 	if got := KimiAPIKeyFrom(t.TempDir()); got != "" {
 		t.Errorf("KimiAPIKeyFrom(no .env) = %q, want empty", got)
+	}
+}
+
+func TestKimiAPIKeyFromSupportsLegacyEnvAlias(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "")
+	t.Setenv("KIMI_API", "legacy-key")
+	if got := KimiAPIKeyFrom(t.TempDir()); got != "legacy-key" {
+		t.Errorf("KimiAPIKeyFrom legacy alias = %q, want legacy-key", got)
 	}
 }
 
@@ -44,8 +54,7 @@ func TestOpencodeVariantKimiK3PinsMax(t *testing.T) {
 	}
 }
 
-// k3/kimi-k3 select Kimi K3 via the Moonshot provider; the historical "kimi"
-// alias stays on the curated kimi-k2.7-code and must not change meaning.
+// k3/kimi-k3 select Kimi K3 via the Moonshot provider.
 func TestResolveReviewTargetsK3Selector(t *testing.T) {
 	for _, alias := range []string{"k3", "kimi-k3"} {
 		got, err := ResolveReviewTargets([]string{alias})
@@ -56,21 +65,18 @@ func TestResolveReviewTargetsK3Selector(t *testing.T) {
 			t.Errorf("%s resolved to %+v, want opencode/%s", alias, got, KimiModel)
 		}
 	}
-	got, err := ResolveReviewTargets([]string{"kimi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got[0].Model != OpencodeKimiK27Code {
-		t.Errorf("alias kimi must stay on %s, got %s", OpencodeKimiK27Code, got[0].Model)
+	if _, err := ResolveReviewTargets([]string{"kimi"}); err == nil {
+		t.Error("ambiguous kimi selector should be rejected; use k3 or kimi-k3")
 	}
 }
 
 // A workdir that is a subdirectory of the project (e.g. rival/ under the repo
 // root) must still find the repo root's .env by walking up.
 func TestKimiAPIKeyFromWalksUpToParentEnvFile(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "")
 	t.Setenv("KIMI_API", "")
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("KIMI_API=parent-key\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("MOONSHOT_API_KEY=parent-key\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sub := filepath.Join(root, "rival", "internal")

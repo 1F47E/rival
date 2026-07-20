@@ -9,7 +9,7 @@ func TestIsQuotaExhausted(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "agy 429 envelope",
+			name: "resource exhausted envelope",
 			in:   `E0601 23:12:44 log.go:398] agent executor error: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Contact your administrator to enable overages. Resets in 154h30m51s.`,
 			want: true,
 		},

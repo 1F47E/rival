@@ -380,7 +380,7 @@ func groupSessions(sessions []*session.Session) []sessionGroup {
 			IsGroup:       len(b.sessions) > 1 || primary.GroupID != "",
 			Sessions:      publicSessions(b.sessions),
 			Status:        groupStatus(b.sessions),
-			Effort:        primary.Effort,
+			Effort:        groupEffort(b.sessions),
 			WorkDir:       primary.WorkDir,
 			PromptPreview: primary.PromptPreview,
 		}
@@ -434,6 +434,19 @@ func groupKind(sessions []*session.Session) string {
 		}
 	}
 	return "megareview"
+}
+
+func groupEffort(sessions []*session.Session) string {
+	if len(sessions) == 0 {
+		return ""
+	}
+	effort := sessions[0].Effort
+	for _, s := range sessions[1:] {
+		if s.Effort != effort {
+			return "mixed"
+		}
+	}
+	return effort
 }
 
 // groupEngineLabel names one session's model for group display.

@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
@@ -19,18 +20,33 @@ func TestGroupDetailReservesSpaceForEveryPlanLog(t *testing.T) {
 		return path
 	}
 	item := &displayItem{Sessions: []*session.Session{
-		{ID: "sol", GroupID: "paired-plan", CLI: "codex", Model: config.GPT56SolModel, Mode: "plan", Status: "completed", Prompt: strings.Repeat("long plan context ", 100), LogFile: writeLog("sol.log", "sol output\n")},
-		{ID: "fable", GroupID: "paired-plan", CLI: "fable", Model: config.FableModel, Mode: "plan", Status: "completed", LogFile: writeLog("fable.log", "fable output\n")},
+		{ID: "sol", GroupID: "paired-plan", CLI: "codex", Model: config.GPT56SolModel, Mode: "plan", Effort: "ultra", Status: "completed", Prompt: strings.Repeat("long plan context ", 100), LogFile: writeLog("sol.log", "sol output\n")},
+		{ID: "fable", GroupID: "paired-plan", CLI: "fable", Model: config.FableModel, Mode: "plan", Effort: "low", Status: "completed", LogFile: writeLog("fable.log", "fable output\n")},
 	}}
 
 	got := renderGroupDetailView(item, 80, 24, false)
-	for _, heading := range []string{"SOL REVIEW", "FABLE REVIEW"} {
+	for _, heading := range []string{"SOL REVIEW · EFFORT ultra", "FABLE REVIEW · EFFORT low"} {
 		if !strings.Contains(got, heading) {
 			t.Fatalf("24-line grouped detail omitted %q:\n%s", heading, got)
 		}
 	}
 	if lines := strings.Count(got, "\n") + 1; lines > 24 {
 		t.Fatalf("group detail rendered %d lines, want at most 24", lines)
+	}
+}
+
+func TestSingleDetailStillShowsItsEffort(t *testing.T) {
+	got := renderSingleDetailView(&session.Session{
+		ID:        "single",
+		CLI:       "codex",
+		Model:     config.GPT56SolModel,
+		Mode:      "review",
+		Effort:    "ultra",
+		Status:    "completed",
+		StartTime: time.Now(),
+	}, 80, 30, false)
+	if !strings.Contains(got, "Effort") || !strings.Contains(got, "ultra") {
+		t.Fatalf("single-session detail omitted effort:\n%s", got)
 	}
 }
 

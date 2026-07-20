@@ -130,7 +130,11 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
 	addReviewer := func(cli, model string, role Role) error {
-		sess, err := newReviewerSession(cli, model, role, scope, effort, workdir, groupID)
+		effectiveEffort, err := config.ResolveEffort(model, effort, config.DefaultReviewEffort)
+		if err != nil {
+			return err
+		}
+		sess, err := newReviewerSession(cli, model, role, scope, effectiveEffort, workdir, groupID)
 		if err != nil {
 			return err
 		}
@@ -148,7 +152,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// the WHOLE pipeline. If rival is SIGKILL'd during consilium and the judge
 	// child survives, the ticket's liveness check sees that running session and
 	// keeps the slot held instead of letting another process double-promote.
-	consiliumSess, err := newConsiliumSession(judgeCLI, judgeModel, scope, effort, workdir, groupID)
+	consiliumSess, err := newConsiliumSession(judgeCLI, judgeModel, scope, plans[0].sess.Effort, workdir, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +186,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		wg.Add(1)
 		go func(index int, pl reviewerPlan) {
 			defer wg.Done()
-			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, effort, workdir)}
+			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, workdir)}
 		}(i, p)
 	}
 
@@ -246,11 +250,8 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		return nil, fmt.Errorf("all reviewers failed or hit quota limits (see skipped reasons): %s", formatSkipped(skipped))
 	}
 
-	// Correlated-failure signal: selected OpenCode Zen models share one
-	// credential/quota bucket, so a 429 can take out the whole family at
-	// once. If we planned opencode reviewers but none produced a review, log it
-	// distinctly — the review silently degrading to the other reviewers is worth
-	// surfacing separately from losing a single reviewer.
+	// Correlated-failure signal: if we planned OpenCode-backed reviewers but
+	// none produced a review, log it separately from losing one reviewer.
 	opencodePlanned, opencodeSucceeded := 0, 0
 	for _, p := range plans {
 		if p.cli == "opencode" {
@@ -281,18 +282,24 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 			consiliumSess.CLI = pickedCLI
 		}
 		// Always align the judge's model to one that actually produced a review —
-		// e.g. the pre-created opencode judge defaults to glm, but if only
-		// deepseek-pro succeeded, judge with deepseek-pro (glm may have 429'd).
+		// The pre-created judge follows the requested priority, but if that
+		// reviewer fails, use the highest-priority reviewer that succeeded.
 		if pickedModel != "" {
 			judgeModel = pickedModel
 			consiliumSess.Model = pickedModel
+			for _, plan := range plans {
+				if plan.cli == pickedCLI && plan.model == pickedModel {
+					consiliumSess.Effort = plan.sess.Effort
+					break
+				}
+			}
 		}
 	}
 
 	log.Info().Int("successful", len(inputs)).Str("judge", config.EngineLabel(judgeCLI, judgeModel)).Msg("reviewers complete, running consilium")
 
 	// Phase 2: Run consilium judge (under the same held slot).
-	consiliumOutput, err := runConsilium(ctx, consiliumSess, judgeCLI, inputs, scope, effort, workdir, threshold)
+	consiliumOutput, err := runConsilium(ctx, consiliumSess, judgeCLI, inputs, scope, workdir, threshold)
 	if err != nil {
 		return nil, fmt.Errorf("consilium: %w", err)
 	}
@@ -413,7 +420,7 @@ func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSess
 // runReviewer runs one reviewer. model and role are passed explicitly so a single
 // cli ("opencode") can back several models; an empty model/role falls back to the
 // cli-derived default.
-func runReviewer(ctx context.Context, sess *session.Session, cli, model string, role Role, scope, effort, workdir string) cliResult {
+func runReviewer(ctx context.Context, sess *session.Session, cli, model string, role Role, scope, workdir string) cliResult {
 	if role == "" {
 		role = RoleForCLI(cli)
 	}
@@ -434,11 +441,9 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 	var result *executor.Result
 	switch cli {
 	case "codex":
-		result, err = executor.RunCodexModel(ctx, sess, prompt, effort, workdir, model, nil)
-	case "antigravity":
-		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
+		result, err = executor.RunCodexModel(ctx, sess, prompt, sess.Effort, workdir, model, nil)
 	case "opencode":
-		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, model, nil)
+		result, err = executor.RunOpencode(ctx, sess, prompt, sess.Effort, workdir, model, nil)
 	default:
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
@@ -449,8 +454,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 		return cliResult{CLI: cli, Model: model, Role: role, Err: errors.New(reason)}
 	}
 
-	// Read the log file to get raw output (includes stdout + stderr, so the
-	// agy 429 envelope is captured here even though it exits 0).
+	// Read the log file to get raw output, including stdout and stderr.
 	logData, err := os.ReadFile(sess.LogFile)
 	if err != nil {
 		if result.ExitCode != 0 {
@@ -467,9 +471,9 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 	case executor.IsQuotaExhausted(raw):
 		_ = sess.Fail(1, fmt.Sprintf("%s hit provider quota/rate limit (429)", config.EngineLabel(cli, model)))
 	case strings.TrimSpace(raw) == "":
-		// Exited 0 but wrote nothing — a silent no-op (e.g. agy auth/session
-		// failure). Record it as failed so the TUI shows the reason instead of a
-		// blank "(empty log)", and so it is not counted as a successful review.
+		// Exited 0 but wrote nothing — a silent provider no-op. Record it as
+		// failed so the TUI shows the reason instead of a blank "(empty log)",
+		// and so it is not counted as a successful review.
 		_ = sess.Fail(1, fmt.Sprintf("%s produced no output (empty result) — likely an auth/session failure", config.EngineLabel(cli, model)))
 	default:
 		_ = sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines)
@@ -500,7 +504,7 @@ func formatSkipped(skipped []SkippedCLI) string {
 // runConsilium runs the judge on a pre-created session (already in the queue
 // ticket). The prompt is finalized here since it depends on reviewer output;
 // MarkRunning flips the session from queued→running just before execution.
-func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, inputs []ReviewInput, scope, effort, workdir string, threshold int) (*ConsiliumOutput, error) {
+func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, inputs []ReviewInput, scope, workdir string, threshold int) (*ConsiliumOutput, error) {
 	judgeLabel := config.EngineLabel(judgeCLI, sess.Model)
 	prompt := BuildConsiliumPrompt(inputs, scope, threshold)
 	if err := sess.MarkRunning(); err != nil {
@@ -519,14 +523,12 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 	var result *executor.Result
 	switch judgeCLI {
 	case "codex":
-		result, err = executor.RunCodexModel(ctx, sess, prompt, effort, workdir, sess.Model, nil)
-	case "antigravity":
-		result, err = executor.RunAntigravity(ctx, sess, prompt, effort, workdir, nil)
+		result, err = executor.RunCodexModel(ctx, sess, prompt, sess.Effort, workdir, sess.Model, nil)
 	case "opencode":
 		// The consilium session carries the concrete opencode model to judge with
 		// (set when the judge is selected/re-selected); RunOpencode falls back to
 		// the default model if it is somehow empty.
-		result, err = executor.RunOpencode(ctx, sess, prompt, effort, workdir, sess.Model, nil)
+		result, err = executor.RunOpencode(ctx, sess, prompt, sess.Effort, workdir, sess.Model, nil)
 	default:
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
@@ -606,12 +608,8 @@ func modelForCLI(cli string) string {
 	switch cli {
 	case "codex":
 		return config.GPT56SolModel
-	case "gemini":
-		return config.GeminiModel
 	case "claude":
 		return config.ClaudeModel
-	case "antigravity":
-		return config.AntigravityModel
 	case "opencode":
 		return config.OpencodeModel
 	default:

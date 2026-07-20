@@ -10,12 +10,9 @@ func TestRoleForCLI_Opencode(t *testing.T) {
 	if got := RoleForCLI("opencode"); got != RoleBugHunter {
 		t.Errorf("RoleForCLI(opencode) = %q, want %q", got, RoleBugHunter)
 	}
-	// Sanity: legacy CLI fallback mappings remain unchanged.
+	// Sanity: the Sol adapter fallback remains unchanged.
 	if got := RoleForCLI("codex"); got != RoleBugHunter {
 		t.Errorf("RoleForCLI(codex) = %q, want bug_hunter", got)
-	}
-	if got := RoleForCLI("antigravity"); got != RoleBugHunter {
-		t.Errorf("RoleForCLI(antigravity) = %q, want bug_hunter", got)
 	}
 }
 
@@ -36,10 +33,9 @@ func TestPickJudge(t *testing.T) {
 		{
 			"default judge picks GPT-5.6-Sol regardless of completion order",
 			[]ReviewInput{
-				{CLI: "opencode", Model: config.OpencodeGLMModel},
+				{CLI: "opencode", Model: config.KimiModel},
 				{CLI: "codex", Model: config.GPT56SolModel},
 				{CLI: "opencode", Model: config.OpencodeDeepSeekPro},
-				{CLI: "opencode", Model: config.OpencodeKimiK27Code},
 			},
 			config.DefaultReviewTargets(),
 			"codex", config.GPT56SolModel,
@@ -47,14 +43,14 @@ func TestPickJudge(t *testing.T) {
 		{
 			"requested order controls OpenCode judge",
 			[]ReviewInput{
-				{CLI: "opencode", Model: config.OpencodeKimiK27Code},
-				{CLI: "opencode", Model: config.OpencodeGLMModel},
+				{CLI: "opencode", Model: config.OpencodeDeepSeekPro},
+				{CLI: "opencode", Model: config.KimiModel},
 			},
 			[]config.ReviewTarget{
-				{CLI: "opencode", Model: config.OpencodeGLMModel, Role: "code_quality"},
-				{CLI: "opencode", Model: config.OpencodeKimiK27Code, Role: "arch_security"},
+				{CLI: "opencode", Model: config.KimiModel, Role: "code_quality"},
+				{CLI: "opencode", Model: config.OpencodeDeepSeekPro, Role: "arch_security"},
 			},
-			"opencode", config.OpencodeGLMModel,
+			"opencode", config.KimiModel,
 		},
 		{
 			"default judge falls through to DeepSeek when GPT-5.6-Sol failed",
@@ -94,11 +90,9 @@ func TestOpencodeVariant_PerCuratedModel(t *testing.T) {
 		{config.OpencodeDeepSeekPro, "medium", "medium"},
 		{config.OpencodeDeepSeekPro, "xhigh", "max"},
 		{config.OpencodeDeepSeekPro, "ultra", "max"},
-		{config.OpencodeKimiK27Code, "xhigh", ""},
-		{config.OpencodeKimiK27Code, "ultra", ""},
-		{config.OpencodeGLMModel, "low", "high"},
-		{config.OpencodeGLMModel, "xhigh", "max"},
-		{config.OpencodeGLMModel, "ultra", "max"},
+		{config.KimiModel, "low", "max"},
+		{config.KimiModel, "xhigh", "max"},
+		{config.KimiModel, "ultra", "max"},
 	}
 	for _, tc := range cases {
 		if got := config.OpencodeVariant(tc.model, tc.effort); got != tc.want {

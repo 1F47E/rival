@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -150,13 +152,11 @@ func TestOpencodeReviewerList_Curated(t *testing.T) {
 	// The legacy environment override must not reintroduce uncurated models.
 	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode/deepseek-v4-flash")
 	got := OpencodeReviewerList()
-	if len(got) != 3 {
-		t.Fatalf("curated roster size = %d, want 3", len(got))
+	if len(got) != 1 {
+		t.Fatalf("curated roster size = %d, want 1", len(got))
 	}
 	want := []OpencodeReviewer{
 		{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
-		{Model: OpencodeKimiK27Code, Role: "arch_security"},
-		{Model: OpencodeGLMModel, Role: "code_quality"},
 	}
 	for i := range want {
 		if got[i] != want[i] {
@@ -176,13 +176,13 @@ func TestOpencodeProviderConfigKeyFromEnv(t *testing.T) {
 	}
 }
 
-func TestResolveReviewTargets_DefaultIsCuratedFourModelRoster(t *testing.T) {
+func TestResolveReviewTargets_DefaultIsCuratedTwoModelRoster(t *testing.T) {
 	got, err := ResolveReviewTargets(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 4 {
-		t.Fatalf("default target count = %d, want 4: %+v", len(got), got)
+	if len(got) != 2 {
+		t.Fatalf("default target count = %d, want 2: %+v", len(got), got)
 	}
 	if got[0].CLI != "codex" || got[0].Model != GPT56SolModel {
 		t.Fatalf("first default target = %+v, want %s", got[0], GPT56SolModel)
@@ -192,7 +192,7 @@ func TestResolveReviewTargets_DefaultIsCuratedFourModelRoster(t *testing.T) {
 			t.Fatalf("curated open-model target unexpectedly uses %q: %+v", target.CLI, got)
 		}
 	}
-	if got[1].Model != OpencodeDeepSeekPro || got[2].Model != OpencodeKimiK27Code || got[3].Model != OpencodeGLMModel {
+	if got[1].Model != OpencodeDeepSeekPro {
 		t.Fatalf("unexpected default target order: %+v", got)
 	}
 }
@@ -207,10 +207,8 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 		{GPT56SolModel, GPT56SolModel, "bug_hunter"},
 		{"deepseek", OpencodeDeepSeekPro, "bug_hunter"},
 		{"deepseek-pro", OpencodeDeepSeekPro, "bug_hunter"},
-		{"kimi", OpencodeKimiK27Code, "arch_security"},
-		{"kimi-k2.7-code", OpencodeKimiK27Code, "arch_security"},
-		{"glm", OpencodeGLMModel, "code_quality"},
-		{"glm-5.2", OpencodeGLMModel, "code_quality"},
+		{"k3", KimiModel, "bug_hunter"},
+		{"kimi-k3", KimiModel, "bug_hunter"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.selector, func(t *testing.T) {
@@ -233,11 +231,11 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 }
 
 func TestResolveReviewTargets_ExactOrderAndDedup(t *testing.T) {
-	got, err := ResolveReviewTargets([]string{"glm,sol", "kimi", "deepseek", "glm"})
+	got, err := ResolveReviewTargets([]string{"k3,sol", "deepseek", "k3"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 4 || got[0].Model != OpencodeGLMModel || got[1].Model != GPT56SolModel || got[2].Model != OpencodeKimiK27Code || got[3].Model != OpencodeDeepSeekPro {
+	if len(got) != 3 || got[0].Model != KimiModel || got[1].Model != GPT56SolModel || got[2].Model != OpencodeDeepSeekPro {
 		t.Fatalf("unexpected exact roster: %+v", got)
 	}
 }
@@ -257,14 +255,12 @@ func TestEngineLabel(t *testing.T) {
 		{"codex", GPT56SolModel, SolLabel},
 		{"codex", "gpt-5.5", SolLabel},
 		{"codex", "", SolLabel},
-		{"antigravity", "gemini-3.5-flash", "gemini-3.5-flash"},
 		{"claude", ClaudeModel, OpusLabel},
 		{"claude", FableModel, FableLabel},
 		{"claude", "claude-fable-4", FableLabel},
 		{"fable", "", FableLabel},
-		{"opencode", "opencode-go/glm-5.2", "glm-5.2"},
 		{"opencode", "opencode-go/deepseek-v4-pro", "deepseek-v4-pro"},
-		{"opencode", OpencodeKimiK27Code, "kimi-k2.7-code"},
+		{"opencode", KimiModel, "kimi-k3"},
 		{"opencode", "", "opencode"},
 	}
 	for _, c := range cases {
@@ -300,5 +296,140 @@ func TestPublicRuntimeErrorUsesPublicModelName(t *testing.T) {
 	got := PublicRuntimeError("codex", GPT56SolModel, "Codex CLI failed for gpt-5.6-sol; run codex login")
 	if strings.Contains(strings.ToLower(got), "codex") || strings.Contains(got, GPT56SolModel) || !strings.Contains(strings.ToLower(got), SolLabel) {
 		t.Fatalf("public error was not normalized: %q", got)
+	}
+}
+
+func TestResolveEffortPrecedenceAndModelDefaults(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	userConfig = nil
+	userConfigErr = nil
+	defaults := []struct {
+		model string
+		want  string
+	}{
+		{GPT56SolModel, "high"},
+		{OpencodeDeepSeekPro, "high"},
+		{KimiModel, "max"},
+		{ClaudeModel, "xhigh"},
+		{FableModel, "medium"},
+	}
+	for _, tc := range defaults {
+		got, err := ResolveEffort(tc.model, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("ResolveEffort(%s) = %q, want %q", ModelLabel(tc.model), got, tc.want)
+		}
+	}
+
+	userConfig = &UserConfig{Efforts: map[string]string{
+		SolLabel:          "ultra",
+		"deepseek-v4-pro": "low",
+		"kimi-k3":         "max",
+		OpusLabel:         "medium",
+		FableLabel:        "high",
+	}}
+	if got, _ := ResolveEffort(GPT56SolModel, "", "low"); got != "ultra" {
+		t.Errorf("configured Sol effort = %q, want ultra", got)
+	}
+	if got, _ := ResolveEffort(OpencodeDeepSeekPro, "medium", "low"); got != "medium" {
+		t.Errorf("explicit effort = %q, want medium", got)
+	}
+	if got, _ := ResolveEffort(KimiModel, "low", "low"); got != "max" {
+		t.Errorf("fixed K3 effort = %q, want max", got)
+	}
+
+	userConfig = &UserConfig{}
+	if got, _ := ResolveEffort(FableModel, "", "low"); got != "low" {
+		t.Errorf("surface fallback = %q, want low", got)
+	}
+}
+
+func TestLoadUserConfigValidatesEffortMap(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name: "valid",
+			body: "efforts:\n  sol: ultra\n  deepseek-v4-pro: low\n  kimi-k3: max\n  opus: xhigh\n  fable: medium\n",
+		},
+		{
+			name:    "unknown model",
+			body:    "efforts:\n  mystery: high\n",
+			wantErr: "invalid effort model",
+		},
+		{
+			name:    "invalid k3 level",
+			body:    "efforts:\n  kimi-k3: high\n",
+			wantErr: "use one of: max",
+		},
+		{
+			name:    "invalid yaml",
+			body:    "efforts: [",
+			wantErr: "parse ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			dir := filepath.Join(home, ".rival")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tc.body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			LoadUserConfig()
+			err := UserConfigError()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got := DefaultEffortForModel(GPT56SolModel); got != "ultra" {
+					t.Errorf("loaded Sol effort = %q, want ultra", got)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadUserConfigReportsUnreadableConfigPath(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".rival", "config.yaml")
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	LoadUserConfig()
+	err := UserConfigError()
+	if err == nil {
+		t.Fatal("directory at config path was silently ignored")
+	}
+	if message := err.Error(); !strings.Contains(message, "read "+path) {
+		t.Fatalf("error = %q, want config path", message)
 	}
 }

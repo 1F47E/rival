@@ -14,12 +14,8 @@ func RoleForCLI(cli string) Role {
 	switch cli {
 	case "codex":
 		return RoleBugHunter
-	case "gemini":
-		return RoleArchSecurity
 	case "claude":
 		return RoleCodeQuality
-	case "antigravity":
-		return RoleBugHunter
 	case "opencode":
 		// The generic OpenCode fallback model is DeepSeek V4 Pro.
 		return RoleBugHunter

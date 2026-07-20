@@ -64,14 +64,14 @@ user
 ` + "```json" + `
 {
   "summary": "1-3 sentence overall review summary",
-  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["codex", "gemini", "claude"]}],
+  "findings": [{"file": "path/to/file", "line": 42, "found_by": ["sol", "deepseek", "fable"]}],
   "recommendation": {"status": "approve|request_changes|comment", "summary": "1-2 sentence recommendation"}
 }
 ` + "```" + `
 
 codex
-{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
-{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["gemini","claude"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
+{"summary":"Real verdict.","findings":[{"file":"rival/cmd/root.go","line":39,"severity":"medium","title":"startup scan","body":"x","confidence":10,"found_by":["deepseek","fable"]}],"recommendation":{"status":"request_changes","summary":"fix the races"}}
 `
 
 func TestParseConsiliumOutput_IgnoresEchoedSchemaExample(t *testing.T) {
@@ -175,7 +175,6 @@ func TestParseReviewerOutput_AcceptsRealFindingDiscussingEnum(t *testing.T) {
 		t.Fatalf("got %+v, want the real finding accepted despite enum text in body", out)
 	}
 }
-
 
 // An unbalanced brace in echoed code/prose before the real answer must not stop
 // the scan — the real JSON payload follows it.
