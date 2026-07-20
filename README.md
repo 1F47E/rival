@@ -78,10 +78,11 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 ```
 
 > `review` runs under the same mechanical read-only sandbox as the megareview
-> reviewers. Raw prompts run **full auto** — every tool call allowed, so the
-> agent can edit files and run commands in the workdir; rival strips known
-> credential env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the whole `AWS_*`
-> family, tokens, …) from that child as blast-radius reduction.
+> reviewers. Raw prompts run **full auto** — the agent can edit files and run
+> commands in the workdir (native file tools are denied outside it); rival
+> strips known credential env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the
+> whole `AWS_*` family, tokens, …) from that child as blast-radius reduction.
+> Not containment: bash runs as you.
 
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 

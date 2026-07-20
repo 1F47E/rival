@@ -31,7 +31,7 @@ func TestOpencodePreflight_ZenRosterRequiresKey(t *testing.T) {
 
 	// A specifically selected non-Zen model doesn't require the key.
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "")
-	if err := OpencodePreflightModel("opencode-go/glm-5.2"); err != nil {
+	if err := OpencodePreflightModel("opencode-go/glm-5.2", ""); err != nil {
 		t.Errorf("non-Zen model should not require the key, got: %v", err)
 	}
 }

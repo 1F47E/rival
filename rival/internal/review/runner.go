@@ -90,7 +90,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		case "codex":
 			preflightErr = executor.CodexPreflight()
 		case "opencode":
-			preflightErr = executor.OpencodePreflightModel(target.Model)
+			preflightErr = executor.OpencodePreflightModel(target.Model, workdir)
 		default:
 			preflightErr = fmt.Errorf("unsupported reviewer CLI: %s", target.CLI)
 		}

@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -74,7 +76,7 @@ func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
 	t.Setenv("KIMI_API", "sk-moonshot")
 	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
 
-	env := strings.Join(opencodeRunEnvWith("sess-1", config.KimiModel, OpencodeRunOpts{}), "\n")
+	env := strings.Join(opencodeRunEnvWith("sess-1", config.KimiModel, "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-moonshot") {
 		t.Errorf("moonshot model env missing KIMI_API key: %s", env)
 	}
@@ -86,15 +88,41 @@ func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
 	}
 
 	// Zen models keep the Zen key.
-	zen := strings.Join(opencodeRunEnvWith("sess-2", "opencode/glm-5.2", OpencodeRunOpts{}), "\n")
+	zen := strings.Join(opencodeRunEnvWith("sess-2", "opencode/glm-5.2", "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(zen, "sk-zen") {
 		t.Errorf("zen model env missing Zen key: %s", zen)
 	}
 }
 
+// The megareview k3 path has no explicit APIKey override, so the moonshot
+// fallback must run the .env walk-up from the workdir — a review launched
+// from a project subdirectory has to find the repo-root KIMI_API.
+func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
+	t.Setenv("KIMI_API", "")
+	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("KIMI_API=sk-walkup\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(root, "sub", "dir")
+	if err := os.MkdirAll(sub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	env := strings.Join(opencodeRunEnvWith("sess-4", config.KimiModel, sub, OpencodeRunOpts{}), "\n")
+	if !strings.Contains(env, "sk-walkup") {
+		t.Errorf("moonshot fallback did not walk up to the workdir .env: %s", env)
+	}
+	if strings.Contains(env, "sk-zen") {
+		t.Errorf("moonshot fallback must not use the Zen key: %s", env)
+	}
+	if err := OpencodePreflightModel(config.KimiModel, sub); err != nil {
+		t.Errorf("preflight should find the walked-up key: %v", err)
+	}
+}
+
 func TestKimiRawEnvUsesFullAutoPermission(t *testing.T) {
 	t.Setenv("KIMI_API", "test-key")
-	env := strings.Join(opencodeRunEnvWith("sess-3", config.KimiModel, kimiRunOpts("raw", t.TempDir())), "\n")
+	env := strings.Join(opencodeRunEnvWith("sess-3", config.KimiModel, "", kimiRunOpts("raw", t.TempDir())), "\n")
 	if !strings.Contains(env, "OPENCODE_PERMISSION="+opencodeFullAutoPermission) {
 		t.Errorf("raw env missing full-auto permission: %s", env)
 	}
