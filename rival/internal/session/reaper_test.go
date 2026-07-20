@@ -74,6 +74,9 @@ func TestReapOrphansReapsWhenOwnerAndProviderDead(t *testing.T) {
 	if got.ErrorMsg != "orphaned (process dead)" {
 		t.Errorf("error = %q, want orphaned (process dead)", got.ErrorMsg)
 	}
+	if got.Prompt != "prompt" {
+		t.Errorf("prompt = %q, want original prompt preserved", got.Prompt)
+	}
 }
 
 // Sessions written by releases without owner tracking (OwnerPID 0) keep the
