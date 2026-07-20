@@ -1,8 +1,8 @@
 ---
 name: rival-review
 version: 3.22.0
-description: Run Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and/or GLM-5.2 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
-argument-hint: "[-m sol|deepseek|kimi|glm[,model...]] [-re high|ultra] [scope]"
+description: Run Sol, DeepSeek V4 Pro, Kimi K2.7 Code, GLM-5.2, and/or opt-in Kimi K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+argument-hint: "[-m sol|deepseek|kimi|glm|k3[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
 ---
 
@@ -28,10 +28,11 @@ respond with this usage message and STOP:
 > - `/rival-review -m deepseek src/api/` — DeepSeek V4 Pro only
 > - `/rival-review -m kimi src/api/` — Kimi K2.7 Code only
 > - `/rival-review -m glm src/api/` — GLM-5.2 only
+> - `/rival-review -m k3 src/api/` — Kimi K3 only (requires `KIMI_API`)
 > - `/rival-review -m deepseek,kimi src/api/` — exactly those two models
 > - `/rival-review -re ultra src/api/` — highest supported effort
 >
-> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), `glm-5.2` (`glm`)
+> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k2.7-code` (`kimi`), `glm-5.2` (`glm`), `kimi-k3` (`k3`, requires `KIMI_API`)
 > **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high` (default), `ultra`
 >
 > An explicit model list is exact; no other reviewer is added implicitly. A

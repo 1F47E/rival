@@ -1,28 +1,30 @@
-# Rival server dashboard remediation plan
+# Rival server dashboard remediation
 
-## Findings
+Status: completed for v3.23.0.
 
-The current dashboard does not degrade gracefully as session history grows:
+## Baseline findings
 
-- `GET /api/sessions` loads every session file and serializes the full `Session`
+The previous dashboard did not degrade gracefully as session history grew:
+
+- `GET /api/sessions` loaded every session file and serialized the full `Session`
   object, including the full prompt. On the development machine, 1,736 session
   records produce a 309 MB response and take about 2.2 seconds before browser
   parsing or rendering begins.
-- The browser rebuilds the complete table after every poll. Active runs poll
+- The browser rebuilt the complete table after every poll. Active runs polled
   every two seconds, so a large history can keep both the server and browser
   continuously busy.
-- The detail panel is rendered after the full table. Clicking a row near the top
+- The detail panel was rendered after the full table. Clicking a row near the top
   opens details below thousands of rows, which looks like the click did nothing.
-- Detail log requests read and return the entire log. Existing logs reach
+- Detail log requests read and returned the entire log. Existing logs reached
   40–62 MB, enough to make the detail view stall or exhaust browser memory.
-- The page depends on Tailwind's runtime CDN compiler. That adds a network
+- The page depended on Tailwind's runtime CDN compiler. That added a network
   dependency and startup work to a dashboard served from localhost.
-- The web logo is a shortened, malformed copy of Rival's canonical terminal
+- The web logo was a shortened, malformed copy of Rival's canonical terminal
   banner, and its tight line height makes it even less legible.
-- The list API exposes internal fields that the page does not need, including
+- The list API exposed internal fields that the page did not need, including
   prompt bodies, log paths, and process metadata.
 
-## Implementation
+## Implemented
 
 1. Introduce a metadata cache for the web server. Refresh only session JSON files
    whose size or modification time changed, and avoid retaining full prompts in
@@ -41,13 +43,19 @@ The current dashboard does not degrade gracefully as session history grows:
    Load member logs in parallel, cancel stale requests when selection changes,
    show member-specific failures, and refresh live logs without rebuilding the
    drawer.
-6. Add server tests for summary loading, pagination and payload privacy, prompt
-   bounds, log tailing, and the dashboard's key interaction hooks.
+6. Added direct run lookup so session links still work after a run moves beyond
+   the newest page, plus explicit feedback for invalid or deleted runs.
+7. Added server tests for summary loading, pagination and payload privacy,
+   direct run lookup, prompt bounds, log tailing, group wall time, and the
+   dashboard's key interaction hooks.
 
 ## Validation
 
-- Run the Go test suite and build the `rival` binary.
-- Benchmark response size and latency against the same existing session history.
-- Capture desktop and mobile screenshots from the real local server.
-- Exercise row click, Escape/close, grouped detail logs, load-more behavior, and
-  offline rendering without any third-party requests.
+- `go test ./...`, `go build ./...`, inline JavaScript parsing, and
+  `git diff --check` pass.
+- A real Playwright/Chromium run exercised completed, failed, running, queued,
+  mixed-group, empty-log, missing-log, and queued-to-completed transitions.
+- The same run covered current, older-than-page-100, and invalid session links;
+  Escape/close, focus containment, drawer scroll reset, and a 390×844 mobile
+  viewport.
+- The page has no third-party runtime requests.

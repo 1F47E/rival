@@ -4,6 +4,8 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+## [v3.23.0] — 2026-07-20
+
 ### Added — Kimi K3 via opencode (`/rival-k3`)
 
 New standalone runner for Moonshot's Kimi K3, served through the opencode
@@ -32,6 +34,27 @@ matching, `GOOGLE_APPLICATION_CREDENTIALS`, GitHub/GitLab tokens, rival's own
 provider keys) — `RunSubprocess` dropEnv entries ending in `_` match as
 prefixes. Prompts travel via stdin like every other opencode run (no argv
 size cap). TUI/web show `❯ kimi-k3`.
+
+### Changed — rebuilt web dashboard
+
+The local `rival server` dashboard is now self-contained, responsive, and
+bounded for large histories. Session metadata is cached incrementally, list
+responses are paginated and exclude prompts and process internals, prompt
+loading is deferred, and log details return a UTF-8-safe 256 KiB tail instead
+of entire multi-megabyte files.
+
+The UI restores the canonical Rival logo and opens details in an accessible
+side drawer. Queued, running, completed, failed, grouped, empty-log,
+missing-log, and live-transition states render explicitly. Per-member status,
+queue position, duration, exit code, errors, old-run deep links, focus
+containment, mobile layout, and sequential group wall time are covered.
+
+### Changed — review results are presented before follow-up work
+
+All seven shipped skills now present a severity-count summary and the full
+review output before making any follow-up tool calls. This prevents background
+results from being dropped by the harness and keeps findings visible before
+fixes or triage begin.
 
 ### Fixed — skill input heredoc was shell-injectable (all 7 skills)
 

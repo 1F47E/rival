@@ -263,12 +263,10 @@ func New(version string) *http.ServeMux {
 
 func listPage(r *http.Request) (int, int, error) {
 	raw := r.URL.Query().Get("limit")
-	limit := defaultListLimit
 	if raw == "" {
 		raw = strconv.Itoa(defaultListLimit)
 	}
-	var err error
-	limit, err = strconv.Atoi(raw)
+	limit, err := strconv.Atoi(raw)
 	if err != nil || limit < 1 {
 		return 0, 0, errors.New("limit must be a positive integer")
 	}
