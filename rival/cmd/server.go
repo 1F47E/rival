@@ -16,6 +16,8 @@ import (
 
 var serverPort int
 
+const serverHost = "127.0.0.1"
+
 var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Start the web dashboard",
@@ -35,7 +37,7 @@ func serverAction(cmd *cobra.Command, args []string) error {
 
 	mux := server.New(Version)
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf("%s:%d", serverHost, port),
 		Handler: mux,
 	}
 
@@ -58,7 +60,7 @@ func serverAction(cmd *cobra.Command, args []string) error {
 
 func findPort(start int) (int, error) {
 	for port := start; port <= start+10; port++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", serverHost, port))
 		if err == nil {
 			_ = ln.Close()
 			return port, nil

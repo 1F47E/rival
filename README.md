@@ -2,7 +2,28 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI models from your coding session as isolated subagents that keep the main context clean. The default `/rival-review` runs Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 in parallel and merges their findings with a consilium judge. Use `-m/--model` to run an exact subset for one review.
+Dispatch prompts to external AI models from your coding session as separate
+reviewer processes. Their repository exploration and tool traces stay out of
+your primary agent's context; Rival returns the final review. The default
+`/rival-review` runs Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 in
+parallel and merges their findings with a consilium judge. Use `-m/--model` to
+run an exact subset.
+
+## TL;DR — why Rival?
+
+Rival is an orchestration layer for independent AI review, not another model.
+One coding agent tends to preserve its own assumptions when reviewing its work;
+Rival asks different models, with complementary roles, to inspect the actual
+repository and then turns their overlap and disagreements into one verdict.
+
+- **Catch different blind spots:** correctness, architecture/security, and code
+  quality reviewers explore the codebase instead of seeing only a pasted diff.
+- **Get one usable answer:** a consilium pass merges duplicates, attributes
+  agreement, filters weak findings, and reports skipped or failed reviewers.
+- **Keep long work out of the way:** reviews run detached with queue and timeout
+  controls, while terminal and web dashboards retain progress and bounded logs.
+- **Use only the providers you have:** select one model or an exact subset; the
+  review can continue when another selected provider is unavailable.
 
 ## Install
 
@@ -20,11 +41,27 @@ cd rival && make install
 rival install
 ```
 
-> **Note:** `go install` is not supported due to the repo's subdirectory layout. Use Homebrew or build from source.
+> **Note:** run `make install` from the repository's `rival/` subdirectory.
+> It writes to `GOBIN` or `$(go env GOPATH)/bin`; make sure that directory
+> appears before any older Rival installation in `PATH`. Remote
+> `go install github.com/1F47E/rival@latest` is not supported because the Go
+> module lives in a repository subdirectory.
 
 `rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, and `/rival-k3` are available. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
+
+For a Homebrew installation, this upgrades the binary and then refreshes the
+embedded skills:
+
+```bash
+rival update
+# equivalent: brew upgrade 1F47E/tap/rival && rival install --force
+```
+
+Source installs update with `git pull`, `make install` from `rival/`, and
+`rival install --force`. Rival performs a cached GitHub release check at
+startup; set `RIVAL_NO_UPDATE_CHECK=1` to disable it.
 
 ### Prerequisites
 
@@ -49,6 +86,7 @@ You only need the runtimes for the models you use. **Megareview uses four curate
 /rival-review -m deepseek src/api/         — DeepSeek V4 Pro only
 /rival-review -m kimi src/api/             — Kimi K2.7 Code only
 /rival-review -m glm src/api/              — GLM-5.2 only
+/rival-review -m k3 src/api/               — Kimi K3 only (requires KIMI_API)
 /rival-review -m deepseek,kimi src/api/    — exactly those two models
 /rival-review -re ultra src/api/           — highest supported effort
 ```
@@ -98,12 +136,16 @@ Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs
 
 ### How Reviews Work
 
-When you run a review, the selected models get **read-only access to your project**. They don't just see a diff — they run as isolated agents inside your workdir with safe exploration tools enabled, so they can:
+The curated `/rival-review` reviewers and `/rival-k3 review` mode get
+mechanically **read-only access to your project**. They don't just see a diff:
+they run as separate agents inside your workdir with safe exploration tools
+enabled, so they can:
 
 - Read any file in the project
 - Follow imports and trace dependencies
 - Explore the full codebase to understand context
-- Run inspection commands inside a read-only sandbox without modifying project files
+- Search, list, and inspect project files without modifying them; Sol can also
+  run read-only inspection commands
 
 **Smart scope detection.** Running `/rival-review` with no arguments auto-detects what to review via git:
 1. **Dirty files** (staged + unstaged + untracked new files) → reviews those files
@@ -130,8 +172,11 @@ Megareview assigns **specialized roles** to each reviewer:
 - **DeepSeek V4 Pro → Bug Hunter** — the primary correctness reviewer for concrete code-level defects, broken state transitions, races, and missing edge cases.
 - **Kimi K2.7 Code → Architecture & Security** — follows multi-step, cross-file flows and looks for architectural regressions, incomplete refactors, and security gaps.
 - **GLM-5.2 → Code Quality** — uses its large-context strength to inspect broad schemas, many tables, and report-generation paths for maintainability and correctness risks.
+- **Kimi K3 → Bug Hunter (opt-in)** — adds a Moonshot-backed correctness pass
+  when selected with `-m k3`; it is not part of the default four-model roster.
 
 DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2 share one Zen credential/quota. Under load those three may hit a 429 together; Rival skips failed reviewers and proceeds when at least one remains.
+Kimi K3 uses the separate `KIMI_API` credential and Moonshot quota.
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
 
@@ -221,7 +266,7 @@ rival tui
 | `g` / `G` | Jump to top / bottom | — |
 | `p` | — | Toggle full prompt |
 | `o` | — | Open log (all logs for a group) |
-| `x` | — | Kill running session |
+| `x` | — | Kill running or queued session |
 | `q` | Quit | Quit |
 
 ### Web Dashboard
@@ -230,9 +275,15 @@ rival tui
 rival server --port 3333
 ```
 
-The browser dashboard uses the same stable grouping and requested model order as
-the TUI. It shows public model names and icons, labels judge output separately,
-and includes each member's log and failure reason.
+The server binds to `127.0.0.1` only. If the requested port is occupied, Rival
+tries the next ten ports and prints the selected local URL.
+
+The self-contained browser dashboard uses the same stable grouping and requested
+model order as the TUI. The newest 100 grouped runs load first, with pagination
+for older history. A fixed detail drawer shows prompt metadata, per-member
+status, queue position, duration, exit code, errors, and a bounded live log
+tail. Details remain usable for queued, running, completed, failed, grouped,
+empty-log, and missing-log sessions, including direct links to older runs.
 
 ### Session Management
 
@@ -253,8 +304,8 @@ default two reviews run at a time; the rest wait their turn. Set
   `rival queue: position 2/3 (1 running), waiting 1m12s`. Skills relay this to you.
 - Queued sessions show up in the TUI and web dashboard with a `◌ queued #N` row
   and a growing wait time, alongside a queued counter.
-- No daemon: coordination is via ticket files in `~/.rival/queue/` guarded by an
-  flock. A crashed holder is reaped automatically (its slot frees when both the
+- No daemon: coordination is via ticket files in `~/.rival/queue/` guarded by a
+  file lock (`flock`). A crashed holder is reaped automatically (its slot frees when both the
   rival process and any surviving provider CLI child are gone).
 
 ```bash
@@ -272,7 +323,8 @@ rival queue clear --force   # remove ALL tickets (live waiters re-queue at the t
 | `RIVAL_RUN_TIMEOUT` | `30m` | Max run time once a slot is held; kills a hung provider CLI (`0` disables) |
 | `RIVAL_NO_QUEUE` | unset | Set to bypass the queue entirely |
 
-Every command also accepts `--no-queue` to skip the queue for that invocation.
+Provider-invoking `review`, `run`, and `command` subcommands also accept
+`--no-queue` to skip the queue for that invocation.
 
 **`--detach`** — `rival command …` re-execs itself into its own process session
 (`setsid`), prints `rival: detached pid=N` to stderr, and the parent exits
@@ -289,9 +341,11 @@ rival wait <session-id>...       # terminal-status-only mode
 # exit: 0 completed · 2 failed · 3 rival crashed · 4 timed out
 ```
 
-**Never hangs:** a run is bounded by `RIVAL_RUN_TIMEOUT`; `rival wait` detects a
-crashed rival (process dead, sessions unfinalized) and its own `--timeout`. The
-skills launch detached, watch in the background, and never block your session.
+**Bounded by default:** a run is bounded by `RIVAL_RUN_TIMEOUT`; `rival wait`
+detects a crashed rival (process dead, sessions unfinalized) and has its own
+`--timeout`. The skills launch detached, watch in the background, and do not
+block your session. Setting `RIVAL_RUN_TIMEOUT=0` intentionally disables the run
+bound.
 
 > **NFS note:** the queue relies on `flock`, which is unreliable over NFS-mounted
 > home directories. On such hosts set `RIVAL_NO_QUEUE=1`.
@@ -306,14 +360,14 @@ Host coding session
 Slash-command skill (async — does not block the session)
     │ 1. prompt tempfile → rival command megareview --detach --workdir $(pwd)
     │    (parent prints "rival: detached pid=N" and exits in seconds)
-    │ 2. arm background watcher:  rival wait --log <err> --timeout 100m
+    │ 2. arm background watcher:  rival wait --log <err>
     │ 3. hand back to the session and END the turn
     ▼
 rival binary (own process session — survives the skill/fork teardown)
     ├─ parses model selection (-m), effort (-re), and review scope
     ├─ builds review prompt with scope injection
     ├─ waits for a queue slot, then bounds the run by RIVAL_RUN_TIMEOUT
-    ├─ spawns the selected models via isolated subprocesses
+    ├─ spawns the selected models in separate subprocesses
     ├─ pipes prompt to stdin, tees stdout to log file
     └─ writes session JSON + live log to ~/.rival/sessions/
          │
@@ -332,7 +386,7 @@ Megareview (roles + consilium):
     │   ├─ filters by confidence threshold (≥6)
     │   └─ produces unified verdict with found_by attribution
     ├─ prints formatted review to stdout
-    └─ TUI groups all sessions by GroupID
+    └─ TUI and web dashboards group all sessions by GroupID
 
 Second terminal:
     rival tui
@@ -346,7 +400,8 @@ Second terminal:
 
 - **Full project access**: reviewers run as AI CLI tools with tool use — they explore your codebase, not just diffs
 - **Async, non-blocking**: skills launch rival detached and watch it in the background — your session is never blocked for the run, and a hung run can never hang the session (`RIVAL_RUN_TIMEOUT` + `rival wait` crash/timeout detection)
-- **Stdin piping**: prompts passed via heredoc, never shell-quoted into argv (prevents injection)
+- **Safe stdin piping**: skills create input files with the host Write tool
+  (never echo/printf/heredoc), then redirect them to Rival's stdin
 - **Env filtering**: child processes get a sanitized environment (blocks proxy/preload vars from .env)
 - **Fault tolerant**: megareview continues if one CLI fails, reports the error inline
 - **Consilium overflow protection**: reviewer outputs that fail JSON parsing are replaced with a stub + 2KB debug tail, preventing oversized judge prompts

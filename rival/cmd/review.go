@@ -23,7 +23,8 @@ var reviewCmd = &cobra.Command{
 then merge findings via a consilium judge for a unified verdict.
 
 By default Rival runs Sol, DeepSeek V4 Pro, Kimi K2.7 Code, and GLM-5.2.
---model replaces that complete roster for one run.
+--model replaces that complete roster for one run; Kimi K3 is available as
+the opt-in k3 selector.
 
 Without a scope argument, auto-detects changed files via git:
   1. Dirty files (staged + unstaged + untracked) → review those
@@ -36,7 +37,7 @@ With a scope argument, reviews exactly that scope.`,
 
 func init() {
 	reviewCmd.Flags().String("effort", config.DefaultReviewEffort, "reasoning effort: low, medium, high, ultra")
-	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2")
+	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2, kimi-k3")
 	reviewCmd.Flags().String("workdir", ".", "working directory")
 	reviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	rootCmd.AddCommand(reviewCmd)
@@ -103,7 +104,7 @@ func modelSelectionFlag(cmd *cobra.Command) (models []string, changed bool, err 
 		return nil, false, nil
 	}
 	if len(models) == 0 {
-		return nil, true, fmt.Errorf("option --model requires a value: sol, deepseek-v4-pro, kimi-k2.7-code, or glm-5.2")
+		return nil, true, fmt.Errorf("option --model requires a value: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2, or kimi-k3")
 	}
 	for _, model := range models {
 		if strings.TrimSpace(model) == "" {
