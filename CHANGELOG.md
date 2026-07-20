@@ -4,6 +4,56 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Added — Kimi K3 via opencode (`/rival-k3`)
+
+New standalone runner for Moonshot's Kimi K3, served through the opencode
+CLI's first-party Moonshot provider (`moonshot/kimi-k3`, 1M context):
+`rival command k3`, `rival run k3`, and the `/rival-k3` skill (detached +
+background watcher, same async pattern as `/rival-sol`). K3 is a thinking-only
+model whose API accepts a single reasoning level, so every run pins
+`--variant max` regardless of `-re`; sessions record `cli: opencode`,
+`model: moonshot/kimi-k3`, `effort: max` truthfully. `k3`/`kimi-k3` are also
+selectable review models (`/rival-review -m k3`); the historical `kimi` alias
+stays on Kimi K2.7 Code.
+
+Auth: the Moonshot API key is read from `KIMI_API` — process env first
+(godotenv loads the invocation directory's `.env`), then a `.env` found by
+walking up from `--workdir` toward root — and injected per run into the
+moonshot provider via `OPENCODE_CONFIG_CONTENT`, never written to any on-disk
+config. Moonshot models never receive the Zen key. All inherited `KIMI_*`
+vars stay blocked from child environments.
+
+Permissions: `review` runs under the same mechanical read-only
+`OPENCODE_PERMISSION` sandbox as the megareview reviewers. Raw prompts run
+full auto (every tool allowed) with known credential env vars stripped
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the whole `AWS_*` family via prefix
+matching, `GOOGLE_APPLICATION_CREDENTIALS`, GitHub/GitLab tokens, rival's own
+provider keys) — `RunSubprocess` dropEnv entries ending in `_` match as
+prefixes. Prompts travel via stdin like every other opencode run (no argv
+size cap). TUI/web show `❯ kimi-k3`.
+
+### Fixed — skill input heredoc was shell-injectable (all 7 skills)
+
+Every shipped SKILL.md piped arguments through `cat <<"$DELIM"` with a
+randomly generated `$DELIM` variable — but the shell performs no expansion on
+a heredoc delimiter, so the real terminator was the literal string `$DELIM`
+and the randomization was dead code: argument content containing a `$DELIM`
+line would break out of the heredoc and execute as shell. Skills now create
+the input file with the executing agent's **Write tool** instead of any shell
+construct — file content never passes through the shell, eliminating the
+entire delimiter/injection class rather than re-randomizing it.
+
+### Fixed — reaper race stomping successful runs to failed
+
+Sessions now record the owning rival process (`owner_pid`/`owner_pid_start`)
+alongside the provider child PID, and `ReapOrphans` only reaps a session when
+BOTH are dead. Previously, in the window between the provider CLI exiting and
+rival writing the final status, a concurrent rival invocation's startup reap
+saw "running + dead PID" and marked a successful run `failed: orphaned
+(process dead)` (observed live with a detached kimi run). A live owner always
+finalizes its own sessions; sessions from older releases keep the old
+provider-only check.
+
 ## [v3.22.0] — 2026-07-16
 
 ### Changed — two concurrent queue slots by default

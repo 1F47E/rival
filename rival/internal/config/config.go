@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,6 +23,7 @@ const (
 	OpusLabel            = "opus"
 	FableLabel           = "fable"
 	AntigravityModel     = "gemini-3.5-flash"
+	KimiModel            = "moonshot/kimi-k3" // Kimi K3 via opencode's first-party Moonshot provider
 	OpencodeDeepSeekPro  = "opencode/deepseek-v4-pro"
 	OpencodeModel        = OpencodeDeepSeekPro
 	OpencodeKimiK27Code  = "opencode/kimi-k2.7-code"
@@ -70,6 +72,12 @@ func OpencodeVariant(model, effort string) string {
 	switch model {
 	case OpencodeKimiK27Code:
 		return ""
+	case KimiModel:
+		// Kimi K3 is thinking-only and its API accepts exactly one reasoning
+		// level; opencode accepts --variant max for it (verified live). Every
+		// rival effort — including the "max" the kimi path records — pins to
+		// max. Without this case the default branch would send --variant high.
+		return "max"
 	case OpencodeGLMModel:
 		if effort == "xhigh" || effort == "ultra" {
 			return "max"
@@ -387,8 +395,12 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeKimiK27Code, Role: "arch_security"}}
 		case "glm", "glm-5.2":
 			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeGLMModel, Role: "code_quality"}}
+		case "k3", "kimi-k3":
+			// Kimi K3 via the Moonshot provider (needs KIMI_API). Distinct from
+			// the "kimi" alias, which stays on the curated kimi-k2.7-code.
+			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k2.7-code, glm-5.2, kimi-k3", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
@@ -406,6 +418,43 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 // RIVAL_OPENCODE_API_KEY, never from a reviewed repository.
 func OpencodeAPIKey() string {
 	return strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_API_KEY"))
+}
+
+// KimiAPIKeyFrom returns the Moonshot AI API key for kimi CLI runs: KIMI_API
+// from the process env first (godotenv loads the invocation directory's .env
+// at startup), then a KIMI_API entry in a .env found by walking up from
+// workdir toward the filesystem root (stopping after the home directory, max 8
+// levels — the same spirit as git's .git discovery). The walk exists because
+// rival is routinely invoked from a subdirectory of the project that holds the
+// key (observed twice in live use: runs from rival/ missed the repo-root .env
+// and preflight failed). The key is injected per run into opencode's moonshot
+// provider via OPENCODE_CONFIG_CONTENT (see executor.opencodeRunEnvWith) —
+// never written to any on-disk config.
+func KimiAPIKeyFrom(workdir string) string {
+	if key := strings.TrimSpace(os.Getenv("KIMI_API")); key != "" {
+		return key
+	}
+	if workdir == "" {
+		return ""
+	}
+	dir, err := filepath.Abs(workdir)
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for i := 0; i < 8; i++ {
+		if vars, err := godotenv.Read(filepath.Join(dir, ".env")); err == nil {
+			if key := strings.TrimSpace(vars["KIMI_API"]); key != "" {
+				return key
+			}
+		}
+		parent := filepath.Dir(dir)
+		if dir == home || parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
 }
 
 // OpencodeReviewerList returns a copy of the curated roster. Per-run selection

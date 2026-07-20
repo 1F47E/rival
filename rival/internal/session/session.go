@@ -47,6 +47,13 @@ type Session struct {
 	Account       string     `json:"account,omitempty"`
 	PID           int        `json:"pid"`
 	PIDStart      int64      `json:"pid_start,omitempty"` // start time of PID (Unix ns); guards against PID reuse
+	// OwnerPID is the rival process driving this session. PID is overwritten
+	// with the provider child's PID once the subprocess starts, so without
+	// this field the reaper cannot tell "provider exited, rival is about to
+	// write the final status" (a normal end-of-run window) from "everything
+	// is dead". Sessions written by older releases have 0 here.
+	OwnerPID      int   `json:"owner_pid,omitempty"`
+	OwnerPIDStart int64 `json:"owner_pid_start,omitempty"`
 }
 
 // New creates a new session in "running" state and writes the initial JSON file.
@@ -99,6 +106,10 @@ func create(cli, mode, model, effort, workdir, prompt, reviewScope, groupID, sta
 		// against reuse after this process dies.
 		PID:      os.Getpid(),
 		PIDStart: pidStartNanos(os.Getpid()),
+		// The owner never changes: as long as this rival process is alive it
+		// is responsible for finalizing the session, and the reaper must not.
+		OwnerPID:      os.Getpid(),
+		OwnerPIDStart: pidStartNanos(os.Getpid()),
 	}
 	if status == "queued" {
 		s.QueuedAt = &now

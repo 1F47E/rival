@@ -35,6 +35,9 @@ func OpencodePreflightModel(model string) error {
 	if strings.HasPrefix(model, "opencode/") && config.OpencodeAPIKey() == "" {
 		return fmt.Errorf("OpenCode Zen model %s requires RIVAL_OPENCODE_API_KEY — export your Zen key", model)
 	}
+	if strings.HasPrefix(model, "moonshot/") && config.KimiAPIKeyFrom("") == "" {
+		return fmt.Errorf("model %s requires KIMI_API (Moonshot provider) — add it to the project .env or export it", model)
+	}
 	return nil
 }
 
@@ -50,6 +53,21 @@ func OpencodePreflightModel(model string) error {
 // out-of-workdir reads are blocked by the external_directory deny rule.
 const opencodeReadOnlyPermission = `{"read":"allow","grep":"allow","glob":"allow","list":"allow","external_directory":"deny","edit":"deny","bash":"deny","task":"deny","webfetch":"deny","websearch":"deny"}`
 
+// opencodeFullAutoPermission allows every tool. Used only by the standalone
+// kimi runner's raw-prompt mode, where the user explicitly asked for a
+// full-auto agent that can edit files and run commands in the workdir.
+// Review mode never uses this — it keeps the read-only reviewer profile.
+const opencodeFullAutoPermission = `{"read":"allow","grep":"allow","glob":"allow","list":"allow","external_directory":"allow","edit":"allow","bash":"allow","task":"allow","webfetch":"allow","websearch":"allow"}`
+
+// OpencodeRunOpts customizes one opencode execution beyond the reviewer
+// defaults. Zero values keep megareview behavior exactly: read-only
+// permission, RIVAL_OPENCODE_API_KEY provider injection, no extra env drops.
+type OpencodeRunOpts struct {
+	Permission string   // OPENCODE_PERMISSION JSON; "" = read-only reviewer profile
+	APIKey     string   // api key for this model's provider; "" = config.OpencodeAPIKey()
+	DropEnv    []string // extra vars/prefixes stripped from the child (see dropMatches)
+}
+
 // RunOpencode executes a prompt through the opencode CLI running the given model
 // (e.g. "opencode-go/glm-5.2"). opencode reads the prompt from stdin in
 // non-interactive `run` mode; the effort is mapped to opencode's --variant
@@ -58,11 +76,18 @@ const opencodeReadOnlyPermission = `{"read":"allow","grep":"allow","glob":"allow
 // so a prompt-injected repo cannot make the reviewer write files or run commands.
 // An empty model falls back to config.OpencodeModel.
 func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+	return RunOpencodeWith(ctx, sess, prompt, effort, workdir, model, OpencodeRunOpts{}, mirror)
+}
+
+// RunOpencodeWith is RunOpencode with per-call overrides (see OpencodeRunOpts).
+// The standalone kimi runner uses it for its full-auto raw mode and its
+// moonshot-provider key; megareview reviewers stay on the zero-value defaults.
+func RunOpencodeWith(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, opts OpencodeRunOpts, mirror io.Writer) (*Result, error) {
 	if model == "" {
 		model = config.OpencodeModel
 	}
 	args := opencodeRunArgs(model, effort, workdir)
-	env := opencodeRunEnv(sess.ID, model)
+	env := opencodeRunEnvWith(sess.ID, model, opts)
 
 	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	// Drop any inherited OPENCODE_PERMISSION / OPENCODE_CONFIG_CONTENT before
@@ -70,7 +95,8 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 	// process env, so a malicious repo could otherwise ship a permissive
 	// OPENCODE_PERMISSION or a config that weakens the sandbox. (safeEnv already
 	// strips the OPENCODE_ prefix, so this is belt-and-suspenders.)
-	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, "OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT", "OPENCODE_DB")
+	drop := append([]string{"OPENCODE_PERMISSION", "OPENCODE_CONFIG_CONTENT", "OPENCODE_DB"}, opts.DropEnv...)
+	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, drop...)
 }
 
 func opencodeRunArgs(model, effort, workdir string) []string {
@@ -91,8 +117,16 @@ func opencodeRunArgs(model, effort, workdir string) []string {
 }
 
 func opencodeRunEnv(sessionID, model string) []string {
+	return opencodeRunEnvWith(sessionID, model, OpencodeRunOpts{})
+}
+
+func opencodeRunEnvWith(sessionID, model string, opts OpencodeRunOpts) []string {
+	permission := opts.Permission
+	if permission == "" {
+		permission = opencodeReadOnlyPermission
+	}
 	env := []string{
-		"OPENCODE_PERMISSION=" + opencodeReadOnlyPermission,
+		"OPENCODE_PERMISSION=" + permission,
 		// Give each reviewer its OWN opencode session DB. The megareview runs
 		// several opencode processes at once and they otherwise share one SQLite
 		// DB (WAL + 5s busy_timeout), which intermittently loses the write lock —
@@ -101,12 +135,26 @@ func opencodeRunEnv(sessionID, model string) []string {
 		"OPENCODE_DB=rival-" + sessionID + ".db",
 	}
 
-	// If a rival-managed opencode API key is set, inject it into the provider
-	// config for THIS model's provider (e.g. "opencode" = Zen, "opencode-go" =
-	// Go). The opencode CLI's auth.json resolution for the Zen provider is
-	// unreliable, but a provider-config override always works. The key comes from
-	// RIVAL_OPENCODE_API_KEY (never hardcoded) and rides in via OPENCODE_CONFIG_CONTENT.
-	if key := config.OpencodeAPIKey(); key != "" {
+	// Inject an API key into the provider config for THIS model's provider
+	// (e.g. "opencode" = Zen, "moonshot" = Moonshot). The opencode CLI's
+	// auth.json resolution for the Zen provider is unreliable, but a
+	// provider-config override always works. Callers may supply a
+	// provider-specific key (kimi → KIMI_API); the default is the
+	// rival-managed RIVAL_OPENCODE_API_KEY. Never hardcoded; rides in via
+	// OPENCODE_CONFIG_CONTENT.
+	key := opts.APIKey
+	if key == "" {
+		if strings.HasPrefix(model, "moonshot/") {
+			// Moonshot models must never receive the Zen key. Without an
+			// explicit override, fall back to KIMI_API from the process env
+			// (godotenv loads the invocation directory's .env at startup) —
+			// this is what makes the k3 megareview selector work.
+			key = config.KimiAPIKeyFrom("")
+		} else {
+			key = config.OpencodeAPIKey()
+		}
+	}
+	if key != "" {
 		if cfg := opencodeProviderConfig(model, key); cfg != "" {
 			env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 		}

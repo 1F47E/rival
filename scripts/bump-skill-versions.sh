@@ -18,6 +18,7 @@ SKILL_DIRS=(
 	"$ROOT/rival/internal/skills/rival-plan-fable"
 	"$ROOT/rival/internal/skills/rival-fable"
 	"$ROOT/rival/internal/skills/rival-review"
+	"$ROOT/rival/internal/skills/rival-k3"
 )
 
 for dir in "${SKILL_DIRS[@]}"; do

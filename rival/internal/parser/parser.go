@@ -52,6 +52,26 @@ func ParseFableArgs(raw string) (*ParseResult, error) {
 	return parseArgs(raw)
 }
 
+// kimiEffortNames is the accepted -re ladder for the kimi command. Every value
+// is accepted and ignored — Kimi K3 supports only max reasoning — so the list
+// deliberately includes max and ultra: rejecting the one level the docs
+// advertise ("pinned to max") would be a trap.
+var kimiEffortNames = []string{"low", "medium", "high", "xhigh", "ultra", "max"}
+
+// ParseKimiArgs parses raw arguments for the kimi command. The -re flag is
+// accepted for grammar consistency, but the executor always runs Kimi K3 at
+// max reasoning — the model supports no other level.
+func ParseKimiArgs(raw string) (*ParseResult, error) {
+	return parseArgsWithEffort(raw, "max", func(e string) bool {
+		for _, v := range kimiEffortNames {
+			if v == e {
+				return true
+			}
+		}
+		return false
+	}, kimiEffortNames)
+}
+
 func parseArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, config.DefaultEffort, config.IsValidEffort, config.ValidEfforts)
 }

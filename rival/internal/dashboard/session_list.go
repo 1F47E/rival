@@ -103,7 +103,9 @@ func cliLabel(cli, model, mode string) string {
 		return iconOpusFable + " " + config.EngineLabel(cli, model)
 	case "antigravity":
 		return iconAntigravity + " " + config.EngineLabel(cli, model)
-	case "opencode":
+	case "opencode", "kimi":
+		// "kimi" is read-compat for sessions written by the short-lived
+		// kimi-cli transport (removed; K3 now runs through opencode).
 		return iconOpencode + " " + config.EngineLabel(cli, model)
 	default:
 		return cli

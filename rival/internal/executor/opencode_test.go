@@ -47,6 +47,11 @@ func TestOpencodeProviderConfig(t *testing.T) {
 	if !strings.Contains(got, `"opencode-go"`) {
 		t.Errorf("go provider config wrong: %s", got)
 	}
+	// Moonshot model → provider "moonshot".
+	got = opencodeProviderConfig("moonshot/kimi-k3", "sk-moon")
+	if !strings.Contains(got, `"moonshot"`) {
+		t.Errorf("moonshot provider config wrong: %s", got)
+	}
 	// Empty model or key → empty.
 	if opencodeProviderConfig("", "k") != "" || opencodeProviderConfig("m", "") != "" {
 		t.Error("empty model/key should yield empty config")
@@ -67,6 +72,8 @@ func TestOpencodeRunArgs_UsesOnlySupportedVariants(t *testing.T) {
 		{name: "glm low clamps high", model: "opencode/glm-5.2", effort: "low", want: "--variant high"},
 		{name: "glm ultra", model: "opencode/glm-5.2", effort: "ultra", want: "--variant max"},
 		{name: "kimi has no named variant", model: "opencode/kimi-k2.7-code", effort: "xhigh", noVariant: true},
+		{name: "kimi-k3 pins max", model: "moonshot/kimi-k3", effort: "max", want: "--variant max"},
+		{name: "kimi-k3 pins max at low", model: "moonshot/kimi-k3", effort: "low", want: "--variant max"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
