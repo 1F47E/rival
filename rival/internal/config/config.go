@@ -17,18 +17,14 @@ import (
 const (
 	GPT56SolModel        = "gpt-5.6-sol"
 	CodexModel           = GPT56SolModel // legacy internal alias
-	ClaudeModel          = "claude-opus-4-8[1m]"
 	FableModel           = "claude-fable-5"
 	SolLabel             = "sol"
-	OpusLabel            = "opus"
 	FableLabel           = "fable"
+	K3Label              = "kimi-k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
-	OpencodeDeepSeekPro  = "opencode/deepseek-v4-pro"
-	OpencodeModel        = OpencodeDeepSeekPro
-	ClaudeDockerImage    = "rival-opus-fable"
+	ClaudeDockerImage    = "rival-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
-	DefaultEffort              = "xhigh"
 	DefaultReviewEffort        = "high"
 	DefaultPlanEffort          = "high"
 	DefaultConfidenceThreshold = 6
@@ -61,27 +57,14 @@ var ClaudeEffortLevel = map[string]string{
 	"ultra":  "max",
 }
 
-// OpencodeVariant returns the provider-supported reasoning variant for a
-// curated model and Rival effort. DeepSeek exposes the full
-// low/medium/high/max ladder.
-func OpencodeVariant(model, effort string) string {
-	switch model {
-	case KimiModel:
-		// Kimi K3 is thinking-only and its API accepts exactly one reasoning
-		// level; opencode accepts --variant max for it (verified live). Every
-		// rival effort — including the "max" the kimi path records — pins to
-		// max. Without this case the default branch would send --variant high.
-		return "max"
-	default: // DeepSeek V4 Pro and the generic OpenCode fallback.
-		switch effort {
-		case "low", "medium", "high":
-			return effort
-		case "xhigh", "ultra":
-			return "max"
-		default:
-			return "high"
-		}
+// OpencodeVariant returns K3's only provider-supported reasoning variant.
+// Unknown models have no supported variant because K3 is Rival's sole
+// OpenCode-backed model.
+func OpencodeVariant(model, _ string) string {
+	if model != KimiModel {
+		return ""
 	}
+	return "max"
 }
 
 // ModelLabel returns the stable public name for a concrete model id. Runtime
@@ -89,29 +72,28 @@ func OpencodeVariant(model, effort string) string {
 // Rival's short model names consistently.
 func ModelLabel(model string) string {
 	switch model {
-	case GPT56SolModel:
+	case GPT56SolModel, SolLabel:
 		return SolLabel
-	case ClaudeModel:
-		return OpusLabel
-	case FableModel:
+	case FableModel, FableLabel:
 		return FableLabel
+	case KimiModel, K3Label:
+		return K3Label
 	default:
-		return OpencodeShortLabel(model)
+		return "retired-model"
 	}
 }
 
 // EngineLabel returns a human-facing reviewer label. Review output names the
 // selected model instead of the executable adapter used to launch it.
 func EngineLabel(cli, model string) string {
-	// Exact current ids win first because one shared adapter can launch both
-	// Opus and Fable.
+	// Exact current ids win first.
 	switch model {
 	case GPT56SolModel:
 		return SolLabel
-	case ClaudeModel:
-		return OpusLabel
 	case FableModel:
 		return FableLabel
+	case KimiModel:
+		return K3Label
 	}
 
 	// Adapter identity is the reliable fallback for sessions written by older
@@ -119,13 +101,8 @@ func EngineLabel(cli, model string) string {
 	switch cli {
 	case "codex":
 		return SolLabel
-	case "claude":
-		if strings.Contains(strings.ToLower(model), FableLabel) {
-			return FableLabel
-		}
-		return OpusLabel
-	case "fable":
-		return FableLabel
+	case "claude", "fable", "opencode":
+		return "retired-model"
 	}
 	if model != "" {
 		return ModelLabel(model)
@@ -159,7 +136,7 @@ func PublicRuntimeError(cli, model, message string) string {
 			"claude CLI", label+" runtime",
 			"claude requires Docker", title+" runtime requires Docker",
 			"claude exited", label+" exited",
-			"rival-claude", "rival-opus-fable",
+			"rival-claude", "rival-fable",
 			"start claude:", "start "+title+" runtime:",
 			"subprocess claude:", title+" runtime:",
 		).Replace(message)
@@ -245,8 +222,8 @@ func replaceConcreteModelIDs(cli, model, text string) string {
 		text = strings.ReplaceAll(text, model, EngineLabel(cli, model))
 	}
 	text = strings.ReplaceAll(text, GPT56SolModel, SolLabel)
-	text = strings.ReplaceAll(text, ClaudeModel, OpusLabel)
 	text = strings.ReplaceAll(text, FableModel, FableLabel)
+	text = strings.ReplaceAll(text, KimiModel, K3Label)
 	return text
 }
 
@@ -265,6 +242,9 @@ func publicReviewHeader(line string) string {
 	}
 	reviewer := strings.Trim(fields[0], "()")
 	lowerIdentity := strings.ToLower(identity)
+	if strings.Contains(lowerIdentity, "retired-model") {
+		return prefix + "retired-model" + role
+	}
 	switch strings.ToLower(reviewer) {
 	case "codex":
 		reviewer = SolLabel
@@ -272,43 +252,22 @@ func publicReviewHeader(line string) string {
 		if strings.Contains(lowerIdentity, FableLabel) {
 			reviewer = FableLabel
 		} else {
-			reviewer = OpusLabel
+			reviewer = "retired-model"
+		}
+	case "opencode":
+		if strings.Contains(lowerIdentity, K3Label) {
+			reviewer = K3Label
+		} else {
+			reviewer = "retired-model"
 		}
 	case GPT56SolModel:
 		reviewer = SolLabel
-	case ClaudeModel:
-		reviewer = OpusLabel
 	case FableModel:
 		reviewer = FableLabel
+	case KimiModel:
+		reviewer = K3Label
 	}
 	return prefix + reviewer + role
-}
-
-// OpencodeShortLabel strips the opencode provider prefix from a model id for
-// display, e.g. "opencode/deepseek-v4-pro" → "deepseek-v4-pro". An empty model
-// falls back to "opencode".
-func OpencodeShortLabel(model string) string {
-	if model == "" {
-		return "opencode"
-	}
-	if i := strings.LastIndex(model, "/"); i >= 0 && i+1 < len(model) {
-		return model[i+1:]
-	}
-	return model
-}
-
-// OpencodeReviewer is one opencode-provided model run as a megareview reviewer.
-// Model is the concrete opencode model id; Role is the review lens (a
-// review.Role string) so the roster can diversify coverage across the models.
-type OpencodeReviewer struct {
-	Model string
-	Role  string
-}
-
-// defaultOpencodeReviewers is the intentionally curated OpenCode roster,
-// ordered by judge preference. Each model gets a distinct review lens.
-var defaultOpencodeReviewers = []OpencodeReviewer{
-	{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
 }
 
 // ReviewTarget is one concrete reviewer selected for a megareview run. CLI is
@@ -323,11 +282,10 @@ type ReviewTarget struct {
 // DefaultReviewTargets returns the curated two-model megareview roster. The
 // order is also the consilium judge preference order.
 func DefaultReviewTargets() []ReviewTarget {
-	targets := []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
-	for _, reviewer := range OpencodeReviewerList() {
-		targets = append(targets, ReviewTarget{CLI: "opencode", Model: reviewer.Model, Role: reviewer.Role})
+	return []ReviewTarget{
+		{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"},
+		{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"},
 	}
-	return targets
 }
 
 // ResolveReviewTargets resolves per-invocation model selectors to an exact,
@@ -337,7 +295,6 @@ func DefaultReviewTargets() []ReviewTarget {
 //
 // Friendly aliases:
 //   - sol (the exact runtime model id remains accepted for compatibility)
-//   - deepseek, deepseek-pro, deepseek-v4-pro
 //   - k3, kimi-k3
 //
 // Per-run selection intentionally stays on this curated set.
@@ -374,13 +331,11 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		switch alias {
 		case SolLabel, GPT56SolModel:
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
-		case "deepseek", "deepseek-pro", "deepseek-v4-pro":
-			expanded = []ReviewTarget{{CLI: "opencode", Model: OpencodeDeepSeekPro, Role: "bug_hunter"}}
 		case "k3", "kimi-k3":
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
 			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, deepseek-v4-pro, kimi-k3", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
@@ -391,13 +346,6 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		return nil, fmt.Errorf("no review models selected")
 	}
 	return targets, nil
-}
-
-// OpencodeAPIKey returns the required OpenCode Zen API key that Rival injects
-// into reviewer runs via OPENCODE_CONFIG_CONTENT. The key is read only from
-// RIVAL_OPENCODE_API_KEY, never from a reviewed repository.
-func OpencodeAPIKey() string {
-	return strings.TrimSpace(os.Getenv("RIVAL_OPENCODE_API_KEY"))
 }
 
 // KimiAPIKeyFrom returns the Moonshot AI API key for K3 runs.
@@ -435,12 +383,6 @@ func KimiAPIKeyFrom(workdir string) string {
 		dir = parent
 	}
 	return ""
-}
-
-// OpencodeReviewerList returns a copy of the curated roster. Per-run selection
-// is handled by ResolveReviewTargets rather than process-wide environment state.
-func OpencodeReviewerList() []OpencodeReviewer {
-	return append([]OpencodeReviewer(nil), defaultOpencodeReviewers...)
 }
 
 // SystemPrompt is prepended as a system instruction to all CLI invocations.
@@ -700,7 +642,7 @@ func LoadUserConfig() {
 	for label, raw := range cfg.Efforts {
 		effort := strings.ToLower(strings.TrimSpace(raw))
 		if !knownEffortModel(label) {
-			userConfigErr = fmt.Errorf("invalid effort model %q in %s; use one of: sol, deepseek-v4-pro, kimi-k3, opus, fable", label, path)
+			userConfigErr = fmt.Errorf("invalid effort model %q in %s; use one of: sol, kimi-k3, fable", label, path)
 			return
 		}
 		if !validConfiguredModelEffort(label, effort) {
@@ -753,12 +695,10 @@ func DefaultEffortForModel(model string) string {
 
 func builtinModelEffort(label string) string {
 	switch label {
-	case SolLabel, "deepseek-v4-pro":
+	case SolLabel:
 		return DefaultReviewEffort
 	case "kimi-k3":
 		return "max"
-	case OpusLabel:
-		return DefaultEffort
 	case FableLabel:
 		return "medium"
 	default:
@@ -768,7 +708,7 @@ func builtinModelEffort(label string) string {
 
 func knownEffortModel(label string) bool {
 	switch label {
-	case SolLabel, "deepseek-v4-pro", "kimi-k3", OpusLabel, FableLabel:
+	case SolLabel, "kimi-k3", FableLabel:
 		return true
 	default:
 		return false

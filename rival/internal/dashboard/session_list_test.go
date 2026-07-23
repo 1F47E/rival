@@ -15,9 +15,8 @@ func TestCLILabelUsesPublicModelNames(t *testing.T) {
 		cli, model, want string
 	}{
 		{"codex", config.GPT56SolModel, iconSol + " " + config.SolLabel},
-		{"opencode", config.OpencodeDeepSeekPro, iconOpencode + " deepseek-v4-pro"},
 		{"opencode", config.KimiModel, iconOpencode + " kimi-k3"},
-		{"fable", config.FableModel, iconOpusFable + " " + config.FableLabel},
+		{"fable", config.FableModel, iconFable + " " + config.FableLabel},
 	}
 	for _, tc := range tests {
 		if got := cliLabel(tc.cli, tc.model, "review"); got != tc.want {

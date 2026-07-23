@@ -229,40 +229,40 @@ func TestParseReviewArgs_ModelSelection(t *testing.T) {
 	})
 
 	t.Run("model only auto-scopes", func(t *testing.T) {
-		r, err := ParseReviewArgs("-m deepseek")
+		r, err := ParseReviewArgs("-m k3")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !r.AutoScope || len(r.Models) != 1 || r.Models[0] != "deepseek" {
+		if !r.AutoScope || len(r.Models) != 1 || r.Models[0] != "k3" {
 			t.Fatalf("unexpected parse result: %+v", r)
 		}
 	})
 
 	t.Run("flags in either order and comma list", func(t *testing.T) {
-		r, err := ParseReviewArgs("--model=k3,deepseek --effort high src/api and reports")
+		r, err := ParseReviewArgs("--model=k3,sol --effort high src/api and reports")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if r.Effort != "high" || r.AutoScope || r.ReviewScope != "src/api and reports" {
 			t.Fatalf("unexpected parse result: %+v", r)
 		}
-		if len(r.Models) != 2 || r.Models[0] != "k3" || r.Models[1] != "deepseek" {
+		if len(r.Models) != 2 || r.Models[0] != "k3" || r.Models[1] != "sol" {
 			t.Fatalf("unexpected models: %v", r.Models)
 		}
 
-		r, err = ParseReviewArgs("-re low -m k3 -m deepseek src/")
+		r, err = ParseReviewArgs("-re low -m k3 -m sol src/")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if r.Effort != "low" || len(r.Models) != 2 || r.Models[1] != "deepseek" {
+		if r.Effort != "low" || len(r.Models) != 2 || r.Models[1] != "sol" {
 			t.Fatalf("unexpected repeated model parse: %+v", r)
 		}
 
-		r, err = ParseReviewArgs("src/api/ -m deepseek -re medium")
+		r, err = ParseReviewArgs("src/api/ -m k3 -re medium")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if r.ReviewScope != "src/api/" || r.Effort != "medium" || len(r.Models) != 1 || r.Models[0] != "deepseek" {
+		if r.ReviewScope != "src/api/" || r.Effort != "medium" || len(r.Models) != 1 || r.Models[0] != "k3" {
 			t.Fatalf("trailing flags must not become scope text: %+v", r)
 		}
 	})
@@ -279,7 +279,7 @@ func TestParseReviewArgs_ModelSelection(t *testing.T) {
 }
 
 func TestParseReviewArgs_ModelOptionErrors(t *testing.T) {
-	for _, raw := range []string{"-m", "--model=", "-m -re high", "--model k3,,deepseek", "--unknown value"} {
+	for _, raw := range []string{"-m", "--model=", "-m -re high", "--model k3,,sol", "--unknown value"} {
 		t.Run(raw, func(t *testing.T) {
 			if _, err := ParseReviewArgs(raw); err == nil {
 				t.Fatalf("expected %q to fail", raw)

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-20
 **Scope:** /Users/kass/dev/claude-codex-plugin (Go module in `rival/`)
-**Status:** pending review
+**Status:** approved
 **Revision:** 2 — rewritten after Sol review (3/10, 1 crit + 4 high + 4 med, all addressed below) and re-verified against the working tree as of the in-flight 71-file runtime-removal refactor. All line citations re-checked; they will drift again if that refactor lands before implementation, so treat them as landmarks and re-grep by symbol name.
 
 ## Problem(s)

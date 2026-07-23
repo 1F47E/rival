@@ -17,7 +17,7 @@ func RoleForCLI(cli string) Role {
 	case "claude":
 		return RoleCodeQuality
 	case "opencode":
-		// The generic OpenCode fallback model is DeepSeek V4 Pro.
+		// K3 is Rival's only OpenCode-backed reviewer.
 		return RoleBugHunter
 	default:
 		return RoleBugHunter

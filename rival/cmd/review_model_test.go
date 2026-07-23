@@ -37,7 +37,7 @@ func TestReviewCommandDefersToConfiguredModelEfforts(t *testing.T) {
 }
 
 func TestMegareviewUsageNamesModelsAndEffortConfig(t *testing.T) {
-	for _, want := range []string{"Sol", "DeepSeek V4 Pro", "Kimi K3", "model defaults", "ultra"} {
+	for _, want := range []string{"Sol", "Kimi K3", "model defaults", "ultra"} {
 		if !strings.Contains(megareviewUsage, want) {
 			t.Errorf("megareview usage missing %q", want)
 		}
@@ -65,14 +65,14 @@ func TestModelSelectionFlag_RejectsExplicitEmpty(t *testing.T) {
 func TestModelSelectionFlag_ParsesCommaList(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().StringSliceP("model", "m", nil, "models")
-	if err := cmd.ParseFlags([]string{"-m", "deepseek,k3"}); err != nil {
+	if err := cmd.ParseFlags([]string{"-m", "sol,k3"}); err != nil {
 		t.Fatal(err)
 	}
 	models, changed, err := modelSelectionFlag(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !changed || len(models) != 2 || models[0] != "deepseek" || models[1] != "k3" {
+	if !changed || len(models) != 2 || models[0] != "sol" || models[1] != "k3" {
 		t.Fatalf("unexpected selection: changed=%v models=%v", changed, models)
 	}
 }

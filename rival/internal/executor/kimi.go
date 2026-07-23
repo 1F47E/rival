@@ -37,7 +37,7 @@ func KimiPreflight(workdir string) error {
 var kimiDropEnv = []string{
 	"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 	"GOOGLE_",
-	"RIVAL_OPENCODE_API_KEY", "RIVAL_CLAUDE_TOKEN",
+	"RIVAL_CLAUDE_TOKEN",
 	// Trailing underscore = prefix drop: catches SESSION_TOKEN, PROFILE,
 	// WEB_IDENTITY_TOKEN_FILE, container credential URIs — the whole family.
 	"AWS_",

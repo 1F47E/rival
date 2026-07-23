@@ -30,11 +30,10 @@ func TestSortGroupMembersUsesCuratedFallbackForLegacySessions(t *testing.T) {
 		{ID: "fable", CLI: "fable", Model: config.FableModel, Mode: "plan"},
 		{ID: "k3", CLI: "opencode", Model: config.KimiModel, Mode: "megareview"},
 		{ID: "sol", CLI: "codex", Model: config.GPT56SolModel, Mode: "plan"},
-		{ID: "deepseek", CLI: "opencode", Model: config.OpencodeDeepSeekPro, Mode: "megareview"},
 	}
 
 	SortGroupMembers(sessions)
-	for i, want := range []string{"sol", "deepseek", "k3", "fable"} {
+	for i, want := range []string{"sol", "k3", "fable"} {
 		if sessions[i].ID != want {
 			t.Fatalf("legacy member %d = %q, want %q", i, sessions[i].ID, want)
 		}

@@ -1,15 +1,15 @@
 ---
 name: rival-review
-version: 3.23.0
-description: Run Sol, DeepSeek V4 Pro, and/or opt-in Kimi K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
-argument-hint: "[-m sol|deepseek|k3[,model...]] [-re high|ultra] [scope]"
+version: 4.0.0
+description: Run Sol and/or K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+argument-hint: "[-m sol|k3[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
 ---
 
 # Megareview Runner (rival binary)
 
 Run the curated reviewers via the `rival` Go binary. The default roster is
-Sol + DeepSeek V4 Pro; `-m/--model` replaces that roster for one invocation.
+Sol + K3; `-m/--model` replaces that roster for one invocation.
 Returns a single combined answer.
 
 ## Instructions
@@ -25,12 +25,11 @@ respond with this usage message and STOP:
 > **Usage:**
 > - `/rival-review` — both default models; auto-detect changed files via git
 > - `/rival-review -m sol src/api/` — Sol only
-> - `/rival-review -m deepseek src/api/` — DeepSeek V4 Pro only
-> - `/rival-review -m k3 src/api/` — Kimi K3 only (requires `MOONSHOT_API_KEY`)
-> - `/rival-review -m deepseek,k3 src/api/` — exactly those two models
+> - `/rival-review -m k3 src/api/` — K3 only (requires `MOONSHOT_API_KEY`)
+> - `/rival-review -m sol,k3 src/api/` — exactly those two models
 > - `/rival-review -re ultra src/api/` — override compatible model defaults
 >
-> **Models** (`-m`, `--model`): `sol`, `deepseek-v4-pro` (`deepseek`), `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`)
+> **Models** (`-m`, `--model`): `sol`, `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`)
 > **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high`, `ultra`;
 > omitted uses per-model defaults from `~/.rival/config.yaml`.
 >

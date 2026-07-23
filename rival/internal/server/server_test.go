@@ -34,22 +34,22 @@ func TestGroupSessions(t *testing.T) {
 			name: "two solo sessions stay separate",
 			sessions: []*session.Session{
 				{ID: "a", CLI: "codex", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", CLI: "opencode", Model: config.OpencodeDeepSeekPro, Status: "completed"},
+				{ID: "b", CLI: "opencode", Model: config.KimiModel, Status: "completed"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{false, false},
-			wantCLI:     []string{config.SolLabel, "deepseek-v4-pro"},
+			wantCLI:     []string{config.SolLabel, config.K3Label},
 			wantKind:    []string{"", ""},
 		},
 		{
 			name: "shared GroupID collapses into one mega row",
 			sessions: []*session.Session{
 				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed"},
+				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.KimiModel, Status: "completed"},
 			},
 			wantGroups:  1,
 			wantIsGroup: []bool{true},
-			wantCLI:     []string{config.SolLabel + "+deepseek-v4-pro"},
+			wantCLI:     []string{config.SolLabel + "+" + config.K3Label},
 			wantKind:    []string{"megareview"},
 		},
 		{
@@ -67,12 +67,12 @@ func TestGroupSessions(t *testing.T) {
 			name: "mixed: one mega group + one solo",
 			sessions: []*session.Session{
 				{ID: "a", GroupID: "g1", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed"},
-				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed"},
-				{ID: "c", CLI: "claude", Model: "opus", Status: "running"},
+				{ID: "b", GroupID: "g1", CLI: "opencode", Mode: "megareview", Model: config.KimiModel, Status: "completed"},
+				{ID: "c", CLI: "claude", Model: config.FableModel, Status: "running"},
 			},
 			wantGroups:  2,
 			wantIsGroup: []bool{true, false},
-			wantCLI:     []string{config.SolLabel + "+deepseek-v4-pro", "opus"},
+			wantCLI:     []string{config.SolLabel + "+" + config.K3Label, config.FableLabel},
 			wantKind:    []string{"megareview", ""},
 		},
 	}
@@ -135,13 +135,12 @@ func TestSingletonPlanKeepsLogicalGroupIdentity(t *testing.T) {
 
 func TestSelectedReviewGroupUsesPublicModels(t *testing.T) {
 	created := time.Now()
-	times := make([]time.Time, 3)
+	times := make([]time.Time, 2)
 	for i := range times {
 		times[i] = created.Add(time.Duration(i) * time.Millisecond)
 	}
 	sessions := []*session.Session{
-		{ID: "c", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.KimiModel, Status: "failed", ErrorMsg: "k3 failed", QueuedAt: &times[2]},
-		{ID: "b", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.OpencodeDeepSeekPro, Status: "completed", QueuedAt: &times[1]},
+		{ID: "b", GroupID: "review", CLI: "opencode", Mode: "megareview", Model: config.KimiModel, Status: "failed", ErrorMsg: "k3 failed", QueuedAt: &times[1]},
 		{ID: "a", GroupID: "review", CLI: "codex", Mode: "megareview", Model: config.GPT56SolModel, Status: "completed", QueuedAt: &times[0]},
 	}
 	groups := groupSessions(sessions)
@@ -149,7 +148,7 @@ func TestSelectedReviewGroupUsesPublicModels(t *testing.T) {
 		t.Fatalf("review group count = %d, want 1", len(groups))
 	}
 	group := groups[0]
-	wantLabels := []string{"sol", "deepseek-v4-pro", "kimi-k3"}
+	wantLabels := []string{config.SolLabel, config.K3Label}
 	if group.Kind != "megareview" || group.CLI != strings.Join(wantLabels, "+") || group.Models != strings.Join(wantLabels, " + ") {
 		t.Fatalf("review group labels = kind %q cli %q models %q", group.Kind, group.CLI, group.Models)
 	}
@@ -163,15 +162,15 @@ func TestSelectedReviewGroupUsesPublicModels(t *testing.T) {
 	if !slices.Equal(gotLabels, wantLabels) {
 		t.Fatalf("public review sessions = %v, want %v", gotLabels, wantLabels)
 	}
-	if group.Sessions[2].ErrorMsg != "k3 failed" {
-		t.Fatalf("non-primary failure missing from public group: %+v", group.Sessions[2])
+	if group.Sessions[1].ErrorMsg != "k3 failed" {
+		t.Fatalf("non-primary failure missing from public group: %+v", group.Sessions[1])
 	}
 }
 
 func TestGroupSessionsReportsMixedEffort(t *testing.T) {
 	groups := groupSessions([]*session.Session{
 		{ID: "a", GroupID: "review", CLI: "codex", Model: config.GPT56SolModel, Effort: "ultra"},
-		{ID: "b", GroupID: "review", CLI: "opencode", Model: config.OpencodeDeepSeekPro, Effort: "low"},
+		{ID: "b", GroupID: "review", CLI: "opencode", Model: config.KimiModel, Effort: "low"},
 	})
 	if len(groups) != 1 || groups[0].Effort != "mixed" {
 		t.Fatalf("group effort = %+v, want mixed", groups)
@@ -187,7 +186,7 @@ func TestIndexIncludesCuratedModelIcons(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(data)
-	for _, label := range []string{"sol", "deepseek-v4-pro", "kimi-k3", "fable"} {
+	for _, label := range []string{config.SolLabel, config.K3Label, config.FableLabel} {
 		if !strings.Contains(html, label+"': '") && !strings.Contains(html, label+": '") {
 			t.Errorf("web dashboard has no icon mapping for %q", label)
 		}

@@ -30,11 +30,6 @@ func ParseCodexArgs(raw string) (*ParseResult, error) {
 	return ParseGPT56SolArgs(raw)
 }
 
-// ParseClaudeArgs parses raw arguments for the claude command.
-func ParseClaudeArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
-}
-
 // ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
 // Identical grammar to claude.
 func ParseFableArgs(raw string) (*ParseResult, error) {

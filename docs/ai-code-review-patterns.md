@@ -94,10 +94,9 @@ When multiple agents work in parallel (worktrees, branches), these bugs appear o
 
 ### Role prompt checklists
 
-Rival's role templates include the six bug patterns as explicit checklist
-items. The current curated code-review roster assigns the bug-hunter role to
-its reviewers; the other templates remain implemented but are not assigned by
-the default roster.
+The current curated code-review roster assigns the bug-hunter role to both Sol
+and Kimi K3. That role's prompt includes the implementation-focused patterns
+most useful for high-confidence findings:
 
 **Bug Hunter role** checks:
 
@@ -105,19 +104,6 @@ the default roster.
 - Verify error handling on every external call (DB, API, filesystem)
 - Look for N+1 patterns (queries/API calls inside loops)
 - Verify test assertions check specific values, not just truthiness
-
-**Architecture & Security role** checks:
-
-- Search for security anti-patterns (string interpolation in queries, innerHTML, hardcoded secrets)
-- Flag missing auth middleware on new routes
-- Flag over-abstraction (new abstraction layers not requested by spec)
-- Check for unbounded queries without pagination
-
-**Code Quality role** checks:
-
-- Flag commented-out code with TODO/FIXME (half-finished work)
-- Count new files vs scope — flag if disproportionate
-- Check for unnecessary abstraction layers (factory/interface/helper that can be inlined)
 
 ### Diff context in review preamble
 

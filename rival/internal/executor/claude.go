@@ -21,22 +21,19 @@ func ClaudePreflight() error {
 	return ClaudeDockerPreflight()
 }
 
-// RunClaude executes a prompt through Claude CLI (native if available, docker otherwise)
-// using the default Claude model.
-func RunClaude(ctx context.Context, sess *session.Session, prompt, effort, workdir string, mirror io.Writer) (*Result, error) {
-	return RunClaudeModel(ctx, sess, prompt, effort, workdir, config.ClaudeModel, mirror)
-}
-
 // RunFable executes a prompt through the Claude CLI using the Fable model.
-// Fable runs through the same `claude` binary (native or docker) and the same
-// auth — only the --model string differs.
+// Claude Code remains an implementation transport, while Fable is the only
+// public model on this path.
 func RunFable(ctx context.Context, sess *session.Session, prompt, effort, workdir string, mirror io.Writer) (*Result, error) {
-	return RunClaudeModel(ctx, sess, prompt, effort, workdir, config.FableModel, mirror)
+	return runClaudeModel(ctx, sess, prompt, effort, workdir, config.FableModel, mirror)
 }
 
-// RunClaudeModel runs a prompt through the Claude CLI with an explicit model id,
+// runClaudeModel runs Fable through the Claude Code CLI,
 // auto-selecting native (claude on PATH) vs docker.
-func RunClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+func runClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+	if model != config.FableModel {
+		return nil, fmt.Errorf("unsupported Claude Code model %q", model)
+	}
 	var result *Result
 	var err error
 	if _, lookErr := exec.LookPath("claude"); lookErr == nil {
@@ -44,7 +41,7 @@ func RunClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, 
 		result, err = runClaudeNative(ctx, sess, prompt, effort, workdir, model, mirror)
 	} else {
 		setClaudeTransportMode(sess, "docker")
-		result, err = RunClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
+		result, err = runClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
 	}
 	if err != nil {
 		label := config.EngineLabel("claude", model)

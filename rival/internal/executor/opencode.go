@@ -6,40 +6,23 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 )
 
-// OpencodePreflight checks that the opencode CLI is installed and, when the
-// reviewer roster uses OpenCode Zen models ("opencode/" prefix), that a Zen API
-// key is configured. The opencode CLI's own Zen auth resolution is unreliable, so
-// rival injects RIVAL_OPENCODE_API_KEY per run — without it every Zen reviewer
-// fails mid-run with an opaque "Missing API key". Failing preflight here turns
-// that into one clear, actionable skip reason instead.
-func OpencodePreflight() error {
-	for _, reviewer := range config.OpencodeReviewerList() {
-		// The curated roster carries no Moonshot models, so the empty workdir
-		// (which limits key resolution to the process env) is irrelevant.
-		if err := OpencodePreflightModel(reviewer.Model, ""); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// OpencodePreflightModel validates one selected OpenCode model. workdir seeds
+// OpencodePreflightModel validates K3, Rival's sole OpenCode-backed model.
+// workdir seeds
 // the Moonshot API-key .env walk-up for K3 (see config.KimiAPIKeyFrom);
 // pass "" when no workdir context exists.
 func OpencodePreflightModel(model, workdir string) error {
+	if model != config.KimiModel {
+		return fmt.Errorf("unsupported OpenCode model %q", model)
+	}
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return fmt.Errorf("opencode CLI not installed. Install: curl -fsSL https://opencode.ai/install | bash")
 	}
-	if strings.HasPrefix(model, "opencode/") && config.OpencodeAPIKey() == "" {
-		return fmt.Errorf("OpenCode Zen model %s requires RIVAL_OPENCODE_API_KEY — export your Zen key", model)
-	}
-	if strings.HasPrefix(model, "moonshotai/") && config.KimiAPIKeyFrom(workdir) == "" {
+	if config.KimiAPIKeyFrom(workdir) == "" {
 		return fmt.Errorf("model %s requires MOONSHOT_API_KEY — add it to the project .env or export it", model)
 	}
 	return nil
@@ -68,20 +51,19 @@ const opencodeFullAutoPermission = `{"read":"allow","grep":"allow","glob":"allow
 
 // OpencodeRunOpts customizes one opencode execution beyond the reviewer
 // defaults. Zero values keep megareview behavior exactly: read-only
-// permission, RIVAL_OPENCODE_API_KEY provider injection, no extra env drops.
+// permission, Moonshot key injection, no extra env drops.
 type OpencodeRunOpts struct {
 	Permission string   // OPENCODE_PERMISSION JSON; "" = read-only reviewer profile
-	APIKey     string   // api key for this model's provider; "" = config.OpencodeAPIKey()
+	APIKey     string   // Moonshot API key; "" = config.KimiAPIKeyFrom(workdir)
 	DropEnv    []string // extra vars/prefixes stripped from the child (see dropMatches)
 }
 
-// RunOpencode executes a prompt through the opencode CLI running the given model
-// (e.g. "opencode/deepseek-v4-pro"). opencode reads the prompt from stdin in
+// RunOpencode executes a K3 prompt through the opencode CLI. The prompt is read from stdin in
 // non-interactive `run` mode; the effort is mapped to opencode's --variant
 // (provider-specific reasoning level). It runs under a read-only permission
 // profile (see opencodeReadOnlyPermission) rather than --dangerously-skip-permissions,
 // so a prompt-injected repo cannot make the reviewer write files or run commands.
-// An empty model falls back to config.OpencodeModel.
+// An empty model falls back to K3.
 func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
 	return RunOpencodeWith(ctx, sess, prompt, effort, workdir, model, OpencodeRunOpts{}, mirror)
 }
@@ -91,7 +73,10 @@ func RunOpencode(ctx context.Context, sess *session.Session, prompt, effort, wor
 // moonshot-provider key; megareview reviewers stay on the zero-value defaults.
 func RunOpencodeWith(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, opts OpencodeRunOpts, mirror io.Writer) (*Result, error) {
 	if model == "" {
-		model = config.OpencodeModel
+		model = config.KimiModel
+	}
+	if model != config.KimiModel {
+		return nil, fmt.Errorf("unsupported OpenCode model %q", model)
 	}
 	args := opencodeRunArgs(model, effort, workdir)
 	env := opencodeRunEnvWith(sess.ID, model, workdir, opts)
@@ -142,24 +127,12 @@ func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) 
 		"OPENCODE_DB=rival-" + sessionID + ".db",
 	}
 
-	// Inject an API key into the provider config for THIS model's provider
-	// (e.g. "opencode" = Zen, "moonshotai" = Moonshot AI). The opencode CLI's
-	// auth.json resolution for the Zen provider is unreliable, but a
-	// provider-config override always works. Callers may supply a
-	// provider-specific key (K3 → MOONSHOT_API_KEY); the default is the
-	// rival-managed RIVAL_OPENCODE_API_KEY. Never hardcoded; rides in via
-	// OPENCODE_CONFIG_CONTENT.
+	// Inject the Moonshot key into K3's provider config. A caller may supply an
+	// explicit key; otherwise resolve MOONSHOT_API_KEY from the process or the
+	// workdir .env walk-up. The key is never hardcoded or written to disk.
 	key := opts.APIKey
 	if key == "" {
-		if strings.HasPrefix(model, "moonshotai/") {
-			// Moonshot models must never receive the Zen key. Without an
-			// explicit override, fall back to the Moonshot key (process env,
-			// then the .env walk-up from workdir) — this is what makes the k3
-			// megareview selector work, including from subdirectories.
-			key = config.KimiAPIKeyFrom(workdir)
-		} else {
-			key = config.OpencodeAPIKey()
-		}
+		key = config.KimiAPIKeyFrom(workdir)
 	}
 	if key != "" {
 		if cfg := opencodeProviderConfig(model, key); cfg != "" {
@@ -169,23 +142,16 @@ func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) 
 	return env
 }
 
-// opencodeProviderConfig returns an OPENCODE_CONFIG_CONTENT JSON string that sets
-// the API key on the provider that serves the given model. The provider id is the
-// part of the model before the first "/" (e.g. "opencode/deepseek-v4-pro" →
-// provider "opencode"); a model with no "/" defaults to the Zen provider.
-// Returns "" if the model or key is empty.
+// opencodeProviderConfig returns K3's in-memory Moonshot provider config.
+// Unsupported models and empty keys are rejected.
 func opencodeProviderConfig(model, key string) string {
-	if model == "" || key == "" {
+	if model != config.KimiModel || key == "" {
 		return ""
-	}
-	provider := "opencode"
-	if i := strings.Index(model, "/"); i > 0 {
-		provider = model[:i]
 	}
 	cfg := map[string]any{
 		"$schema": "https://opencode.ai/config.json",
 		"provider": map[string]any{
-			provider: map[string]any{
+			"moonshotai": map[string]any{
 				"options": map[string]any{"apiKey": key},
 			},
 		},
