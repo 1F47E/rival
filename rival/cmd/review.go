@@ -22,8 +22,8 @@ var reviewCmd = &cobra.Command{
 	Long: `Run selected code-review models in parallel with role-specific prompts,
 then merge findings via a consilium judge for a unified verdict.
 
-By default Rival runs Sol and DeepSeek V4 Pro. --model replaces that complete
-roster for one run; Kimi K3 is available as the opt-in k3 selector.
+By default Rival runs Sol and Kimi K3. --model replaces that complete roster
+for one run.
 
 Without a scope argument, auto-detects changed files via git:
   1. Dirty files (staged + unstaged + untracked) → review those
@@ -36,7 +36,7 @@ With a scope argument, reviews exactly that scope.`,
 
 func init() {
 	reviewCmd.Flags().String("effort", "", "override all compatible model defaults: low, medium, high, ultra")
-	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, deepseek-v4-pro, kimi-k3")
+	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, kimi-k3")
 	reviewCmd.Flags().String("workdir", ".", "working directory")
 	reviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	rootCmd.AddCommand(reviewCmd)
@@ -103,7 +103,7 @@ func modelSelectionFlag(cmd *cobra.Command) (models []string, changed bool, err 
 		return nil, false, nil
 	}
 	if len(models) == 0 {
-		return nil, true, fmt.Errorf("option --model requires a value: sol, deepseek-v4-pro, or kimi-k3")
+		return nil, true, fmt.Errorf("option --model requires a value: sol or kimi-k3")
 	}
 	for _, model := range models {
 		if strings.TrimSpace(model) == "" {

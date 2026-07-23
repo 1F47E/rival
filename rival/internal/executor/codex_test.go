@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -21,5 +23,23 @@ func TestCodexRunArgs_UsesExplicitSolModelAndEffort(t *testing.T) {
 				t.Fatalf("args lost read-only sandbox: %s", joined)
 			}
 		})
+	}
+}
+
+func TestRunCodexModelRejectsUnsupportedModel(t *testing.T) {
+	result, err := RunCodexModel(
+		context.Background(),
+		nil,
+		"review",
+		"high",
+		"/repo",
+		"retired-model",
+		io.Discard,
+	)
+	if err == nil {
+		t.Fatal("unsupported Sol model was accepted")
+	}
+	if result != nil {
+		t.Fatalf("unsupported Sol model returned a result: %#v", result)
 	}
 }

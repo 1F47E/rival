@@ -17,8 +17,8 @@ func TestRoleForCLI_Opencode(t *testing.T) {
 }
 
 func TestModelForCLI_Opencode(t *testing.T) {
-	if got := modelForCLI("opencode"); got != config.OpencodeModel {
-		t.Errorf("modelForCLI(opencode) = %q, want %q", got, config.OpencodeModel)
+	if got := modelForCLI("opencode"); got != config.KimiModel {
+		t.Errorf("modelForCLI(opencode) = %q, want %q", got, config.KimiModel)
 	}
 }
 
@@ -35,28 +35,27 @@ func TestPickJudge(t *testing.T) {
 			[]ReviewInput{
 				{CLI: "opencode", Model: config.KimiModel},
 				{CLI: "codex", Model: config.GPT56SolModel},
-				{CLI: "opencode", Model: config.OpencodeDeepSeekPro},
 			},
 			config.DefaultReviewTargets(),
 			"codex", config.GPT56SolModel,
 		},
 		{
-			"requested order controls OpenCode judge",
+			"requested order can select K3 before Sol",
 			[]ReviewInput{
-				{CLI: "opencode", Model: config.OpencodeDeepSeekPro},
+				{CLI: "codex", Model: config.GPT56SolModel},
 				{CLI: "opencode", Model: config.KimiModel},
 			},
 			[]config.ReviewTarget{
 				{CLI: "opencode", Model: config.KimiModel, Role: "code_quality"},
-				{CLI: "opencode", Model: config.OpencodeDeepSeekPro, Role: "arch_security"},
+				{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"},
 			},
 			"opencode", config.KimiModel,
 		},
 		{
-			"default judge falls through to DeepSeek when GPT-5.6-Sol failed",
-			[]ReviewInput{{CLI: "opencode", Model: config.OpencodeDeepSeekPro}},
+			"default judge falls through to K3 when GPT-5.6-Sol failed",
+			[]ReviewInput{{CLI: "opencode", Model: config.KimiModel}},
 			config.DefaultReviewTargets(),
-			"opencode", config.OpencodeDeepSeekPro,
+			"opencode", config.KimiModel,
 		},
 		{
 			"single GPT-5.6-Sol success judges itself",
@@ -86,13 +85,10 @@ func TestPickJudge(t *testing.T) {
 
 func TestOpencodeVariant_PerCuratedModel(t *testing.T) {
 	cases := []struct{ model, effort, want string }{
-		{config.OpencodeDeepSeekPro, "low", "low"},
-		{config.OpencodeDeepSeekPro, "medium", "medium"},
-		{config.OpencodeDeepSeekPro, "xhigh", "max"},
-		{config.OpencodeDeepSeekPro, "ultra", "max"},
 		{config.KimiModel, "low", "max"},
 		{config.KimiModel, "xhigh", "max"},
 		{config.KimiModel, "ultra", "max"},
+		{"unsupported-model", "high", ""},
 	}
 	for _, tc := range cases {
 		if got := config.OpencodeVariant(tc.model, tc.effort); got != tc.want {

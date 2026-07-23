@@ -69,27 +69,16 @@ func TestKimiRunOptsByMode(t *testing.T) {
 	}
 }
 
-// A moonshot model must receive the Moonshot key, never the Zen key — the
-// provider-config injection is keyed on the model's provider prefix.
-func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
+// K3 must receive the Moonshot key through its provider config.
+func TestMoonshotModelUsesKimiKey(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "sk-moonshot")
-	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
 
 	env := strings.Join(opencodeRunEnvWith("sess-1", config.KimiModel, "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-moonshot") {
 		t.Errorf("moonshot model env missing API key: %s", env)
 	}
-	if strings.Contains(env, "sk-zen") {
-		t.Errorf("moonshot model env must not carry the Zen key: %s", env)
-	}
 	if !strings.Contains(env, `"moonshotai"`) {
 		t.Errorf("provider config must target the built-in moonshotai provider: %s", env)
-	}
-
-	// Zen models keep the Zen key.
-	zen := strings.Join(opencodeRunEnvWith("sess-2", config.OpencodeDeepSeekPro, "", OpencodeRunOpts{}), "\n")
-	if !strings.Contains(zen, "sk-zen") {
-		t.Errorf("zen model env missing Zen key: %s", zen)
 	}
 }
 
@@ -99,7 +88,6 @@ func TestMoonshotModelUsesKimiKeyNotZen(t *testing.T) {
 func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "")
 	t.Setenv("KIMI_API", "")
-	t.Setenv("RIVAL_OPENCODE_API_KEY", "sk-zen")
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("MOONSHOT_API_KEY=sk-walkup\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -111,9 +99,6 @@ func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
 	env := strings.Join(opencodeRunEnvWith("sess-4", config.KimiModel, sub, OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-walkup") {
 		t.Errorf("moonshot fallback did not walk up to the workdir .env: %s", env)
-	}
-	if strings.Contains(env, "sk-zen") {
-		t.Errorf("moonshot fallback must not use the Zen key: %s", env)
 	}
 	if err := OpencodePreflightModel(config.KimiModel, sub); err != nil {
 		t.Errorf("preflight should find the walked-up key: %v", err)

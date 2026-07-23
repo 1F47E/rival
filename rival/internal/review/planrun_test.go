@@ -173,7 +173,7 @@ func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 			{CLI: "codex", Model: config.GPT56SolModel, Parsed: &PlanOutput{Summary: "cx", Rating: 6}},
 			{CLI: "fable", Model: config.FableModel, Parsed: nil, Raw: "Claude raw dump"},
 		},
-		Skipped: []SkippedCLI{{CLI: "opencode", Model: config.OpencodeDeepSeekPro, Reason: "n/a"}},
+		Skipped: []SkippedCLI{{CLI: "opencode", Model: config.KimiModel, Reason: "n/a"}},
 	}
 	out := FormatPlanResult(res, "/tmp/plan.md")
 	if !strings.Contains(out, "RIVAL PLAN REVIEW ("+config.SolLabel+" + "+config.FableLabel+")") {
@@ -189,7 +189,7 @@ func TestFormatPlanResult_MultiBlocksAndSkipped(t *testing.T) {
 	if !strings.Contains(out, "Fable runtime raw dump") {
 		t.Errorf("fable raw fallback missing:\n%s", out)
 	}
-	if !strings.Contains(out, "Skipped: deepseek-v4-pro — n/a") {
+	if !strings.Contains(out, "Skipped: kimi-k3 — n/a") {
 		t.Errorf("skipped line missing:\n%s", out)
 	}
 	if strings.Contains(strings.ToLower(out), "codex") {

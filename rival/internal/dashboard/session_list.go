@@ -77,10 +77,10 @@ func formatItemRow(item *displayItem, width int) string {
 
 // CLI icons — Unicode symbols for visual distinction.
 const (
-	iconSol       = "◈" // Sol
-	iconOpusFable = "⬡" // Opus / Fable
-	iconOpencode  = "❯" // OpenCode model
-	iconPlan      = "▤" // Plan/spec review
+	iconSol      = "◈" // Sol
+	iconFable    = "⬡" // Fable
+	iconOpencode = "❯" // OpenCode model
+	iconPlan     = "▤" // Plan/spec review
 )
 
 // cliLabel returns a display label with icon for a CLI name.
@@ -94,9 +94,9 @@ func cliLabel(cli, model, mode string) string {
 	case "claude", "fable":
 		// The second value is retained for sessions written by older releases.
 		if mode == "docker" {
-			return iconOpusFable + " " + config.EngineLabel(cli, model) + "/dk"
+			return iconFable + " " + config.EngineLabel(cli, model) + "/dk"
 		}
-		return iconOpusFable + " " + config.EngineLabel(cli, model)
+		return iconFable + " " + config.EngineLabel(cli, model)
 	case "opencode", "kimi":
 		// "kimi" is read-compat for sessions written by the short-lived
 		// kimi-cli transport (removed; K3 now runs through opencode).

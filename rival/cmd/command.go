@@ -6,6 +6,10 @@ var commandCmd = &cobra.Command{
 	Use:   "command",
 	Short: "Skill-facing command (reads raw args from stdin, parses, executes)",
 	Long:  "Used by Rival skills. Reads raw slash-command arguments from stdin, parses them, executes the selected model, and prints the final output.",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	},
 }
 
 func init() {

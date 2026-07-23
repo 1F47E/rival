@@ -27,9 +27,6 @@ func TestLegacyStandaloneCommandsAreHidden(t *testing.T) {
 	if !commandGPT56SolCmd.Hidden || !runGPT56SolCmd.Hidden || !commandCodexCmd.Hidden || !runCodexCmd.Hidden {
 		t.Fatal("legacy standalone commands must stay hidden")
 	}
-	if !commandClaudeCmd.Hidden || !runClaudeCmd.Hidden {
-		t.Fatal("legacy opus adapter commands must stay hidden")
-	}
 }
 
 func TestLegacyStandaloneHelpUsesOnlyPublicNames(t *testing.T) {
@@ -43,8 +40,6 @@ func TestLegacyStandaloneHelpUsesOnlyPublicNames(t *testing.T) {
 		{"versioned Sol run", runGPT56SolCmd, "rival run sol", []string{"gpt-5.6"}},
 		{"legacy Sol command adapter", commandCodexCmd, "rival command sol", []string{"codex", "gpt-5.6"}},
 		{"legacy Sol run adapter", runCodexCmd, "rival run sol", []string{"codex", "gpt-5.6"}},
-		{"legacy Opus command adapter", commandClaudeCmd, "rival command opus", []string{"claude"}},
-		{"legacy Opus run adapter", runClaudeCmd, "rival run opus", []string{"claude"}},
 	}
 
 	for _, tt := range tests {
@@ -86,14 +81,25 @@ func TestSolUsageUsesOnlyPublicModelNaming(t *testing.T) {
 	}
 }
 
-func TestOpusCommandsArePublic(t *testing.T) {
-	if commandOpusCmd.Use != config.OpusLabel || commandOpusCmd.Hidden {
-		t.Fatalf("command metadata = use %q hidden %v", commandOpusCmd.Use, commandOpusCmd.Hidden)
+func TestFableCommandsArePublic(t *testing.T) {
+	if commandFableCmd.Use != config.FableLabel || commandFableCmd.Hidden {
+		t.Fatalf("command metadata = use %q hidden %v", commandFableCmd.Use, commandFableCmd.Hidden)
 	}
-	if runOpusCmd.Use != config.OpusLabel || runOpusCmd.Hidden {
-		t.Fatalf("run metadata = use %q hidden %v", runOpusCmd.Use, runOpusCmd.Hidden)
+	if runFableCmd.Use != config.FableLabel || runFableCmd.Hidden {
+		t.Fatalf("run metadata = use %q hidden %v", runFableCmd.Use, runFableCmd.Hidden)
 	}
-	if lower := strings.ToLower(opusUsage); strings.Contains(lower, "claude") || !strings.Contains(lower, "rival run opus") || !strings.Contains(lower, "built-in: xhigh") {
-		t.Fatalf("opus usage exposes an adapter name or lacks public name: %q", lower)
+	if lower := strings.ToLower(fableUsage); !strings.Contains(lower, "/rival-fable") || !strings.Contains(lower, "built-in default: medium") {
+		t.Fatalf("fable usage lacks public name or effort fallback: %q", lower)
+	}
+}
+
+func TestModelCommandParentsRejectUnknownRunnerNames(t *testing.T) {
+	for _, parent := range []*cobra.Command{runCmd, commandCmd} {
+		if err := parent.ValidateArgs([]string{"retired-runner"}); err == nil {
+			t.Fatalf("%s accepted an unknown runner name", parent.CommandPath())
+		}
+		if err := parent.ValidateArgs(nil); err != nil {
+			t.Fatalf("%s rejected an empty invocation: %v", parent.CommandPath(), err)
+		}
 	}
 }

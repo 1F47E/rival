@@ -4,6 +4,40 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Breaking — model surface reduced to Sol, Fable, and K3
+
+This change is queued for the next major release.
+
+Rival now supports exactly three public models: Sol, Fable, and Kimi K3. The
+default review roster is Sol + K3, both using the `bug_hunter` role, with
+successful consilium-judge priority Sol → K3. Fable remains available for
+standalone review and Sol/Fable plan review through its Claude Code runtime.
+
+Commands, selectors, executors, configuration, and dashboard presentation for
+all other models were removed. This is a breaking command/configuration change:
+scripts must use `sol` or `k3` for the review roster, and Fable's public
+terminal command is `rival run fable`.
+
+Before upgrading, remove stale entries from `~/.rival/config.yaml`. The
+`efforts` map accepts only these keys:
+
+```yaml
+efforts:
+  sol: high
+  kimi-k3: max
+  fable: medium
+```
+
+Any other effort key is invalid and stops Rival before it creates sessions,
+touches the queue, or invokes a provider.
+
+### Added — public Fable terminal runner
+
+Fable now has a first-class `rival run fable` command for prompt-stdin and
+single-model review workflows. It uses Claude Code as its runtime, shares the
+same native-or-Docker authentication path as the Fable skills, and honors the
+configured `fable` effort default.
+
 ## [v3.23.0] — 2026-07-20
 
 ### Added — Kimi K3 via OpenCode (`/rival-k3`)
@@ -21,8 +55,8 @@ Auth: the Moonshot API key is read from `MOONSHOT_API_KEY` — process env first
 (godotenv loads the invocation directory's `.env`), then a `.env` found by
 walking up from `--workdir` toward root — and injected per run into the
 `moonshotai` provider via `OPENCODE_CONFIG_CONTENT`, never written to any
-on-disk config. Moonshot models never receive the Zen key. Inherited Moonshot
-credentials stay blocked from child environments.
+on-disk config. Inherited Moonshot credentials stay blocked from child
+environments.
 
 Permissions: `review` runs under the same mechanical read-only
 `OPENCODE_PERMISSION` sandbox as the megareview reviewers. Raw prompts run
@@ -36,11 +70,13 @@ size cap). TUI/web show `❯ kimi-k3`.
 
 ### Added — configurable per-model effort defaults
 
-`~/.rival/config.yaml` now accepts an `efforts` map for `sol`,
-`deepseek-v4-pro`, `kimi-k3`, `opus`, and `fable`. Explicit command or skill
-effort flags take precedence, then the per-model setting, then Rival's built-in
-default. Invalid model names or effort values fail before queue, session, or
-provider work begins. K3 remains pinned to its only supported value, `max`.
+This release introduced the validated `efforts` map in
+`~/.rival/config.yaml`. Explicit command or skill effort flags take precedence,
+then the per-model setting, then Rival's built-in default. Invalid model names
+or effort values fail before queue, session, or provider work begins. K3
+remains pinned to its only supported value, `max`. The accepted model keys have
+since changed; the current set is documented under Unreleased and in the
+README.
 
 ### Documentation — Claude Code onboarding and project rationale
 
@@ -74,9 +110,8 @@ fixes or triage begin.
 ### Removed — retired legacy reviewer integrations
 
 Obsolete reviewer commands, executors, selectors, dashboard icons, tests, and
-documentation were removed. Rival's maintained review paths are now explicit:
-Sol and DeepSeek for the default review, optional K3, plus Opus and Fable
-standalone and plan workflows.
+documentation were removed, narrowing the maintained integration surface. The
+current exact model roster is documented under Unreleased.
 
 ### Fixed — skill input heredoc was shell-injectable (all 7 skills)
 
@@ -133,10 +168,8 @@ An obsolete standalone reviewer skill is no longer embedded or installed.
 `/rival-review` and both binary entry points now accept `-m/--model` with an exact,
 comma-separated or repeated model list:
 
-- `/rival-review -m deepseek src/api/`
 - `/rival-review -m sol src/api/`
-- `/rival-review -m deepseek,sol src/api/`
-- `rival review --model deepseek src/api/`
+- `rival review --model sol src/api/`
 
 An explicit list replaces the complete roster; no reviewer is added implicitly. Model-only
 invocations still auto-detect the git scope, options can be combined in either order, and `--`
@@ -145,17 +178,17 @@ receive the new argument contract.
 
 ### Changed — expanded curated megareview roster
 
-The default roster expanded to four complementary reviewers. Sol and DeepSeek
-were independent bug hunters, with additional architecture/security and code
-quality lenses. Default judge priority followed roster order, and per-run
-selection was limited to the curated set available in that release.
+The curated roster expanded at the time with independent bug-hunting,
+architecture/security, and code-quality lenses. Those experimental reviewers
+were later retired; per-run selection remains limited to Rival's maintained
+model set.
 
 Code review and the native Sol plan command default to `high` effort and accept `ultra`.
 The `/rival-plan-sol` skill pins Sol to `ultra`; compatible OpenCode reviewers
 map `ultra` to their maximum variant. A Fable-only plan retains its low default.
 
-The process-wide `RIVAL_OPENCODE_MODELS` roster override is retired; use the
-per-invocation `-m/--model` interface instead.
+The process-wide roster override is retired; use the per-invocation
+`-m/--model` interface instead.
 
 Judge selection now follows the requested model order after reviewer-phase failures, and console output shows
 the concrete judge model. Empty
@@ -174,9 +207,8 @@ Superseded provider-named skills are removed during `rival install`.
 
 The standalone skills are now `/rival-sol` and `/rival-fable`; plan review uses
 `/rival-plan`, `/rival-plan-sol`, and `/rival-plan-fable`. Binary commands, selectors, review attribution,
-session lists, and dashboards expose `sol`, `fable`, and `opus`. Exact runtime identifiers are
-internal, and the previous command names remain hidden aliases for script compatibility. The
-Docker image and login container use the public `rival-opus-fable` name.
+session lists, and dashboards expose stable public model names rather than
+concrete runtime identifiers.
 
 ### Added — `/rival-fable` code-review skill
 
@@ -193,72 +225,28 @@ SQLite session DB and one intermittently lost the write lock, failing with
 Each opencode reviewer now gets its own `OPENCODE_DB` (keyed on the session ID), so
 the parallel processes never contend.
 
-### Fixed — clear preflight error when a Zen model has no API key
+### Fixed — clear preflight error for an experimental provider
 
-OpenCode Zen reviewers use the same credential, so their preflight requires
-`RIVAL_OPENCODE_API_KEY` and fails with an actionable message ("export your
-Zen key…") instead of each reviewer failing mid-run with an opaque "Missing
-API key". This fixed an observed reviewer failure caused by a key living in
-`~/.zshrc`, which non-interactive shells do not source; it belongs in
-`~/.zshenv`.
+An experimental provider path began failing before session creation when its
+credential was unavailable, instead of letting every selected reviewer fail
+mid-run with an opaque error. That provider path was later retired.
 
 ## [v3.16.0] — 2026-07-03
 
-### Added — OpenCode Zen provider + API key
+### Added — experimental OpenCode provider path
 
-The opencode reviewer roster now targets the **OpenCode Zen** provider
-(`opencode/*` models, including DeepSeek V4 Pro and complementary alternatives).
-The Zen API key is supplied via
-`RIVAL_OPENCODE_API_KEY` — rival injects it into the opencode provider config per run (the
-opencode CLI's own Zen auth resolution is unreliable, so a provider-config override via
-`OPENCODE_CONFIG_CONTENT` is used instead). The key is read only from that env var, never
-from a repo file, and `OPENCODE_CONFIG_CONTENT` is stripped from the inherited env so a
-reviewed repo can't inject its own. Without the env var, opencode falls back to its own
-stored credential.
+An early OpenCode provider integration injected its credential into the child
+configuration per run and stripped inherited provider configuration so a
+reviewed repository could not weaken it. That provider and credential path were
+later retired; the current OpenCode integration is K3's Moonshot provider.
 
-### Added — multiple opencode models as parallel megareview reviewers
+### Added — experimental parallel provider roster
 
-Megareview now runs a **roster of opencode models** in parallel instead of a
-single one, expanding the reviewer pool across bug-hunting,
-architecture/security, and code-quality lenses. All results are merged by the
-consilium judge. No Docker is required: each `opencode run` is already an
-isolated process with its own server and session, so models parallelize as
-goroutines.
-
-- `config.OpencodeReviewerList()` — the roster, overridable via `RIVAL_OPENCODE_MODELS`
-  (comma list of `model[:role]`; role defaults to `code_quality`; duplicates dropped; a
-  blank value falls back to the default roster).
-- `executor.RunOpencode` takes the model as a parameter instead of being hardcoded.
-- Runner: one reviewer per roster model, all under the single `opencode` cli — the cli
-  string stays `"opencode"` (one dispatch case, one display branch) while the model + role
-  are carried per session. `pickJudge` returns the concrete model too, so an opencode judge
-  uses a model that actually produced a review (not a 429'd one).
-- Display: TUI, web, and the console "Reviewed by" line label opencode
-  reviewers by their short model name so parallel reviewers are distinguishable
-  rather than identical `opencode` rows (`config.EngineLabel`).
-- Correlated-failure signal: all opencode models share one `opencode-go` credential/quota, so
-  a 429 tends to take out the whole family; when every opencode reviewer fails, that is logged
-  distinctly from losing a single reviewer.
-
-opencode reviewers run **workdir-scoped** now: `external_directory` is denied (was allowed),
-so a prompt-injected repo can no longer make a reviewer read host secrets outside the
-reviewed workdir (`~/.aws/credentials`, a sibling repo's `.env`) and exfiltrate them through
-the review output. `--pure` also disables reviewed-repo `.opencode` config so it can't weaken
-the sandbox. Both found by the megareview reviewing this change's own diff.
-
-### Fixed
-
-- `runConsilium` now dispatches an opencode judge with the correct concrete model (the
-  v3.15.0 plan generalized only the reviewer switch, so a re-selected opencode judge would
-  have hit the `unsupported judge CLI` path when every higher-priority judge
-  was unavailable). Caught while reviewing this change's plan.
-- Opencode judge selection is **deterministic** — the highest-priority successful model in
-  the roster order judges, not whichever model's goroutine finished first (that let the
-  fastest/weakest model judge over a preferred one).
-- An unknown role in `RIVAL_OPENCODE_MODELS` (a typo) is normalized to `bug_hunter` instead
-  of building a reviewer prompt with no role instructions.
-- Skipped opencode reviewers are labelled by model so parallel failures are
-  distinguishable rather than identical `opencode` entries.
+An early release generalized OpenCode review execution to multiple parallel
+models, deterministic judge selection, model-specific labels, and a
+workdir-scoped read-only permission profile. The experimental roster and its
+configuration surface were later retired; the maintained OpenCode path is now
+K3 with Moonshot authentication.
 
 ## [v3.15.0] — 2026-07-02
 
@@ -387,9 +375,7 @@ A megareview of the v3.14.0 wait/detach code surfaced four real issues, all fixe
 The `rival-fable-only` skill is removed on install (added to `Deprecated`, no
 longer embedded) — Claude Fable 5 is currently unavailable upstream. The
 `rival command fable` executor and `FableModel` stay in the binary, so the skill
-can be re-enabled later by re-adding it to `Names` + the embed list. The default
-Claude model is unchanged: `claude-opus-4-8[1m]` (`ClaudeModel`); nothing
-defaulted to fable.
+can be re-enabled later by re-adding it to `Names` + the embed list.
 
 ## [v3.14.0] — 2026-06-13
 
@@ -487,7 +473,8 @@ A queued-then-run sequence can exceed the 600s foreground Bash cap. All skills n
 - No heartbeats by design: laptop sleep/wake can never false-reap a live holder.
 
 ## [v3.12.0] — 2026-06-10
-- Claude bumped to `opus-4-8`; CI is now the sole release publisher.
+- The Claude Code runtime dependency was updated; CI is now the sole release
+  publisher.
 
 ## [v3.11.0] — 2026-06-09
 - Web dashboard server, `/rival-plan`, provider quota/429 detection, and a

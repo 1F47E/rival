@@ -16,17 +16,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// SkippedCLI records a reviewer that was unavailable/failed during megareview.
-// Model is the concrete model (set for runtime failures) so opencode's several
-// models are distinguishable in the skipped list rather than repeated "opencode".
+// SkippedCLI records a reviewer that was unavailable or failed during a review.
 type SkippedCLI struct {
 	CLI    string
 	Model  string
 	Reason string
 }
 
-// Label returns the display label for a skipped reviewer, distinguishing
-// opencode models by their short model name.
+// Label returns the display label for a skipped reviewer.
 func (s SkippedCLI) Label() string {
 	return config.EngineLabel(s.CLI, s.Model)
 }
@@ -51,10 +48,8 @@ type cliResult struct {
 	Err       error
 }
 
-// reviewerPlan pairs a pre-created session with the CLI it will run. model and
-// role are carried explicitly so that a single cli ("opencode") can back several
-// reviewers, one per opencode model — the cli string stays "opencode" (one
-// dispatch case, one display branch) while model/role distinguish them.
+// reviewerPlan pairs a pre-created session with the model, role, and adapter it
+// will run.
 type reviewerPlan struct {
 	cli   string
 	model string
@@ -319,9 +314,8 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	}, nil
 }
 
-// newReviewerSession creates a queued session for one reviewer. model and role
-// may be given explicitly (for opencode, where the cli "opencode" backs several
-// models); an empty model/role is derived from the cli via modelForCLI/RoleForCLI.
+// newReviewerSession creates a queued session for one reviewer. An empty model
+// or role is derived from the adapter.
 func newReviewerSession(cli, model string, role Role, scope, effort, workdir, groupID string) (*session.Session, error) {
 	if role == "" {
 		role = RoleForCLI(cli)
@@ -417,9 +411,8 @@ func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSess
 	return m.Release, nil
 }
 
-// runReviewer runs one reviewer. model and role are passed explicitly so a single
-// cli ("opencode") can back several models; an empty model/role falls back to the
-// cli-derived default.
+// runReviewer runs one reviewer. An empty model or role falls back to the
+// adapter-derived default.
 func runReviewer(ctx context.Context, sess *session.Session, cli, model string, role Role, scope, workdir string) cliResult {
 	if role == "" {
 		role = RoleForCLI(cli)
@@ -608,10 +601,8 @@ func modelForCLI(cli string) string {
 	switch cli {
 	case "codex":
 		return config.GPT56SolModel
-	case "claude":
-		return config.ClaudeModel
 	case "opencode":
-		return config.OpencodeModel
+		return config.KimiModel
 	default:
 		return cli
 	}

@@ -16,27 +16,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runOpusCmd = &cobra.Command{
-	Use:   config.OpusLabel,
-	Short: "Run Opus",
-	RunE:  runClaudeAction,
-}
-
-var runClaudeCmd = &cobra.Command{
-	Use:    "claude",
-	Hidden: true,
-	RunE:   runClaudeAction,
+var runFableCmd = &cobra.Command{
+	Use:   config.FableLabel,
+	Short: "Run Fable",
+	RunE:  runFableAction,
 }
 
 func init() {
-	configureRunOpusFlags(runOpusCmd)
-	configureRunOpusFlags(runClaudeCmd)
-	mirrorHiddenHelp(runClaudeCmd, runOpusCmd)
-	runCmd.AddCommand(runOpusCmd)
-	runCmd.AddCommand(runClaudeCmd)
+	configureRunFableFlags(runFableCmd)
+	runCmd.AddCommand(runFableCmd)
 }
 
-func configureRunOpusFlags(cmd *cobra.Command) {
+func configureRunFableFlags(cmd *cobra.Command) {
 	cmd.Flags().String("effort", "", "reasoning effort override (low, medium, high, xhigh)")
 	cmd.Flags().String("workdir", ".", "working directory")
 	cmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
@@ -44,7 +35,7 @@ func configureRunOpusFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("no-queue", false, "bypass the review queue")
 }
 
-func runClaudeAction(cmd *cobra.Command, args []string) error {
+func runFableAction(cmd *cobra.Command, args []string) error {
 	effort, _ := cmd.Flags().GetString("effort")
 	workdir, _ := cmd.Flags().GetString("workdir")
 	promptStdin, _ := cmd.Flags().GetBool("prompt-stdin")
@@ -53,10 +44,6 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 
 	if effort != "" && !config.IsValidEffort(effort) {
 		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
-	}
-	effort, err := config.ResolveEffort(config.ClaudeModel, effort, config.DefaultEffort)
-	if err != nil {
-		return err
 	}
 
 	if err := executor.ClaudePreflight(); err != nil {
@@ -86,8 +73,12 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	if prompt == "" {
 		return fmt.Errorf("empty prompt")
 	}
+	effort, err := config.ResolveEffort(config.FableModel, effort, "")
+	if err != nil {
+		return err
+	}
 
-	sess, err := session.NewQueued("claude", mode, config.ClaudeModel, effort, workdir, prompt, reviewScope, "")
+	sess, err := session.NewQueued("claude", mode, config.FableModel, effort, workdir, prompt, reviewScope, "")
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
@@ -99,7 +90,7 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting opus")
+	log.Info().Str("session", sess.ID).Str("effort", effort).Msg("starting fable")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -114,7 +105,7 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	runCtx, cancelRun := config.WithRunTimeout(ctx, 1)
 	defer cancelRun()
 
-	result, err := executor.RunClaude(runCtx, sess, prompt, effort, workdir, os.Stdout)
+	result, err := executor.RunFable(runCtx, sess, prompt, effort, workdir, os.Stdout)
 	if err != nil {
 		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
@@ -123,13 +114,13 @@ func runClaudeAction(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("opus exited with code %d", result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("fable exited with code %d", result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		if hint := executor.ClaudeAuthHint(sess.LogFile); hint != "" {
 			_, _ = fmt.Fprintln(os.Stderr, hint)
 		}
-		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("opus exited with code %d", result.ExitCode)}
+		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("fable exited with code %d", result.ExitCode)}
 	}
 
 	if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {

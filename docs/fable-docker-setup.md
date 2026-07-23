@@ -1,21 +1,21 @@
-# Opus and Fable in Docker
+# Fable in Docker
 
-Run the Opus/Fable runtime through Rival inside a Docker container. Rival always
-prefers a native `claude` executable on `PATH`; Docker is the automatic fallback
-when that executable is unavailable.
+Run Fable through its Claude Code runtime inside a Docker container. Rival
+always prefers a native `claude` executable on `PATH`; Docker is the automatic
+fallback when that executable is unavailable.
 
 ## Architecture
 
 ```
 Host: rival binary
-└── Opus/Fable runtime (Docker container)
+└── Fable runtime (Docker container)
     ├── workdir mounted read-write as /workspace
     └── OAuth token passed via env var
 ```
 
-The container runs Claude Code with `--dangerously-skip-permissions`. Treat an
-Opus/Fable invocation as a write-capable agent: it can modify the mounted
-project and run commands with the container user's access. Review changes before
+The container runs Claude Code with `--dangerously-skip-permissions`. Treat a
+Fable invocation as a write-capable agent: it can modify the mounted project
+and run commands with the container user's access. Review changes before
 committing, and do not mount a broader directory than the intended workdir.
 
 ## Setup
@@ -26,7 +26,7 @@ Rival builds the image automatically on the first Docker-fallback run after
 authentication is configured. To build the same image manually:
 
 ```bash
-docker build -t rival-opus-fable -f - . <<'EOF'
+docker build -t rival-fable -f - . <<'EOF'
 FROM node:22-slim
 RUN npm install -g @anthropic-ai/claude-code && \
     useradd -m -s /bin/bash claude
@@ -44,11 +44,11 @@ The image runs as the non-root `claude` user because the runtime refuses
 Start a temporary container and run interactive login:
 
 ```bash
-docker run -d --name rival-opus-fable-login \
+docker run -d --name rival-fable-login \
   --user claude \
-  --entrypoint sh rival-opus-fable -c "sleep 3600"
+  --entrypoint sh rival-fable -c "sleep 3600"
 
-docker exec -it rival-opus-fable-login claude login
+docker exec -it rival-fable-login claude login
 ```
 
 This prints an auth URL. Open it in your browser, authorize, and paste the
@@ -57,7 +57,7 @@ This prints an auth URL. Open it in your browser, authorize, and paste the
 Extract the OAuth token:
 
 ```bash
-docker exec rival-opus-fable-login cat /home/claude/.claude/.credentials.json
+docker exec rival-fable-login cat /home/claude/.claude/.credentials.json
 # Copy the accessToken field.
 ```
 
@@ -67,7 +67,7 @@ leave it in a project file.
 Clean up:
 
 ```bash
-docker rm -f rival-opus-fable-login
+docker rm -f rival-fable-login
 ```
 
 ### 3. Export the token
@@ -79,16 +79,16 @@ export RIVAL_CLAUDE_TOKEN=sk-ant-oat01-YOUR-TOKEN-HERE
 ### 4. Run
 
 ```bash
-# Arbitrary Opus prompt
+# Arbitrary Fable prompt
 printf '%s\n' 'explain the auth flow' |
-  rival run opus --prompt-stdin --workdir /path/to/project
+  rival run fable --prompt-stdin --workdir /path/to/project
 
-# Single-model Opus review
-rival run opus --review src/api/ --workdir /path/to/project
+# Fable review
+rival run fable --review src/api/ --workdir /path/to/project
 
-# Fable review (the skill-facing argument grammar is read from stdin)
-printf '%s\n' 'review src/api/' |
-  rival command fable --workdir /path/to/project
+# Fable plan review
+printf '%s\n' 'docs/plan.md' |
+  rival command plan --model fable --workdir /path/to/project
 ```
 
 The installed `/rival-fable`, `/rival-plan`, and `/rival-plan-fable` skills use
@@ -100,13 +100,13 @@ Set per-model defaults in `~/.rival/config.yaml`:
 
 ```yaml
 efforts:
-  opus: xhigh
   fable: medium
 ```
 
 An explicit `--effort` or skill `-re` value wins, followed by this file and then
-the command-specific fallback. In the Claude runtime, Rival maps `high`,
-`xhigh`, and `ultra` to Claude's `max`; `low` and `medium` stay distinct.
+the command-specific fallback. In Fable's Claude Code runtime, Rival maps
+`high`, `xhigh`, and `ultra` to the runtime's `max`; `low` and `medium` stay
+distinct.
 
 ## How it works
 
@@ -131,5 +131,3 @@ the command-specific fallback. In the Claude runtime, Rival maps `high`,
   selection through `RIVAL_CLAUDE_AUTH` does not configure the container.
 - **Native mode wins** — if `claude` is on `PATH`, Rival uses it instead of
   Docker.
-- **The Dockerfile is embedded** — its source is
-  `rival/internal/executor/claude_docker.go`, not a standalone project file.

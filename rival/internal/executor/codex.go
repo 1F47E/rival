@@ -38,6 +38,9 @@ func RunCodexModel(ctx context.Context, sess *session.Session, prompt, effort, w
 	if model == "" {
 		model = config.GPT56SolModel
 	}
+	if model != config.GPT56SolModel {
+		return nil, fmt.Errorf("unsupported Sol model %q", model)
+	}
 	args := codexRunArgs(model, effort, workdir)
 
 	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt

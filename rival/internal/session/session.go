@@ -262,14 +262,10 @@ func groupModelRank(s *Session) int {
 	switch config.EngineLabel(s.CLI, s.Model) {
 	case config.SolLabel:
 		return 0
-	case "deepseek-v4-pro":
-		return 1
 	case "kimi-k3":
-		return 2
+		return 1
 	case config.FableLabel:
-		return 3
-	case config.OpusLabel:
-		return 4
+		return 2
 	default:
 		return 100
 	}

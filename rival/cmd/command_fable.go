@@ -25,8 +25,7 @@ const fableUsage = `Usage:
   /rival-fable — show this usage info
 
 Reasoning effort (-re): low, medium, high, xhigh.
-Omitted uses efforts.fable from ~/.rival/config.yaml (review fallback: medium;
-raw-prompt fallback: xhigh).`
+Omitted uses efforts.fable from ~/.rival/config.yaml (built-in default: medium).`
 
 var commandFableCmd = &cobra.Command{
 	Use:   "fable",
@@ -71,11 +70,7 @@ func commandFableAction(cmd *cobra.Command, args []string) error {
 	if parsed.IsReview && parsed.AutoScope {
 		resolveGitScope(parsed, workdir)
 	}
-	fallbackEffort := config.DefaultEffort
-	if parsed.IsReview {
-		fallbackEffort = "medium"
-	}
-	effort, err := config.ResolveEffort(config.FableModel, parsed.Effort, fallbackEffort)
+	effort, err := config.ResolveEffort(config.FableModel, parsed.Effort, "")
 	if err != nil {
 		return err
 	}

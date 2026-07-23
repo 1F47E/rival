@@ -148,34 +148,6 @@ func TestClaudeAuth(t *testing.T) {
 	}
 }
 
-func TestOpencodeReviewerList_Curated(t *testing.T) {
-	// The legacy environment override must not reintroduce uncurated models.
-	t.Setenv("RIVAL_OPENCODE_MODELS", "opencode/deepseek-v4-flash")
-	got := OpencodeReviewerList()
-	if len(got) != 1 {
-		t.Fatalf("curated roster size = %d, want 1", len(got))
-	}
-	want := []OpencodeReviewer{
-		{Model: OpencodeDeepSeekPro, Role: "bug_hunter"},
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("curated reviewer %d = %+v, want %+v", i, got[i], want[i])
-		}
-	}
-}
-
-func TestOpencodeProviderConfigKeyFromEnv(t *testing.T) {
-	t.Setenv("RIVAL_OPENCODE_API_KEY", "  sk-test-key  ")
-	if got := OpencodeAPIKey(); got != "sk-test-key" {
-		t.Errorf("OpencodeAPIKey() = %q, want trimmed sk-test-key", got)
-	}
-	t.Setenv("RIVAL_OPENCODE_API_KEY", "")
-	if got := OpencodeAPIKey(); got != "" {
-		t.Errorf("OpencodeAPIKey() with empty env = %q, want empty", got)
-	}
-}
-
 func TestResolveReviewTargets_DefaultIsCuratedTwoModelRoster(t *testing.T) {
 	got, err := ResolveReviewTargets(nil)
 	if err != nil {
@@ -187,12 +159,7 @@ func TestResolveReviewTargets_DefaultIsCuratedTwoModelRoster(t *testing.T) {
 	if got[0].CLI != "codex" || got[0].Model != GPT56SolModel {
 		t.Fatalf("first default target = %+v, want %s", got[0], GPT56SolModel)
 	}
-	for _, target := range got[1:] {
-		if target.CLI != "opencode" {
-			t.Fatalf("curated open-model target unexpectedly uses %q: %+v", target.CLI, got)
-		}
-	}
-	if got[1].Model != OpencodeDeepSeekPro {
+	if got[1].CLI != "opencode" || got[1].Model != KimiModel {
 		t.Fatalf("unexpected default target order: %+v", got)
 	}
 }
@@ -205,8 +172,6 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 	}{
 		{"sol", GPT56SolModel, "bug_hunter"},
 		{GPT56SolModel, GPT56SolModel, "bug_hunter"},
-		{"deepseek", OpencodeDeepSeekPro, "bug_hunter"},
-		{"deepseek-pro", OpencodeDeepSeekPro, "bug_hunter"},
 		{"k3", KimiModel, "bug_hunter"},
 		{"kimi-k3", KimiModel, "bug_hunter"},
 	}
@@ -231,17 +196,17 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 }
 
 func TestResolveReviewTargets_ExactOrderAndDedup(t *testing.T) {
-	got, err := ResolveReviewTargets([]string{"k3,sol", "deepseek", "k3"})
+	got, err := ResolveReviewTargets([]string{"k3,sol", "k3"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 || got[0].Model != KimiModel || got[1].Model != GPT56SolModel || got[2].Model != OpencodeDeepSeekPro {
+	if len(got) != 2 || got[0].Model != KimiModel || got[1].Model != GPT56SolModel {
 		t.Fatalf("unexpected exact roster: %+v", got)
 	}
 }
 
 func TestResolveReviewTargets_RejectsModelsOutsideCuratedSet(t *testing.T) {
-	for _, selector := range []string{"codex", "deepseek-flash", "opencode/kimi-k2.6", "all", ""} {
+	for _, selector := range []string{"codex", "retired-model", "custom/model", "all", ""} {
 		t.Run(selector, func(t *testing.T) {
 			if _, err := ResolveReviewTargets([]string{selector}); err == nil {
 				t.Fatalf("expected %q to be rejected", selector)
@@ -253,15 +218,17 @@ func TestResolveReviewTargets_RejectsModelsOutsideCuratedSet(t *testing.T) {
 func TestEngineLabel(t *testing.T) {
 	cases := []struct{ cli, model, want string }{
 		{"codex", GPT56SolModel, SolLabel},
-		{"codex", "gpt-5.5", SolLabel},
+		{"codex", "retired-sol-id", SolLabel},
 		{"codex", "", SolLabel},
-		{"claude", ClaudeModel, OpusLabel},
 		{"claude", FableModel, FableLabel},
-		{"claude", "claude-fable-4", FableLabel},
-		{"fable", "", FableLabel},
-		{"opencode", "opencode-go/deepseek-v4-pro", "deepseek-v4-pro"},
-		{"opencode", KimiModel, "kimi-k3"},
-		{"opencode", "", "opencode"},
+		{"claude", "retired-fable-id", "retired-model"},
+		{"claude", "", "retired-model"},
+		{"claude", "retired-model-id", "retired-model"},
+		{"fable", FableModel, FableLabel},
+		{"fable", "", "retired-model"},
+		{"opencode", KimiModel, K3Label},
+		{"opencode", "provider/retired-model-id", "retired-model"},
+		{"opencode", "", "retired-model"},
 	}
 	for _, c := range cases {
 		if got := EngineLabel(c.cli, c.model); got != c.want {
@@ -270,11 +237,29 @@ func TestEngineLabel(t *testing.T) {
 	}
 }
 
+func TestModelLabelOnlyExposesSupportedModels(t *testing.T) {
+	cases := []struct{ model, want string }{
+		{GPT56SolModel, SolLabel},
+		{SolLabel, SolLabel},
+		{FableModel, FableLabel},
+		{FableLabel, FableLabel},
+		{KimiModel, K3Label},
+		{K3Label, K3Label},
+		{"custom/model", "retired-model"},
+		{"", "retired-model"},
+	}
+	for _, c := range cases {
+		if got := ModelLabel(c.model); got != c.want {
+			t.Errorf("ModelLabel(%q) = %q, want %q", c.model, got, c.want)
+		}
+	}
+}
+
 func TestPublicRuntimeLogNormalizesOnlyRuntimeMetadata(t *testing.T) {
-	raw := "OpenAI Codex v0.130.0\n--------\nmodel: gpt-5.5\nprovider: openai\n--------\nuser\n" +
+	raw := "OpenAI Codex v0.130.0\n--------\nmodel: retired-sol-id\nprovider: openai\n--------\nuser\n" +
 		"inspect rival/cmd/command_codex.go\n" +
-		"=== REVIEW FROM codex (gpt-5.5) [role: bug_hunter] ===\n"
-	got := PublicRuntimeLog("codex", "gpt-5.5", raw)
+		"=== REVIEW FROM codex (retired-sol-id) [role: bug_hunter] ===\n"
+	got := PublicRuntimeLog("codex", "retired-sol-id", raw)
 	for _, want := range []string{
 		"Sol runtime v0.130.0",
 		"model: sol",
@@ -285,10 +270,52 @@ func TestPublicRuntimeLogNormalizesOnlyRuntimeMetadata(t *testing.T) {
 			t.Errorf("public log missing %q:\n%s", want, got)
 		}
 	}
-	for _, forbidden := range []string{"OpenAI Codex", "model: gpt-5.5", "REVIEW FROM codex"} {
+	for _, forbidden := range []string{"OpenAI Codex", "model: retired-sol-id", "REVIEW FROM codex"} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("public log exposes %q:\n%s", forbidden, got)
 		}
+	}
+}
+
+func TestPublicRuntimeLogHidesRetiredRuntimeIdentities(t *testing.T) {
+	tests := []struct {
+		name  string
+		cli   string
+		model string
+		raw   string
+	}{
+		{
+			name:  "claude",
+			cli:   "claude",
+			model: "retired-fable-id",
+			raw:   "Claude Code v1\n--------\nmodel: retired-fable-id\n--------\n=== REVIEW FROM claude (retired-fable-id) [role: bug_hunter] ===\n",
+		},
+		{
+			name:  "opencode",
+			cli:   "opencode",
+			model: "custom/model",
+			raw:   "=== REVIEW FROM opencode (custom/model) [role: bug_hunter] ===\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := PublicRuntimeLog(tc.cli, tc.model, tc.raw)
+			if !strings.Contains(got, "retired-model") {
+				t.Fatalf("public log missing retired-model label:\n%s", got)
+			}
+			if strings.Contains(got, tc.model) || strings.Contains(got, "REVIEW FROM "+tc.cli) {
+				t.Fatalf("public log exposes retired runtime identity:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestPublicRuntimeLogLabelsK3ReviewHeader(t *testing.T) {
+	raw := "=== REVIEW FROM opencode (" + KimiModel + ") [role: bug_hunter] ===\n"
+	got := PublicRuntimeLog("opencode", KimiModel, raw)
+	want := "=== REVIEW FROM " + K3Label + " [role: bug_hunter] ==="
+	if !strings.Contains(got, want) || strings.Contains(got, "opencode") || strings.Contains(got, KimiModel) {
+		t.Fatalf("public K3 header = %q, want %q", got, want)
 	}
 }
 
@@ -312,9 +339,7 @@ func TestResolveEffortPrecedenceAndModelDefaults(t *testing.T) {
 		want  string
 	}{
 		{GPT56SolModel, "high"},
-		{OpencodeDeepSeekPro, "high"},
 		{KimiModel, "max"},
-		{ClaudeModel, "xhigh"},
 		{FableModel, "medium"},
 	}
 	for _, tc := range defaults {
@@ -328,16 +353,14 @@ func TestResolveEffortPrecedenceAndModelDefaults(t *testing.T) {
 	}
 
 	userConfig = &UserConfig{Efforts: map[string]string{
-		SolLabel:          "ultra",
-		"deepseek-v4-pro": "low",
-		"kimi-k3":         "max",
-		OpusLabel:         "medium",
-		FableLabel:        "high",
+		SolLabel:   "ultra",
+		"kimi-k3":  "max",
+		FableLabel: "high",
 	}}
 	if got, _ := ResolveEffort(GPT56SolModel, "", "low"); got != "ultra" {
 		t.Errorf("configured Sol effort = %q, want ultra", got)
 	}
-	if got, _ := ResolveEffort(OpencodeDeepSeekPro, "medium", "low"); got != "medium" {
+	if got, _ := ResolveEffort(GPT56SolModel, "medium", "low"); got != "medium" {
 		t.Errorf("explicit effort = %q, want medium", got)
 	}
 	if got, _ := ResolveEffort(KimiModel, "low", "low"); got != "max" {
@@ -363,7 +386,7 @@ func TestLoadUserConfigValidatesEffortMap(t *testing.T) {
 	}{
 		{
 			name: "valid",
-			body: "efforts:\n  sol: ultra\n  deepseek-v4-pro: low\n  kimi-k3: max\n  opus: xhigh\n  fable: medium\n",
+			body: "efforts:\n  sol: ultra\n  kimi-k3: max\n  fable: medium\n",
 		},
 		{
 			name:    "unknown model",
