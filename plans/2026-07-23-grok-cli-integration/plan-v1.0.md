@@ -1,7 +1,7 @@
 # Grok CLI Integration Implementation Plan v1.0
 
 **Date:** 2026-07-23
-**Status:** draft
+**Status:** superseded by v1.1
 **Spec:** ./spec.md
 **Goal:** Add the xAI Grok CLI (`grok-4.5`) as a rival provider: `rival command grok`, `rival run grok`, `/rival-grok` skill, and an opt-in megareview selector, with review mode kernel-sandboxed read-only.
 **Architecture:** New standalone executor modeled on codex.go, except the prompt travels via a temp `--prompt-file` (grok ignores stdin) and full-auto is `--yolo`. All shared plumbing (queue, `--detach`, `RIVAL_RUN_TIMEOUT`, `rival wait`, session store, log teeing) is reused untouched. Config/session/dashboard/review each gain a `"grok"` case.

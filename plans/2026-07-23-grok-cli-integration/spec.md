@@ -37,7 +37,7 @@ Verified against the installed binary (`grok --help`, `grok models`, bundled doc
 ```
 grok --prompt-file <tmpfile> \
      -m grok-4.5 \
-     --effort <low|medium|high|xhigh|max> \
+     --effort <low|medium|high> \
      --output-format plain \
      --no-auto-update \
      --cwd <workdir>            # only when workdir != ""
@@ -48,13 +48,16 @@ grok --prompt-file <tmpfile> \
 Why `--yolo` in both modes: headless permission prompts would stall a detached run; in review mode the `read-only` Seatbelt/Landlock profile kernel-blocks writes anyway (writes allowed only to `~/.grok/` + temp dirs — doc 18-sandbox.md). Known limitation, documented not mitigated: child-process network blocking in `read-only` is Linux-only, a no-op on macOS.
 
 - Prompt file: `os.CreateTemp("", "rival-grok-*.md")`, write `config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt` (same preamble shape as codex.go:46), `defer os.Remove`. Pass `""` as the `RunSubprocess` prompt (stdin unused; grok ignores stdin).
-- Env: child inherits the standard filtered env (`blockedEnvPrefixes` unchanged); additionally set `GROK_DISABLE_AUTOUPDATER=1`.
-- Preflight `GrokPreflight()`: `exec.LookPath("grok")`, then auth present = `~/.grok/auth.json` exists (honoring `GROK_HOME`) OR `XAI_API_KEY` non-empty. No network call. Auth failure at runtime surfaces via grok's stderr in the teed log.
-- Effort mapping in the executor arg builder: `low/medium/high/xhigh/max` verbatim, `ultra` → `max`, anything else → error (mirrors codex validation).
+- Env: child gets the standard filtered env with `GROK_` and `XAI_` prefixes newly blocked (see Env hardening below).
+- Preflight `GrokPreflight()`: `exec.LookPath("grok")`, then `~/.grok/auth.json` exists. No network call. Auth failure at runtime surfaces via grok's stderr in the teed log.
+- Effort mapping in the executor arg builder: grok-4.5's advertised menu (models_cache.json `reasoning_efforts`) is exactly `low/medium/high`, default `high`. Mapping: `low/medium/high` verbatim; `xhigh`/`ultra`/`max` clamp to `high`; `minimal`/`none` clamp to `low`; anything else → error. Default effort = `high` (grok's `builtinModelEffort` entry equals `DefaultReviewEffort`, so the standard call-site fallback yields the right value with no special-casing).
+- Env hardening: add `GROK_` and `XAI_` to `blockedEnvPrefixes` (subprocess.go) — godotenv loads a reviewed repo's `.env` globally (main.go:18), and unblocked `GROK_*` vars could redirect the authenticated grok runtime (proxy base URL, `GROK_HOME`, auth helpers). Consequence: `XAI_API_KEY` fallback auth is dropped entirely; preflight auth = `~/.grok/auth.json` exists, full stop. No `GROK_DISABLE_AUTOUPDATER` env var — the `--no-auto-update` flag covers it.
+- Sandbox honesty: grok's built-in profiles fail OPEN (warning + continue) when the kernel sandbox can't be applied (doc 18-sandbox.md, "Enforcement failure"). Accepted with the claim narrowed in docs; enforcement is proven live on the primary platform (macOS Seatbelt) by an e2e that has review-mode grok attempt a write INSIDE the workdir (not /tmp — the read-only profile legitimately allows /tmp writes) and asserts the file does not appear.
 
 ## Megareview wiring
 
-- `ResolveReviewTargets`: selector `grok` → `{CLI: "grok", Model: GrokModel, Role: bug_hunter}`; update the valid-selectors error strings (config.go:338, :645, :651) and `--models` help (cmd/review.go:39, error at review.go:106, usage in cmd/command_megareview.go:21-30).
+- `ResolveReviewTargets`: selector `grok` → `{CLI: "grok", Model: GrokModel, Role: bug_hunter}`; update the valid-selectors error strings (config.go:338, :645, :651) and `--model` help (cmd/review.go:39 `StringSliceP("model","m",…)`, error at review.go:106, usage in cmd/command_megareview.go:21-30).
+- Judge selection keeps existing semantics: first requested reviewer that passed preflight / produced a successful review judges (`preferredJudgeForTargets`/`pickJudge` order = per-invocation target order). No grok special-casing — `--model grok,sol` makes grok the preferred judge by selector order, same as k3 today.
 - `RoleForCLI` (review/role.go:13): `case "grok": return RoleBugHunter`.
 - runner.go: preflight switch (:84), `runReviewer` exec switch (:435), `runConsilium` judge switch (:517, so a grok-containing roster can never hit an unhandled judge case), `modelForCLI` (:600).
 - Review invocation always uses review mode args (`--sandbox read-only --yolo`).
@@ -64,7 +67,8 @@ Why `--yolo` in both modes: headless permission prompts would stall a detached r
 | File | Change |
 |---|---|
 | `rival/internal/config/config.go` | Add `GrokModel`/`GrokLabel` consts; cases in `ModelLabel`, `EngineLabel`, `replaceConcreteModelIDs`, `publicReviewHeader`, `ResolveReviewTargets` (+ error strings), `builtinModelEffort`, `knownEffortModel`, `validConfiguredModelEffort`, `ResolveEffort`, `DefaultEffortForModel` (default xhigh). |
-| `rival/internal/executor/grok.go` (new) | `GrokPreflight`, `RunGrok(ctx, sess, prompt, effort, workdir, review, mirror)`, `grokRunArgs`; temp prompt-file lifecycle; `GROK_DISABLE_AUTOUPDATER=1`. Modeled on codex.go. |
+| `rival/internal/executor/grok.go` (new) | `GrokPreflight`, `RunGrok(ctx, sess, prompt, effort, workdir, review, mirror)`, `grokRunArgs`, `grokEffort`; temp prompt-file lifecycle. Modeled on codex.go. |
+| `rival/internal/executor/subprocess.go` | Add `"GROK_"` and `"XAI_"` to `blockedEnvPrefixes` with a why-comment (repo `.env` must not reconfigure the authenticated grok runtime). |
 | `rival/cmd/command_grok.go` (new) | `rival command grok` — mirror command_codex.go: flags `--workdir`/`--no-queue`, stdin prompt read, `parser.ParseGrokArgs`, preflight, `session.NewQueued("grok", …)`, queue wait, `WithRunTimeout`, `PublicRuntimeLog`. |
 | `rival/cmd/run_grok.go` (new) | `rival run grok` — mirror run_codex.go: `--effort --workdir --prompt-stdin --review --no-queue`, stdout mirror; `--review` → review mode args, raw → `--yolo`. |
 | `rival/internal/parser/parser.go` | `ParseGrokArgs` on the standard effort ladder (pattern: `ParseGPT56SolArgs`, parser.go:24). |
@@ -96,12 +100,13 @@ Why `--yolo` in both modes: headless permission prompts would stall a detached r
 | Failure | Behaviour |
 |---|---|
 | `grok` binary missing | Preflight error before session creation: "grok CLI not found in PATH". |
-| Not logged in / no key | Preflight error when neither `auth.json` nor `XAI_API_KEY` present; if auth breaks at runtime, grok exits 1, session fails with teed stderr. |
+| Not logged in | Preflight error when `~/.grok/auth.json` missing (message points at `grok login`); if auth breaks at runtime, grok exits 1, session fails with teed stderr. |
 | Prompt temp file write fails | `RunGrok` returns error before spawning; session fails. Temp file always removed via defer. |
 | Grok 429/quota | Exits 1, session fails with raw error (no `quotaSignatures` entry yet — out of scope until envelope observed). |
 | Huge prompt | No ARG_MAX risk — prompt travels via file, not argv. |
 | Run exceeds `RIVAL_RUN_TIMEOUT` | Existing plumbing kills child, fails session, frees queue slot (unchanged). |
 | macOS review sandbox | FS writes kernel-blocked (Seatbelt); child network NOT blocked (macOS no-op) — accepted, documented in README section. |
+| Sandbox can't be applied (built-in profiles fail open) | Accepted + documented (no fail-closed mechanism without managing the user's `~/.grok/sandbox.toml`); live e2e proves enforcement on macOS by asserting a review-mode workdir write is blocked. |
 | `grok models` roster changes | Model pinned by const; `-m grok-4.5` errors loudly if retired → bump const. |
 
 ## Out of scope
