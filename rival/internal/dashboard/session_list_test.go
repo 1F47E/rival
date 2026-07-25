@@ -8,6 +8,7 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestCLILabelUsesPublicModelNames(t *testing.T) {
@@ -17,6 +18,7 @@ func TestCLILabelUsesPublicModelNames(t *testing.T) {
 		{"codex", config.GPT56SolModel, iconSol + " " + config.SolLabel},
 		{"opencode", config.KimiModel, iconOpencode + " kimi-k3"},
 		{"fable", config.FableModel, iconFable + " " + config.FableLabel},
+		{"grok", config.GrokModel, iconGrok + " " + config.GrokLabel},
 	}
 	for _, tc := range tests {
 		if got := cliLabel(tc.cli, tc.model, "review"); got != tc.want {
@@ -25,6 +27,23 @@ func TestCLILabelUsesPublicModelNames(t *testing.T) {
 	}
 	if got := cliLabel("fable", config.FableModel, "plan"); got != iconPlan+" plan" {
 		t.Errorf("live Fable plan label = %q, want %q", got, iconPlan+" plan")
+	}
+}
+
+// Column alignment assumes every CLI icon occupies exactly one terminal cell.
+// A double-width or ambiguous-width glyph would shift the REVIEWER column.
+func TestCLIIconsAreSingleCellWide(t *testing.T) {
+	icons := map[string]string{
+		"sol":      iconSol,
+		"fable":    iconFable,
+		"opencode": iconOpencode,
+		"plan":     iconPlan,
+		"grok":     iconGrok,
+	}
+	for name, icon := range icons {
+		if got := lipgloss.Width(icon); got != 1 {
+			t.Errorf("icon %s (%q) width = %d, want 1", name, icon, got)
+		}
 	}
 }
 

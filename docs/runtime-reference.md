@@ -12,11 +12,15 @@ through a consilium judge.
 - The default roster is **Sol + Kimi K3**.
 - `--model` replaces the complete roster for that invocation; it does not add
   to the defaults.
-- Accepted selectors are `sol` and `kimi-k3` (`k3`). Selectors may be
+- Accepted selectors are `sol`, `kimi-k3` (`k3`), and `grok`. Selectors may be
   comma-separated or repeated.
+- **Grok is opt-in**: it never joins the default roster and participates only
+  when `--model` names it.
 - Kimi K3 always runs at its provider's only supported reasoning level, `max`.
-- Both default reviewers use the `bug_hunter` role. The successful judge
-  priority is Sol, then Kimi K3.
+- Every reviewer uses the `bug_hunter` role. The successful judge priority is
+  Sol, then Kimi K3. For an explicit `--model` list the requested order controls
+  judge priority, so `--model grok,sol` judges with grok and `--model sol,grok`
+  judges with Sol.
 - An unavailable selected runtime is reported as skipped. The review can
   continue when at least one selected model succeeds.
 
@@ -27,6 +31,8 @@ rival review
 rival review src/api/
 rival review --model sol src/api/
 rival review --model k3 src/api/
+rival review --model grok src/api/
+rival review --model grok,sol src/api/
 ```
 
 Fable is available for standalone code review and plan review through the
@@ -49,6 +55,10 @@ rival run k3 --review src/api/ --workdir .
 printf '%s\n' 'explain the auth flow' |
   rival run fable --prompt-stdin --workdir .
 rival run fable --review src/api/ --workdir .
+
+printf '%s\n' 'explain the auth flow' |
+  rival run grok --prompt-stdin --workdir .
+rival run grok --review src/api/ --workdir .
 ```
 
 Fable's skill-facing command uses the same runtime but reads its argument
@@ -60,6 +70,48 @@ printf '%s\n' 'review src/api/' |
 printf '%s\n' '-re high review src/api/' |
   rival command fable --workdir .
 ```
+
+Grok has the same skill-facing command shape:
+
+```bash
+printf '%s\n' 'review src/api/' |
+  rival command grok --workdir .
+printf '%s\n' '-re high review src/api/' |
+  rival command grok --workdir .
+```
+
+### Grok invocation shape
+
+Unlike the other runtimes, the grok CLI does not read its prompt from stdin, so
+Rival writes the composed prompt (system prompt, workdir preamble, then the
+user prompt) to a temporary file and passes the path. That also keeps the
+prompt out of the process table. The argv is:
+
+```
+grok --prompt-file <tmpfile> \
+     -m grok-4.5 \
+     --effort <low|medium|high> \
+     --output-format plain \
+     --no-auto-update \
+     --yolo \
+     [--cwd <workdir>] \
+     [--sandbox read-only]
+```
+
+- `--cwd` is appended only when a workdir is set.
+- `--sandbox read-only` is appended only for review-mode runs. The flag is
+  derived from the session mode, so a session recorded as `review` can never run
+  writable.
+- `--effort` carries the clamped level, never the raw request.
+- The temporary prompt file is removed when the run returns.
+
+Sandbox caveats: grok's built-in profiles fail open when the host offers no
+kernel sandbox, so the flag is a request Rival cannot verify was enforced. Even
+when enforced, the read-only profile grants writes to a fixed allowlist
+including `~/.grok` and the system temp directories, so a workdir under `/tmp`
+or `/private/tmp` stays writable. Child-process network access is not blocked on
+macOS. On macOS the applied profile, including the `enforced` flag and the
+allowlist, is appended to `~/.grok/sandbox-events.jsonl`.
 
 Native plan review accepts one file path on stdin. An omitted effort resolves
 separately for each selected model:
@@ -85,6 +137,7 @@ Rival launches installed provider CLIs; it does not replace their accounts.
 | Kimi K3 | OpenCode plus `MOONSHOT_API_KEY`. Export it or place it in a gitignored project `.env`; Rival searches upward from the workdir. |
 | Fable, native | Claude Code CLI. Subscription login is the default. To opt into API billing, set both `RIVAL_CLAUDE_AUTH=api` and a funded `ANTHROPIC_API_KEY`. |
 | Fable, Docker fallback | `RIVAL_CLAUDE_TOKEN` containing the OAuth access token extracted by the flow in [Fable in Docker](fable-docker-setup.md). |
+| Grok | Grok CLI. Run `grok login` for browser OAuth against grok.com. The preflight requires `grok` on `PATH` and `~/.grok/auth.json` to exist. `XAI_API_KEY` is deliberately unsupported. |
 
 For API-key-based Sol authentication, let Codex store the credential and then
 remove it from the immediate shell:
@@ -101,6 +154,13 @@ default subscription mode so an unrelated shell variable cannot silently
 switch billing to API credits. Docker is selected only when the `claude`
 executable is not on `PATH`.
 
+Rival blocks the `GROK_` and `XAI_` environment prefixes from child processes,
+so a reviewed repository's `.env` cannot repoint the grok runtime through proxy
+or base URLs, `GROK_HOME`, or auth helpers, and cannot inject an API key to
+bypass the logged-in account. The preflight resolves `auth.json` from the real
+home directory for the same reason: honoring `GROK_HOME` would check a location
+the run can never use.
+
 Never commit provider keys or OAuth tokens. A project `.env` used for K3 must be
 listed in `.gitignore`.
 
@@ -113,6 +173,7 @@ efforts:
   sol: high
   kimi-k3: max
   fable: medium
+  grok: high
 ```
 
 Effort precedence is:
@@ -125,8 +186,15 @@ Non-K3 configuration values may be `low`, `medium`, `high`, `xhigh`, or
 `ultra`. Individual command help may expose a smaller relevant subset. Kimi K3
 must be `max`; an invocation-level effort is normalized to `max`.
 
-The general built-in defaults are Sol `high`, Fable `medium`, and Kimi K3
-`max`. Plan review preserves its surface-specific fallbacks: Sol is `high`,
+Grok-4.5 exposes only `low`, `medium`, and `high`. Rival clamps the wider ladder
+onto that menu rather than failing a run over a level the model does not expose:
+`xhigh`, `ultra`, and `max` become `high`; `minimal` and `none` become `low`. An
+unrecognized value is still an error, so a typo cannot silently downgrade a run.
+The clamp is applied before the session is created, so `rival sessions` and the
+dashboards report the level actually sent.
+
+The general built-in defaults are Sol `high`, Fable `medium`, Kimi K3 `max`, and
+Grok `high` — which is also grok-4.5's own built-in default. Plan review preserves its surface-specific fallbacks: Sol is `high`,
 Fable alone is `low`, and a native Sol/Fable pair is `high` for both. The
 installed paired plan skill explicitly requests `ultra`, so that explicit skill
 value wins over configured defaults.

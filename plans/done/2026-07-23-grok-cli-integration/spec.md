@@ -124,3 +124,13 @@ Why `--yolo` in both modes: headless permission prompts would stall a detached r
 - P3: `/rival-grok` skill + rival-review skill text + bump-skill-versions + README/CHANGELOG/runtime-reference docs; live e2e (raw run, detached review, sandbox write-block proof).
 
 Each phase = one commit, gated on a clean `/rival-fable` review.
+
+## As-built notes (2026-07-25, feat/grok-cli merged)
+
+Shipped as specced with these deviations:
+- `executor.GrokEffort` is exported (was unexported `grokEffort`) and the CLAMPED effort is recorded in the session at every entry point (command/run/megareview), so sessions never claim `ultra` while sending `high` — k3 precedent, added mid-exec from a Task 4 implementer flag.
+- `executor.RunGrokModel(..., model string, ...)` exists alongside `RunGrok` (default-model wrapper); the megareview dispatch adapter threads the concrete model through instead of discarding it (stage-B fable review MEDIUM).
+- The megareview runner's per-CLI switches were extracted into dispatch tables (`internal/review/dispatch.go`) — verified behavior-preserving arm-by-arm by the stage-B and final fable reviews.
+- `cmd.sessionMode(isReview)` pure helper carries the mode→review-sandbox derivation with a pinned test (the plan's crit fix).
+- Sandbox reality (live-verified via `~/.grok/sandbox-events.jsonl`): the read-only profile IS kernel-enforced on macOS (`enforced:true`, and `restrict_network:true` — the bundled doc's "Linux-only" network claim understates macOS), but its allowlist includes the temp roots (`/tmp`, `/private/tmp`, `/var/folders/...`), so review-mode grok CAN write inside a temp-dir workdir. Documented in CHANGELOG/README/runtime-reference; follow-up idea: stderr warning when a review workdir resolves under a temp root.
+- Deferred (triaged safe by final review): grok-local `sessionMode` helper not backported to sibling cmds; no model-containment guard in `grokRunArgs` (codex hard-pins, grok passes through — decide before a second grok model); `GrokPreflight` is a stat, not a live auth probe; xAI quota envelopes not in `quota.go` signatures.

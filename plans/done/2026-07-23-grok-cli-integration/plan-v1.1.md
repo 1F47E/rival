@@ -1,7 +1,7 @@
 # Grok CLI Integration Implementation Plan v1.1
 
 **Date:** 2026-07-25
-**Status:** approved
+**Status:** done
 **Spec:** ./spec.md
 **Supersedes:** plan-v1.0.md (Sol review 3/10, 10 findings — all folded in; see "Review deltas" at bottom)
 **Goal:** Add the xAI Grok CLI (`grok-4.5`) as a rival provider: `rival command grok`, `rival run grok`, `/rival-grok` skill, and an opt-in megareview selector, with review mode sandboxed read-only and the grok runtime shielded from repo-`.env` injection.
