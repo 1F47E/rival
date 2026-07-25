@@ -8,15 +8,17 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 This change is queued for the next major release.
 
-Rival now supports exactly three public models: Sol, Fable, and Kimi K3. The
-default review roster is Sol + K3, both using the `bug_hunter` role, with
-successful consilium-judge priority Sol → K3. Fable remains available for
-standalone review and Sol/Fable plan review through its Claude Code runtime.
+Rival now supports three curated models — Sol, Fable, and Kimi K3 — plus the
+opt-in Grok provider added later in this release. The default review roster is
+Sol + K3, both using the `bug_hunter` role, with successful consilium-judge
+priority Sol → K3. Fable remains available for standalone review and Sol/Fable
+plan review through its Claude Code runtime. Grok never joins the default
+roster and participates only when `--model` names it.
 
 Commands, selectors, executors, configuration, and dashboard presentation for
 all other models were removed. This is a breaking command/configuration change:
-scripts must use `sol` or `k3` for the review roster, and Fable's public
-terminal command is `rival run fable`.
+scripts must use `sol` or `k3` for the review roster (or `grok` to opt into it),
+and Fable's public terminal command is `rival run fable`.
 
 Before upgrading, remove stale entries from `~/.rival/config.yaml`. The
 `efforts` map accepts only these keys:
@@ -26,9 +28,10 @@ efforts:
   sol: high
   kimi-k3: max
   fable: medium
+  grok: high
 ```
 
-Any other effort key is invalid and stops Rival before it creates sessions,
+Any key outside this set is invalid and stops Rival before it creates sessions,
 touches the queue, or invokes a provider.
 
 ### Added — public Fable terminal runner
