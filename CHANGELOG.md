@@ -38,6 +38,59 @@ single-model review workflows. It uses Claude Code as its runtime, shares the
 same native-or-Docker authentication path as the Fable skills, and honors the
 configured `fable` effort default.
 
+### Added — Grok CLI provider (`/rival-grok`, opt-in megareview selector)
+
+New provider backed by xAI's `grok` CLI running `grok-4.5`: `rival command grok`,
+`rival run grok`, and the `/rival-grok` skill (detached plus background watcher,
+the same async pattern as `/rival-k3`). Sessions record `cli: grok`,
+`model: grok-4.5`; the TUI and web dashboard label them `𝕏 grok`.
+
+Grok is an **opt-in** review model. The default roster is unchanged — Sol plus
+Kimi K3 — and grok joins a review only when selected explicitly:
+
+```bash
+rival review --model grok src/api/
+rival review --model grok,sol src/api/
+```
+
+As with every selector, an explicit `--model` list replaces the complete roster
+rather than adding to it. When grok is the only successful reviewer it also
+judges the consilium.
+
+Effort: grok-4.5 exposes `low`, `medium`, and `high`, and `high` is its own
+default. Rival's wider ladder clamps onto that menu — `xhigh`, `ultra`, and
+`max` become `high`; `minimal` and `none` become `low` — and the clamped value
+is what the session records, so `rival sessions` never reports an effort that
+was not actually sent. An unrecognized level is still an error rather than a
+silent downgrade. The configurable key is `grok` in the `efforts` map of
+`~/.rival/config.yaml`.
+
+Auth is the grok CLI's own `grok login` browser OAuth, verified by a preflight
+that requires `grok` on `PATH` and `~/.grok/auth.json` to exist. **`XAI_API_KEY`
+is deliberately not supported**: runs use the credentials you logged in with.
+
+Environment hardening: `GROK_` and `XAI_` join `blockedEnvPrefixes`, so a
+reviewed repository's `.env` (loaded by godotenv) cannot reconfigure the
+authenticated grok runtime through proxy or base URLs, `GROK_HOME`, auth
+helpers, or an injected API key. The preflight reads the real home directory
+for the same reason — honoring `GROK_HOME` would check a location the run can
+never use. The prompt is handed over in a temporary file rather than argv,
+which also keeps it out of the process table.
+
+Review sandbox: review-mode runs add `--sandbox read-only`, derived from the
+session mode so the two can never disagree; raw prompts stay writable in the
+workdir. Two caveats worth knowing:
+
+- The grok CLI's built-in profiles **fail open** if a kernel sandbox is
+  unavailable on the host. Rival passes the flag; it cannot guarantee the
+  runtime enforced it. On macOS the applied profile is recorded in
+  `~/.grok/sandbox-events.jsonl` (`"enforced": true` when seatbelt applied).
+- The read-only profile still grants write access to a fixed allowlist that
+  includes `~/.grok` and the system temp directories (`/tmp`, `/private/tmp`,
+  `/var/folders/...`). A workdir located inside one of those paths is therefore
+  writable during a review.
+- Child-process network access is not blocked on macOS.
+
 ## [v3.23.0] — 2026-07-20
 
 ### Added — Kimi K3 via OpenCode (`/rival-k3`)
