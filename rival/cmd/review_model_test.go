@@ -37,13 +37,57 @@ func TestReviewCommandDefersToConfiguredModelEfforts(t *testing.T) {
 }
 
 func TestMegareviewUsageNamesModelsAndEffortConfig(t *testing.T) {
-	for _, want := range []string{"Sol", "Kimi K3", "model defaults", "ultra"} {
+	for _, want := range []string{"Sol", "Kimi K3", "model defaults", "ultra", "grok"} {
 		if !strings.Contains(megareviewUsage, want) {
 			t.Errorf("megareview usage missing %q", want)
 		}
 	}
 	if strings.Contains(strings.ToLower(megareviewUsage), "gpt-5.6") {
 		t.Fatal("megareview usage advertises an internal model id")
+	}
+}
+
+// grok is selectable but opt-in, so both the --model help text and the
+// empty-value error must name it alongside the default roster.
+func TestReviewModelFlagHelpNamesGrok(t *testing.T) {
+	flag := reviewCmd.Flags().Lookup("model")
+	if flag == nil {
+		t.Fatal("review command has no --model flag")
+	}
+	for _, want := range []string{"sol", "kimi-k3", "grok"} {
+		if !strings.Contains(flag.Usage, want) {
+			t.Errorf("--model help %q missing %q", flag.Usage, want)
+		}
+	}
+}
+
+func TestModelSelectionFlag_EmptyErrorNamesGrok(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().StringSliceP("model", "m", nil, "models")
+	if err := cmd.ParseFlags([]string{"--model="}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := modelSelectionFlag(cmd)
+	if err == nil {
+		t.Fatal("expected an empty --model error")
+	}
+	if !strings.Contains(err.Error(), "grok") {
+		t.Errorf("empty --model error %q does not mention grok", err)
+	}
+}
+
+func TestModelSelectionFlag_ParsesGrok(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().StringSliceP("model", "m", nil, "models")
+	if err := cmd.ParseFlags([]string{"--model", "grok,sol"}); err != nil {
+		t.Fatal(err)
+	}
+	models, changed, err := modelSelectionFlag(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || len(models) != 2 || models[0] != "grok" || models[1] != "sol" {
+		t.Fatalf("unexpected selection: changed=%v models=%v", changed, models)
 	}
 }
 

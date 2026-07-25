@@ -19,6 +19,8 @@ func RoleForCLI(cli string) Role {
 	case "opencode":
 		// K3 is Rival's only OpenCode-backed reviewer.
 		return RoleBugHunter
+	case "grok":
+		return RoleBugHunter
 	default:
 		return RoleBugHunter
 	}

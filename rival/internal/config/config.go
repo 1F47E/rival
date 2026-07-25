@@ -307,6 +307,7 @@ func DefaultReviewTargets() []ReviewTarget {
 // Friendly aliases:
 //   - sol (the exact runtime model id remains accepted for compatibility)
 //   - k3, kimi-k3
+//   - grok (opt-in; absent from the default roster)
 //
 // Per-run selection intentionally stays on this curated set.
 func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
@@ -345,8 +346,11 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		case "k3", "kimi-k3":
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
 			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
+		case GrokLabel:
+			// Opt-in only: grok never joins the default roster.
+			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel, Role: "bug_hunter"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3, grok", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
