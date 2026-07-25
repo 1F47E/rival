@@ -229,6 +229,8 @@ func TestEngineLabel(t *testing.T) {
 		{"opencode", KimiModel, K3Label},
 		{"opencode", "provider/retired-model-id", "retired-model"},
 		{"opencode", "", "retired-model"},
+		{"grok", GrokModel, GrokLabel},
+		{"grok", "", GrokLabel},
 	}
 	for _, c := range cases {
 		if got := EngineLabel(c.cli, c.model); got != c.want {
@@ -245,6 +247,8 @@ func TestModelLabelOnlyExposesSupportedModels(t *testing.T) {
 		{FableLabel, FableLabel},
 		{KimiModel, K3Label},
 		{K3Label, K3Label},
+		{GrokModel, GrokLabel},
+		{GrokLabel, GrokLabel},
 		{"custom/model", "retired-model"},
 		{"", "retired-model"},
 	}
@@ -370,6 +374,97 @@ func TestResolveEffortPrecedenceAndModelDefaults(t *testing.T) {
 	userConfig = &UserConfig{}
 	if got, _ := ResolveEffort(FableModel, "", "low"); got != "low" {
 		t.Errorf("surface fallback = %q, want low", got)
+	}
+}
+
+func TestGrokEffortDefaultsAndConfiguredOverride(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	userConfig = nil
+	userConfigErr = nil
+	if got := DefaultEffortForModel(GrokModel); got != "high" {
+		t.Errorf("DefaultEffortForModel(grok) = %q, want high", got)
+	}
+	if got, err := ResolveEffort(GrokModel, "", DefaultReviewEffort); err != nil || got != "high" {
+		t.Errorf("ResolveEffort(grok) = %q, %v; want high", got, err)
+	}
+	if got, err := ResolveEffort(GrokModel, "medium", ""); err != nil || got != "medium" {
+		t.Errorf("explicit grok effort = %q, %v; want medium", got, err)
+	}
+	if _, err := ResolveEffort(GrokModel, "max", ""); err == nil {
+		t.Error("grok accepted max, want invalid effort error")
+	}
+
+	userConfig = &UserConfig{Efforts: map[string]string{GrokLabel: "low"}}
+	if got, err := ResolveEffort(GrokModel, "", DefaultReviewEffort); err != nil || got != "low" {
+		t.Errorf("configured grok effort = %q, %v; want low", got, err)
+	}
+	if got := DefaultEffortForModel(GrokModel); got != "low" {
+		t.Errorf("DefaultEffortForModel(grok) with config = %q, want low", got)
+	}
+}
+
+func TestGrokIsAValidConfiguredEffortModel(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".rival")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("efforts:\n  grok: low\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	LoadUserConfig()
+	if err := UserConfigError(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := DefaultEffortForModel(GrokModel); got != "low" {
+		t.Errorf("loaded grok effort = %q, want low", got)
+	}
+}
+
+func TestGrokIsEnumeratedInEffortModelErrors(t *testing.T) {
+	oldConfig, oldErr := userConfig, userConfigErr
+	t.Cleanup(func() {
+		userConfig, userConfigErr = oldConfig, oldErr
+	})
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".rival")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("efforts:\n  mystery: high\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	LoadUserConfig()
+	err := UserConfigError()
+	if err == nil {
+		t.Fatal("unknown effort model was accepted")
+	}
+	if !strings.Contains(err.Error(), GrokLabel) {
+		t.Errorf("error %q does not enumerate %q", err, GrokLabel)
+	}
+}
+
+func TestGrokConcreteModelIDIsNeverExposed(t *testing.T) {
+	raw := "=== REVIEW FROM grok (" + GrokModel + ") [role: bug_hunter] ===\nchecked " + GrokModel + "\n"
+	got := PublicRuntimeLog("grok", GrokModel, raw)
+	want := "=== REVIEW FROM " + GrokLabel + " [role: bug_hunter] ==="
+	if !strings.Contains(got, want) {
+		t.Fatalf("public grok header = %q, want %q", got, want)
+	}
+	if strings.Contains(got, GrokModel) {
+		t.Fatalf("public log exposes the concrete grok model id:\n%s", got)
 	}
 }
 
