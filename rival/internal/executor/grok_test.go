@@ -1,10 +1,13 @@
 package executor
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/session"
 )
 
 func TestGrokEffort(t *testing.T) {
@@ -111,6 +114,99 @@ func TestGrokRunArgs_WorkdirAndReviewSandbox(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The consilium judge hands the session's recorded model to the adapter, so an
+// explicit model must reach argv and an empty one must fall back to grok's
+// default rather than emitting a bare "-m".
+func TestGrokModelOrDefault(t *testing.T) {
+	if got := grokModelOrDefault(""); got != config.GrokModel {
+		t.Errorf("grokModelOrDefault(\"\") = %q, want %q", got, config.GrokModel)
+	}
+	if got := grokModelOrDefault("   "); got != config.GrokModel {
+		t.Errorf("grokModelOrDefault(blank) = %q, want %q", got, config.GrokModel)
+	}
+	if got := grokModelOrDefault("grok-4.5-fast"); got != "grok-4.5-fast" {
+		t.Errorf("grokModelOrDefault(explicit) = %q, want the explicit model", got)
+	}
+}
+
+func TestGrokRunArgs_ThreadsExplicitModel(t *testing.T) {
+	args, err := grokRunArgs("grok-4.5-fast", "/tmp/p.md", "high", "/repo", true)
+	if err != nil {
+		t.Fatalf("grokRunArgs: %v", err)
+	}
+	// Compare the -m value exactly: config.GrokModel is a prefix of the test
+	// model, so a substring check would pass even if the default won.
+	if got := argValue(args, "-m"); got != "grok-4.5-fast" {
+		t.Errorf("-m = %q, want the explicit model: %v", got, args)
+	}
+
+	fallback, err := grokRunArgs("", "/tmp/p.md", "high", "/repo", true)
+	if err != nil {
+		t.Fatalf("grokRunArgs: %v", err)
+	}
+	if got := argValue(fallback, "-m"); got != config.GrokModel {
+		t.Errorf("empty model -m = %q, want the default %q", got, config.GrokModel)
+	}
+}
+
+// RunGrokModel is the entry point the review pipeline calls, so the model must
+// survive all the way to argv there — not merely in grokRunArgs, which an
+// intermediate hardcode would bypass.
+func TestRunGrokModel_ThreadsModelToArgv(t *testing.T) {
+	for _, tc := range []struct{ name, model, want string }{
+		{"explicit model", "grok-4.5-fast", "grok-4.5-fast"},
+		{"empty model falls back", "", config.GrokModel},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotArgs []string
+			restore := grokSubprocess
+			grokSubprocess = func(_ context.Context, _ *session.Session, binary string, args []string, _ []string, _ string, _ io.Writer, _ ...string) (*Result, error) {
+				if binary != "grok" {
+					t.Errorf("spawned %q, want grok", binary)
+				}
+				gotArgs = args
+				return &Result{}, nil
+			}
+			t.Cleanup(func() { grokSubprocess = restore })
+
+			if _, err := RunGrokModel(context.Background(), nil, "prompt", "high", t.TempDir(), tc.model, true, nil); err != nil {
+				t.Fatalf("RunGrokModel: %v", err)
+			}
+			if got := argValue(gotArgs, "-m"); got != tc.want {
+				t.Errorf("-m = %q, want %q: %v", got, tc.want, gotArgs)
+			}
+		})
+	}
+}
+
+// The default-model wrapper must keep sending grok's default.
+func TestRunGrok_SendsDefaultModel(t *testing.T) {
+	var gotArgs []string
+	restore := grokSubprocess
+	grokSubprocess = func(_ context.Context, _ *session.Session, _ string, args []string, _ []string, _ string, _ io.Writer, _ ...string) (*Result, error) {
+		gotArgs = args
+		return &Result{}, nil
+	}
+	t.Cleanup(func() { grokSubprocess = restore })
+
+	if _, err := RunGrok(context.Background(), nil, "prompt", "high", t.TempDir(), false, nil); err != nil {
+		t.Fatalf("RunGrok: %v", err)
+	}
+	if got := argValue(gotArgs, "-m"); got != config.GrokModel {
+		t.Errorf("-m = %q, want %q", got, config.GrokModel)
+	}
+}
+
+// argValue returns the value following flag in an argv slice.
+func argValue(args []string, flag string) string {
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 func TestGrokRunArgs_PropagatesEffortError(t *testing.T) {

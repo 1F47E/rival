@@ -1,10 +1,12 @@
 package review
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/executor"
 )
 
 // The reviewer/judge/preflight switches used to be inline, so a new CLI could
@@ -59,6 +61,21 @@ func TestReviewDispatch_GrokPreflightIsGroksOwn(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), config.GrokLabel) {
 		t.Errorf("grok preflight error %q does not come from the grok arm", err)
+	}
+}
+
+// The consilium contract is "the session carries the concrete model to judge
+// with; the adapter falls back to its default if that is empty". The grok
+// adapter must honor it like the opencode one, so it must not discard its model
+// argument. Argv itself is asserted in the executor package
+// (TestGrokRunArgs_ThreadsExplicitModel); here we pin that the adapter is wired
+// to the model-taking entry point rather than the default-model wrapper.
+func TestGrokAdapter_UsesModelTakingEntryPoint(t *testing.T) {
+	if grokReviewRun == nil {
+		t.Fatal("grok adapter has no run function")
+	}
+	if reflect.ValueOf(grokReviewRun).Pointer() != reflect.ValueOf(executor.RunGrokModel).Pointer() {
+		t.Error("grok adapter is not wired to executor.RunGrokModel, so its model argument is dropped")
 	}
 }
 

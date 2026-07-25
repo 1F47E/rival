@@ -78,7 +78,9 @@ func TestRunGrokCommandFlags(t *testing.T) {
 			t.Fatalf("run grok is missing the %q flag", flag)
 		}
 	}
-	if got := runGrokCmd.Flags().Lookup("effort").Usage; got != "reasoning effort override: low, medium, high" {
+	// The flag accepts rival's full ladder (IsValidReviewEffort), so the help
+	// must admit that ultra is taken and clamped rather than rejected.
+	if got := runGrokCmd.Flags().Lookup("effort").Usage; got != "reasoning effort override: low, medium, high (ultra clamps to high)" {
 		t.Fatalf("effort help = %q", got)
 	}
 	if got := runGrokCmd.Flags().Lookup("workdir").DefValue; got != "." {
