@@ -29,6 +29,37 @@ func TestPlanSolSkillPinsUltraEffort(t *testing.T) {
 	}
 }
 
+func TestGrokSkillIsEmbedded(t *testing.T) {
+	const name = "rival-grok"
+	if !slices.Contains(Names, name) {
+		t.Fatalf("grok skill %q is not active", name)
+	}
+	if slices.Contains(Deprecated, name) {
+		t.Fatalf("grok skill %q is deprecated", name)
+	}
+	data, err := Files.ReadFile(name + "/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"version: ",
+		"name: rival-grok",
+		"rival command grok --detach --workdir",
+		"rival wait --log <rival_err>",
+		"grok login",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("grok skill missing %q", want)
+		}
+	}
+	// A hardcoded watcher timeout re-introduces the bound that
+	// RIVAL_QUEUE_TIMEOUT/RIVAL_RUN_TIMEOUT already own.
+	if strings.Contains(content, "rival wait --log <rival_err> --timeout") {
+		t.Error("grok skill hardcodes a --timeout on the watcher")
+	}
+}
+
 func TestPlanSkillRunsBothModelsAtUltra(t *testing.T) {
 	const name = "rival-plan"
 	if !slices.Contains(Names, name) {
