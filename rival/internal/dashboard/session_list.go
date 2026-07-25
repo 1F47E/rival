@@ -80,6 +80,7 @@ const (
 	iconSol      = "◈" // Sol
 	iconFable    = "⬡" // Fable
 	iconOpencode = "❯" // OpenCode model
+	iconGrok     = "𝕏" // Grok
 	iconPlan     = "▤" // Plan/spec review
 )
 
@@ -101,6 +102,8 @@ func cliLabel(cli, model, mode string) string {
 		// "kimi" is read-compat for sessions written by the short-lived
 		// kimi-cli transport (removed; K3 now runs through opencode).
 		return iconOpencode + " " + config.EngineLabel(cli, model)
+	case "grok":
+		return iconGrok + " " + config.EngineLabel(cli, model)
 	default:
 		return cli
 	}

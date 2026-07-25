@@ -186,7 +186,7 @@ func TestIndexIncludesCuratedModelIcons(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(data)
-	for _, label := range []string{config.SolLabel, config.K3Label, config.FableLabel} {
+	for _, label := range []string{config.SolLabel, config.K3Label, config.FableLabel, config.GrokLabel} {
 		if !strings.Contains(html, label+"': '") && !strings.Contains(html, label+": '") {
 			t.Errorf("web dashboard has no icon mapping for %q", label)
 		}
