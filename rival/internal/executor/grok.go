@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
@@ -33,11 +34,24 @@ func GrokPreflight() error {
 	return nil
 }
 
-// RunGrok executes a prompt with grok-4.5. Unlike codex, the grok CLI does not
-// read the prompt from stdin, so the composed prompt is handed over in a temp
-// file — this also keeps it out of the process table. review selects the
-// read-only sandbox used by review pipelines.
+// grokSubprocess is the spawn step, indirected so tests can observe the argv
+// RunGrokModel actually builds without executing the grok binary.
+var grokSubprocess = RunSubprocess
+
+// RunGrok executes a prompt with grok's default model. It is the entry point
+// for the single-model surfaces (`rival command grok`, `rival run grok`), which
+// have no per-run model choice.
 func RunGrok(ctx context.Context, sess *session.Session, prompt, effort, workdir string, review bool, mirror io.Writer) (*Result, error) {
+	return RunGrokModel(ctx, sess, prompt, effort, workdir, config.GrokModel, review, mirror)
+}
+
+// RunGrokModel executes a prompt with an explicit grok model, falling back to
+// the default when model is empty — the contract the review pipeline relies on,
+// where a session carries the concrete model to run or judge with. Unlike
+// codex, the grok CLI does not read the prompt from stdin, so the composed
+// prompt is handed over in a temp file, which also keeps it out of the process
+// table. review selects the read-only sandbox used by review pipelines.
+func RunGrokModel(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, review bool, mirror io.Writer) (*Result, error) {
 	promptFile, err := os.CreateTemp("", "rival-grok-*.md")
 	if err != nil {
 		return nil, fmt.Errorf("%s runtime: create prompt file: %w", config.GrokLabel, err)
@@ -56,13 +70,13 @@ func RunGrok(ctx context.Context, sess *session.Session, prompt, effort, workdir
 		return nil, fmt.Errorf("%s runtime: close prompt file: %w", config.GrokLabel, err)
 	}
 
-	args, err := grokRunArgs(config.GrokModel, promptFile.Name(), effort, workdir, review)
+	args, err := grokRunArgs(model, promptFile.Name(), effort, workdir, review)
 	if err != nil {
 		return nil, fmt.Errorf("%s runtime: %w", config.GrokLabel, err)
 	}
 
 	// The prompt is already in the file; stdin carries nothing.
-	result, err := RunSubprocess(ctx, sess, "grok", args, nil, "", mirror)
+	result, err := grokSubprocess(ctx, sess, "grok", args, nil, "", mirror)
 	if err != nil {
 		return nil, fmt.Errorf("%s runtime: %s", config.GrokLabel, err.Error())
 	}
@@ -75,6 +89,17 @@ func grokFullPrompt(prompt, workdir string) string {
 	return config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 }
 
+// grokModelOrDefault resolves an optional model to grok's default, so a session
+// that never recorded one still produces a valid `-m` instead of a bare flag.
+func grokModelOrDefault(model string) string {
+	if strings.TrimSpace(model) == "" {
+		return config.GrokModel
+	}
+	return model
+}
+
+// grokRunArgs builds grok's argv. An empty model falls back to the default here
+// rather than at the call site, so every entry point inherits the fallback.
 func grokRunArgs(model, promptFile, effort, workdir string, review bool) ([]string, error) {
 	mapped, err := GrokEffort(effort)
 	if err != nil {
@@ -83,7 +108,7 @@ func grokRunArgs(model, promptFile, effort, workdir string, review bool) ([]stri
 
 	args := []string{
 		"--prompt-file", promptFile,
-		"-m", model,
+		"-m", grokModelOrDefault(model),
 		"--effort", mapped,
 		"--output-format", "plain",
 		"--no-auto-update",

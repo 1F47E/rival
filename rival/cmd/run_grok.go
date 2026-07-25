@@ -23,7 +23,7 @@ var runGrokCmd = &cobra.Command{
 }
 
 func init() {
-	runGrokCmd.Flags().String("effort", "", "reasoning effort override: low, medium, high")
+	runGrokCmd.Flags().String("effort", "", "reasoning effort override: low, medium, high (ultra clamps to high)")
 	runGrokCmd.Flags().String("workdir", ".", "working directory")
 	runGrokCmd.Flags().Bool("prompt-stdin", false, "read prompt from stdin")
 	runGrokCmd.Flags().String("review", "", "review scope (enables review mode)")

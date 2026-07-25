@@ -17,6 +17,10 @@ import (
 // reviewRunner executes one reviewer or judge turn on a pre-created session.
 type reviewRunner func(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string) (*executor.Result, error)
 
+// grokReviewRun is the model-taking grok entry point the adapter must use; the
+// default-model wrapper would silently discard the session's model.
+var grokReviewRun = executor.RunGrokModel
+
 // preflightFor returns the availability check for a reviewer CLI. Model and
 // workdir are passed because OpenCode resolves credentials per model and per
 // project; the other CLIs ignore them.
@@ -45,9 +49,12 @@ func reviewerRunnerFor(cli string) (reviewRunner, bool) {
 			return executor.RunOpencode(ctx, sess, prompt, effort, workdir, model, nil)
 		}, true
 	case config.GrokLabel:
-		return func(ctx context.Context, sess *session.Session, prompt, effort, workdir, _ string) (*executor.Result, error) {
+		return func(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string) (*executor.Result, error) {
 			// review=true puts grok in its mechanically read-only sandbox.
-			return executor.RunGrok(ctx, sess, prompt, effort, workdir, true, nil)
+			// The model comes from the session so the judge honors the same
+			// "session carries the concrete model" contract as the other CLIs;
+			// RunGrokModel falls back to the default when it is empty.
+			return grokReviewRun(ctx, sess, prompt, effort, workdir, model, true, nil)
 		}, true
 	default:
 		return nil, false
