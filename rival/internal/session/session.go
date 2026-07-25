@@ -266,6 +266,8 @@ func groupModelRank(s *Session) int {
 		return 1
 	case config.FableLabel:
 		return 2
+	case config.GrokLabel:
+		return 3
 	default:
 		return 100
 	}

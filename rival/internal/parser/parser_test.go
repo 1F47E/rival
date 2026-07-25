@@ -299,3 +299,103 @@ func TestParseReviewArgs_Help(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGrokArgs_RawPrompt(t *testing.T) {
+	r, err := ParseGrokArgs("explain the auth flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.IsEmpty || r.IsReview {
+		t.Error("expected raw prompt")
+	}
+	if r.Prompt != "explain the auth flow" {
+		t.Errorf("unexpected prompt: %q", r.Prompt)
+	}
+	if r.Effort != "" {
+		t.Errorf("expected omitted effort for configured default resolution, got %q", r.Effort)
+	}
+}
+
+func TestParseGrokArgs_ReviewAlone(t *testing.T) {
+	r, err := ParseGrokArgs("review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.IsReview || !r.AutoScope {
+		t.Fatalf("expected auto-scoped review, got %+v", r)
+	}
+	if r.ReviewScope != "the entire project" {
+		t.Errorf("expected default scope, got %q", r.ReviewScope)
+	}
+	if !strings.Contains(r.Prompt, "Review scope: the entire project") {
+		t.Error("prompt should contain review scope")
+	}
+}
+
+func TestParseGrokArgs_ReviewWithScope(t *testing.T) {
+	r, err := ParseGrokArgs("review src/api/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.IsReview {
+		t.Error("expected IsReview")
+	}
+	if r.AutoScope {
+		t.Error("expected AutoScope=false when explicit scope given")
+	}
+	if r.ReviewScope != "src/api/" {
+		t.Errorf("unexpected scope: %q", r.ReviewScope)
+	}
+}
+
+func TestParseGrokArgs_EffortOverride(t *testing.T) {
+	r, err := ParseGrokArgs("-re medium review src/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Effort != "medium" {
+		t.Errorf("expected medium, got %q", r.Effort)
+	}
+	if !r.IsReview || r.ReviewScope != "src/" {
+		t.Fatalf("unexpected parse result: %+v", r)
+	}
+}
+
+func TestParseGrokArgs_EffortIsNotPinned(t *testing.T) {
+	// Unlike kimi, grok honours the requested level instead of forcing one.
+	r, err := ParseGrokArgs("-re low find bugs in main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Effort != "low" {
+		t.Errorf("expected low, got %q", r.Effort)
+	}
+	if r.Prompt != "find bugs in main.go" {
+		t.Errorf("unexpected prompt: %q", r.Prompt)
+	}
+}
+
+func TestParseGrokArgs_InvalidEffort(t *testing.T) {
+	_, err := ParseGrokArgs("-re maximum review")
+	if err == nil {
+		t.Fatal("expected error for invalid effort")
+	}
+	if !strings.Contains(err.Error(), "invalid effort") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestParseGrokArgs_Empty(t *testing.T) {
+	for _, input := range []string{"", "  ", "\t\n"} {
+		r, err := ParseGrokArgs(input)
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", input, err)
+		}
+		if !r.IsEmpty {
+			t.Errorf("expected IsEmpty for %q", input)
+		}
+		if r.Effort != "" {
+			t.Errorf("expected omitted effort for configured default resolution, got %q", r.Effort)
+		}
+	}
+}
