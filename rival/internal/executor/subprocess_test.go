@@ -32,6 +32,27 @@ func TestSafeEnv_BlocksOpencodePermission(t *testing.T) {
 	}
 }
 
+// TestSafeEnv_BlocksGrokRuntimeVars proves a reviewed repo's .env cannot
+// reconfigure the authenticated grok runtime (proxy/base URL, GROK_HOME, auth
+// helpers) or slip in XAI_API_KEY fallback auth. PATH still survives so the
+// child can be found at all.
+func TestSafeEnv_BlocksGrokRuntimeVars(t *testing.T) {
+	t.Setenv("GROK_ANYTHING", "x")
+	t.Setenv("XAI_API_KEY", "x")
+
+	env := safeEnv()
+	joined := strings.Join(env, "\n")
+
+	for _, blocked := range []string{"GROK_ANYTHING=", "XAI_API_KEY="} {
+		if strings.Contains(joined, blocked) {
+			t.Errorf("safeEnv leaked a blocked var: %s", blocked)
+		}
+	}
+	if !strings.Contains(joined, "PATH=") {
+		t.Errorf("safeEnv dropped PATH")
+	}
+}
+
 // TestRunSubprocess_ContextTimeoutKillsChild proves RIVAL_RUN_TIMEOUT's
 // mechanism: a context deadline kills a hung child promptly instead of waiting
 // for it to finish. Uses /bin/sleep so no provider quota is touched.

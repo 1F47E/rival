@@ -22,6 +22,11 @@ import (
 // Moonshot credentials are blocked because godotenv may load them from a
 // reviewed repo. The key reaches OpenCode through OPENCODE_CONFIG_CONTENT
 // instead, so no child needs the raw source variable.
+// GROK_ and XAI_ are blocked for the same reason: a reviewed repo's .env
+// (loaded by godotenv in main.go) must not be able to reconfigure the
+// authenticated grok runtime — proxy/base URLs, GROK_HOME, auth helpers — and
+// XAI_API_KEY fallback auth is deliberately unsupported, since grok runs on the
+// user's own `grok login` credentials.
 var blockedEnvPrefixes = []string{
 	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 	"http_proxy", "https_proxy", "all_proxy", "no_proxy",
@@ -29,6 +34,8 @@ var blockedEnvPrefixes = []string{
 	"OPENCODE_",
 	"KIMI_",
 	"MOONSHOT_",
+	"GROK_",
+	"XAI_",
 }
 
 // safeEnv returns os.Environ() filtered to block dangerous overrides
