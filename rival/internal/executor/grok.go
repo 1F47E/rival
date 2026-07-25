@@ -76,7 +76,7 @@ func grokFullPrompt(prompt, workdir string) string {
 }
 
 func grokRunArgs(model, promptFile, effort, workdir string, review bool) ([]string, error) {
-	mapped, err := grokEffort(effort)
+	mapped, err := GrokEffort(effort)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +98,13 @@ func grokRunArgs(model, promptFile, effort, workdir string, review bool) ([]stri
 	return args, nil
 }
 
-// grokEffort maps rival's effort menu onto grok-4.5's own low/medium/high.
+// GrokEffort maps rival's effort menu onto grok-4.5's own low/medium/high.
 // Levels above high clamp to high and levels below low clamp to low rather
 // than failing a run over a level the model simply does not expose; an
 // unrecognized value is still an error so typos do not silently downgrade.
-func grokEffort(effort string) (string, error) {
+// Exported so callers can record the clamped value on the session instead of
+// the level the user asked for.
+func GrokEffort(effort string) (string, error) {
 	switch effort {
 	case "low", "medium", "high":
 		return effort, nil

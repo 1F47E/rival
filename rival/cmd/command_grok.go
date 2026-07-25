@@ -85,6 +85,12 @@ func commandGrokAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// grok clamps rival's richer ladder onto low/medium/high. Clamp here so the
+	// session records the effort actually sent, not the one that was asked for.
+	effort, err = executor.GrokEffort(effort)
+	if err != nil {
+		return err
+	}
 
 	if err := executor.GrokPreflight(); err != nil {
 		return err
