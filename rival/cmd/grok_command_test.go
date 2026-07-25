@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/executor"
 	"github.com/1F47E/rival/internal/parser"
 )
 
@@ -65,6 +66,76 @@ func TestGrokUsesConfiguredGrokEffortDefault(t *testing.T) {
 	}
 	if effort != "high" {
 		t.Fatalf("effort = %q, want high", effort)
+	}
+}
+
+func TestRunGrokCommandFlags(t *testing.T) {
+	if runGrokCmd.Use != config.GrokLabel || runGrokCmd.Hidden {
+		t.Fatalf("run grok metadata = use %q hidden %v", runGrokCmd.Use, runGrokCmd.Hidden)
+	}
+	for _, flag := range []string{"effort", "workdir", "prompt-stdin", "review", "no-queue"} {
+		if runGrokCmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("run grok is missing the %q flag", flag)
+		}
+	}
+	if got := runGrokCmd.Flags().Lookup("effort").Usage; got != "reasoning effort override: low, medium, high" {
+		t.Fatalf("effort help = %q", got)
+	}
+	if got := runGrokCmd.Flags().Lookup("workdir").DefValue; got != "." {
+		t.Fatalf("workdir default = %q, want %q", got, ".")
+	}
+
+	var found bool
+	for _, sub := range runCmd.Commands() {
+		if sub == runGrokCmd {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("run grok is not registered under `rival run`")
+	}
+}
+
+// The session must record the effort grok is actually handed. rival's ladder
+// goes past what grok exposes, so an ultra request lands as high — recording
+// "ultra" would report a reasoning level that never ran.
+func TestGrokEffortRecordedAfterClamp(t *testing.T) {
+	cases := []struct{ resolved, want string }{
+		{"low", "low"},
+		{"medium", "medium"},
+		{"high", "high"},
+		{"ultra", "high"},
+		{"xhigh", "high"},
+		{"minimal", "low"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.resolved, func(t *testing.T) {
+			got, err := executor.GrokEffort(tc.resolved)
+			if err != nil {
+				t.Fatalf("GrokEffort(%q): %v", tc.resolved, err)
+			}
+			if got != tc.want {
+				t.Fatalf("session-bound effort = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ResolveEffort feeding straight into the clamp is the exact chain both
+// `rival command grok` and `rival run grok` use before session.NewQueued.
+func TestGrokResolvedUltraEffortIsSentAsHigh(t *testing.T) {
+	resolved, err := config.ResolveEffort(config.GrokModel, "ultra", config.DefaultReviewEffort)
+	if err != nil {
+		t.Fatalf("ResolveEffort error: %v", err)
+	}
+	sent, err := executor.GrokEffort(resolved)
+	if err != nil {
+		t.Fatalf("GrokEffort error: %v", err)
+	}
+	if sent != "high" {
+		t.Fatalf("ultra was sent as %q, want high", sent)
 	}
 }
 

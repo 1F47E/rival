@@ -28,7 +28,7 @@ func TestGrokEffort(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.effort, func(t *testing.T) {
-			got, err := grokEffort(tc.effort)
+			got, err := GrokEffort(tc.effort)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("effort %q was accepted, got %q", tc.effort, got)
