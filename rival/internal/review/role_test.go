@@ -16,9 +16,21 @@ func TestRoleForCLI_Opencode(t *testing.T) {
 	}
 }
 
+func TestRoleForCLI_Grok(t *testing.T) {
+	if got := RoleForCLI(config.GrokLabel); got != RoleBugHunter {
+		t.Errorf("RoleForCLI(grok) = %q, want %q", got, RoleBugHunter)
+	}
+}
+
 func TestModelForCLI_Opencode(t *testing.T) {
 	if got := modelForCLI("opencode"); got != config.KimiModel {
 		t.Errorf("modelForCLI(opencode) = %q, want %q", got, config.KimiModel)
+	}
+}
+
+func TestModelForCLI_Grok(t *testing.T) {
+	if got := modelForCLI(config.GrokLabel); got != config.GrokModel {
+		t.Errorf("modelForCLI(grok) = %q, want %q", got, config.GrokModel)
 	}
 }
 

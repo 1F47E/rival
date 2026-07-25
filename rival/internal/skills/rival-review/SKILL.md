@@ -1,8 +1,8 @@
 ---
 name: rival-review
 version: 4.0.0
-description: Run Sol and/or K3 code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
-argument-hint: "[-m sol|k3[,model...]] [-re high|ultra] [scope]"
+description: Run Sol, K3, and/or opt-in grok code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+argument-hint: "[-m sol|k3|grok[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
 ---
 
@@ -27,9 +27,11 @@ respond with this usage message and STOP:
 > - `/rival-review -m sol src/api/` — Sol only
 > - `/rival-review -m k3 src/api/` — K3 only (requires `MOONSHOT_API_KEY`)
 > - `/rival-review -m sol,k3 src/api/` — exactly those two models
+> - `/rival-review -m grok src/api/` — grok only (opt-in; requires `grok login`)
 > - `/rival-review -re ultra src/api/` — override compatible model defaults
 >
-> **Models** (`-m`, `--model`): `sol`, `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`)
+> **Models** (`-m`, `--model`): `sol`, `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`),
+> `grok` (opt-in — never in the default roster; requires `grok login`)
 > **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high`, `ultra`;
 > omitted uses per-model defaults from `~/.rival/config.yaml`.
 >
