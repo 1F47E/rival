@@ -23,9 +23,11 @@ const megareviewUsage = `Usage:
   /rival-review -m sol src/api/ — review a scope with Sol only
   /rival-review -m k3 src/api/ — review a scope with Kimi K3 only
   /rival-review -m sol,k3 src/api/ — use exactly those two models
+  /rival-review -m grok src/api/ — review a scope with grok only (opt-in)
   /rival-review -re ultra src/api/ — override compatible model defaults
 
-Models (-m/--model): sol, kimi-k3 (k3)
+Models (-m/--model): sol, kimi-k3 (k3), grok
+grok is opt-in: it is never added implicitly, only when named.
 An explicit model list replaces the default two-model roster.
 Reasoning effort (-re/--effort): low, medium, high, ultra; omitted uses ~/.rival/config.yaml model defaults`
 

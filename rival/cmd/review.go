@@ -36,7 +36,7 @@ With a scope argument, reviews exactly that scope.`,
 
 func init() {
 	reviewCmd.Flags().String("effort", "", "override all compatible model defaults: low, medium, high, ultra")
-	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, kimi-k3")
+	reviewCmd.Flags().StringSliceP("model", "m", nil, "exact reviewer roster: sol, kimi-k3, grok (opt-in)")
 	reviewCmd.Flags().String("workdir", ".", "working directory")
 	reviewCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	rootCmd.AddCommand(reviewCmd)
@@ -103,7 +103,7 @@ func modelSelectionFlag(cmd *cobra.Command) (models []string, changed bool, err 
 		return nil, false, nil
 	}
 	if len(models) == 0 {
-		return nil, true, fmt.Errorf("option --model requires a value: sol or kimi-k3")
+		return nil, true, fmt.Errorf("option --model requires a value: sol, kimi-k3, or grok")
 	}
 	for _, model := range models {
 		if strings.TrimSpace(model) == "" {

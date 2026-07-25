@@ -22,6 +22,8 @@ const (
 	FableLabel           = "fable"
 	K3Label              = "kimi-k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
+	GrokModel            = "grok-4.5"
+	GrokLabel            = "grok"
 	ClaudeDockerImage    = "rival-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
 
@@ -78,6 +80,8 @@ func ModelLabel(model string) string {
 		return FableLabel
 	case KimiModel, K3Label:
 		return K3Label
+	case GrokModel, GrokLabel:
+		return GrokLabel
 	default:
 		return "retired-model"
 	}
@@ -94,6 +98,8 @@ func EngineLabel(cli, model string) string {
 		return FableLabel
 	case KimiModel:
 		return K3Label
+	case GrokModel:
+		return GrokLabel
 	}
 
 	// Adapter identity is the reliable fallback for sessions written by older
@@ -101,6 +107,8 @@ func EngineLabel(cli, model string) string {
 	switch cli {
 	case "codex":
 		return SolLabel
+	case GrokLabel:
+		return GrokLabel
 	case "claude", "fable", "opencode":
 		return "retired-model"
 	}
@@ -224,6 +232,7 @@ func replaceConcreteModelIDs(cli, model, text string) string {
 	text = strings.ReplaceAll(text, GPT56SolModel, SolLabel)
 	text = strings.ReplaceAll(text, FableModel, FableLabel)
 	text = strings.ReplaceAll(text, KimiModel, K3Label)
+	text = strings.ReplaceAll(text, GrokModel, GrokLabel)
 	return text
 }
 
@@ -266,6 +275,8 @@ func publicReviewHeader(line string) string {
 		reviewer = FableLabel
 	case KimiModel:
 		reviewer = K3Label
+	case GrokLabel, GrokModel:
+		reviewer = GrokLabel
 	}
 	return prefix + reviewer + role
 }
@@ -296,6 +307,7 @@ func DefaultReviewTargets() []ReviewTarget {
 // Friendly aliases:
 //   - sol (the exact runtime model id remains accepted for compatibility)
 //   - k3, kimi-k3
+//   - grok (opt-in; absent from the default roster)
 //
 // Per-run selection intentionally stays on this curated set.
 func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
@@ -334,8 +346,11 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		case "k3", "kimi-k3":
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
 			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
+		case GrokLabel:
+			// Opt-in only: grok never joins the default roster.
+			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel, Role: "bug_hunter"}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3, grok", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
@@ -642,7 +657,7 @@ func LoadUserConfig() {
 	for label, raw := range cfg.Efforts {
 		effort := strings.ToLower(strings.TrimSpace(raw))
 		if !knownEffortModel(label) {
-			userConfigErr = fmt.Errorf("invalid effort model %q in %s; use one of: sol, kimi-k3, fable", label, path)
+			userConfigErr = fmt.Errorf("invalid effort model %q in %s; use one of: sol, kimi-k3, fable, grok", label, path)
 			return
 		}
 		if !validConfiguredModelEffort(label, effort) {
@@ -701,6 +716,9 @@ func builtinModelEffort(label string) string {
 		return "max"
 	case FableLabel:
 		return "medium"
+	case GrokLabel:
+		// grok-4.5's menu is low/medium/high, and high is its own default.
+		return "high"
 	default:
 		return DefaultReviewEffort
 	}
@@ -708,7 +726,7 @@ func builtinModelEffort(label string) string {
 
 func knownEffortModel(label string) bool {
 	switch label {
-	case SolLabel, "kimi-k3", FableLabel:
+	case SolLabel, "kimi-k3", FableLabel, GrokLabel:
 		return true
 	default:
 		return false

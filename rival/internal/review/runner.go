@@ -81,12 +81,9 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	available := make([]config.ReviewTarget, 0, len(targets))
 	for _, target := range targets {
 		var preflightErr error
-		switch target.CLI {
-		case "codex":
-			preflightErr = executor.CodexPreflight()
-		case "opencode":
-			preflightErr = executor.OpencodePreflightModel(target.Model, workdir)
-		default:
+		if preflight, ok := preflightFor(target.CLI); ok {
+			preflightErr = preflight(target.Model, workdir)
+		} else {
 			preflightErr = fmt.Errorf("unsupported reviewer CLI: %s", target.CLI)
 		}
 		if preflightErr != nil {
@@ -125,7 +122,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
 	addReviewer := func(cli, model string, role Role) error {
-		effectiveEffort, err := config.ResolveEffort(model, effort, config.DefaultReviewEffort)
+		effectiveEffort, err := reviewerEffortFor(cli, model, effort)
 		if err != nil {
 			return err
 		}
@@ -430,16 +427,11 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 
 	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Str("role", string(role)).Msg("starting reviewer")
 
-	var err error
-	var result *executor.Result
-	switch cli {
-	case "codex":
-		result, err = executor.RunCodexModel(ctx, sess, prompt, sess.Effort, workdir, model, nil)
-	case "opencode":
-		result, err = executor.RunOpencode(ctx, sess, prompt, sess.Effort, workdir, model, nil)
-	default:
+	run, ok := reviewerRunnerFor(cli)
+	if !ok {
 		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
+	result, err := run(ctx, sess, prompt, sess.Effort, workdir, model)
 
 	if err != nil {
 		reason := config.PublicRuntimeError(cli, model, err.Error())
@@ -512,19 +504,14 @@ func runConsilium(ctx context.Context, sess *session.Session, judgeCLI string, i
 
 	log.Info().Str("session", sess.ID).Str("judge", judgeLabel).Msg("starting consilium judge")
 
-	var err error
-	var result *executor.Result
-	switch judgeCLI {
-	case "codex":
-		result, err = executor.RunCodexModel(ctx, sess, prompt, sess.Effort, workdir, sess.Model, nil)
-	case "opencode":
-		// The consilium session carries the concrete opencode model to judge with
-		// (set when the judge is selected/re-selected); RunOpencode falls back to
-		// the default model if it is somehow empty.
-		result, err = executor.RunOpencode(ctx, sess, prompt, sess.Effort, workdir, sess.Model, nil)
-	default:
+	// The consilium session carries the concrete model to judge with (set when
+	// the judge is selected/re-selected); each adapter falls back to its default
+	// model if it is somehow empty.
+	run, ok := judgeRunnerFor(judgeCLI)
+	if !ok {
 		return nil, fmt.Errorf("unsupported judge CLI: %s", judgeCLI)
 	}
+	result, err := run(ctx, sess, prompt, sess.Effort, workdir, sess.Model)
 	if err != nil {
 		reason := config.PublicRuntimeError(judgeCLI, sess.Model, err.Error())
 		_ = sess.Fail(1, reason)
@@ -603,6 +590,8 @@ func modelForCLI(cli string) string {
 		return config.GPT56SolModel
 	case "opencode":
 		return config.KimiModel
+	case config.GrokLabel:
+		return config.GrokModel
 	default:
 		return cli
 	}

@@ -36,6 +36,13 @@ func ParseFableArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
+// ParseGrokArgs parses raw arguments for the grok command (grok-4.5).
+// Identical grammar to Sol: an omitted effort stays empty so the command can
+// apply grok's configured default.
+func ParseGrokArgs(raw string) (*ParseResult, error) {
+	return parseArgsWithEffort(raw, "", config.IsValidReviewEffort, config.ReviewEfforts)
+}
+
 // kimiEffortNames is the accepted -re ladder for the kimi command. Every value
 // is accepted and ignored — Kimi K3 supports only max reasoning — so the list
 // deliberately includes max and ultra: rejecting the one level the docs

@@ -50,7 +50,7 @@ rival install
 > `go install github.com/1F47E/rival@latest` is not supported because the Go
 > module lives in a repository subdirectory.
 
-`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, and `/rival-k3` are available. Install also removes superseded skill names.
+`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, `/rival-k3`, and `/rival-grok` are available. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -76,6 +76,9 @@ startup; set `RIVAL_NO_UPDATE_CHECK=1` to disable it.
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview),
   installed and authenticated, is Fable's runtime for `/rival-plan`,
   `/rival-plan-fable`, and `/rival-fable` (with a Docker fallback below).
+- [Grok CLI](https://docs.x.ai/), authenticated with `grok login`, provides
+  Grok. It is optional: grok never joins the default review roster and is used
+  only when you ask for it.
 
 You only need the runtimes for the models you use. **The default review uses two
 curated models** — any unavailable selection is skipped, and the run proceeds
@@ -144,6 +147,20 @@ delegate to local model CLIs. This is the shortest clean setup.
    that subscription login by default; API billing is opt-in via
    `RIVAL_CLAUDE_AUTH=api` plus `ANTHROPIC_API_KEY`.
 
+6. Optional — install the [Grok CLI](https://docs.x.ai/) and authenticate it
+   for `/rival-grok`:
+
+   ```bash
+   grok login
+   ```
+
+   This is browser OAuth against your grok.com account, and it is the only
+   supported credential: Rival checks that `grok` is on `PATH` and that
+   `~/.grok/auth.json` exists. **`XAI_API_KEY` is deliberately unsupported** —
+   Rival blocks the whole `GROK_` and `XAI_` environment prefixes from the
+   child process so a reviewed repository's `.env` cannot repoint or
+   re-authenticate the runtime.
+
 Run `rival install --force` after every Rival upgrade, then restart or reload
 Claude Code so it discovers the refreshed skills.
 
@@ -157,6 +174,7 @@ Claude Code so it discovers the refreshed skills.
 /rival-review                              — both default models; auto-detect changed files
 /rival-review -m sol src/api/              — Sol only
 /rival-review -m k3 src/api/               — Kimi K3 only (requires MOONSHOT_API_KEY)
+/rival-review -m grok src/api/             — Grok only (opt-in; requires `grok login`)
 /rival-review -re ultra src/api/           — override compatible model defaults
 ```
 
@@ -191,6 +209,24 @@ Claude Code so it discovers the refreshed skills.
 > whole `AWS_*` family, tokens, …) from that child as blast-radius reduction.
 > Not containment: bash runs as you.
 
+**Grok** (xAI's `grok` CLI running grok-4.5; opt-in, never in the default roster):
+
+```
+/rival-grok explain the auth flow in this project
+/rival-grok -re high find bugs in src/main.go
+/rival-grok review                         — review changed files with Grok (auto-detects via git)
+/rival-grok review src/api/                — review a specific scope
+```
+
+> `review` mode passes `--sandbox read-only` to the grok CLI; raw prompts can
+> edit files in the workdir. Two limits are worth knowing: grok's built-in
+> profiles **fail open** when the host has no kernel sandbox available, and even
+> when enforced the read-only profile still permits writes to a fixed allowlist
+> that includes `~/.grok` and the system temp directories — so a workdir under
+> `/tmp` or `/private/tmp` remains writable. Child-process network access is not
+> blocked on macOS. On macOS the applied profile is logged to
+> `~/.grok/sandbox-events.jsonl`.
+
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
@@ -206,10 +242,12 @@ configured Fable effort when present, otherwise its low fallback. The native
 binary accepts an explicit override, for example
 `rival command plan --model sol --effort ultra`.
 
-**Model selection** (`-m`, `--model`): `sol` and `k3` (Kimi K3 needs
-`MOONSHOT_API_KEY`); comma-separated or repeated. An explicit list replaces the
-complete roster. **Reasoning effort** (`-re`): `low`, `medium`, `high`, or
-`ultra`. When omitted, each model uses its own configured default.
+**Model selection** (`-m`, `--model`): `sol`, `k3` (Kimi K3 needs
+`MOONSHOT_API_KEY`), and `grok` (opt-in, needs `grok login`); comma-separated or
+repeated. An explicit list replaces the complete roster, so naming `grok` is the
+only way it takes part in a review. **Reasoning effort** (`-re`): `low`,
+`medium`, `high`, or `ultra`. When omitted, each model uses its own configured
+default.
 
 ### Model effort defaults
 
@@ -220,12 +258,17 @@ efforts:
   sol: high
   kimi-k3: max
   fable: medium
+  grok: high
 ```
 
 An explicit `--effort` or `-re` wins for every compatible selected model.
 Otherwise Rival uses the configured model value, then that command's built-in
 fallback. Kimi K3 is fixed at `max`, the only reasoning level its provider
-supports. `/rival-plan` and `/rival-plan-sol` explicitly request `ultra`, so
+supports. Grok-4.5 exposes only `low`, `medium`, and `high` (its own default is
+`high`), so Rival clamps the wider ladder onto that menu: `xhigh`, `ultra`, and
+`max` become `high`, and `minimal` or `none` becomes `low`. The clamped value is
+what the session records, so `rival sessions` never reports an effort that was
+not actually sent. `/rival-plan` and `/rival-plan-sol` explicitly request `ultra`, so
 that skill choice wins over this file; `/rival-plan-fable` uses its configured
 value or low fallback. When a grouped run uses different per-model efforts, the
 dashboard summary shows `mixed` and each member detail shows its actual effort.
@@ -235,7 +278,8 @@ touches the queue, with the config path and accepted values in the error.
 
 ### How Reviews Work
 
-The curated `/rival-review` reviewers and `/rival-k3 review` mode get
+The curated `/rival-review` reviewers and the `/rival-k3 review` and
+`/rival-grok review` modes get
 mechanically **read-only access to your project**. They don't just see a diff:
 they run as separate agents inside your workdir with safe exploration tools
 enabled, so they can:
@@ -271,8 +315,12 @@ Megareview assigns **specialized roles** to each reviewer:
 - **Kimi K3 → Bug Hunter** — the Moonshot-backed second default reviewer for
   concrete defects, broken state transitions, races, and missing edge cases.
 
-Kimi K3 uses `MOONSHOT_API_KEY` and Moonshot quota. Rival skips failed reviewers
-and proceeds when at least one remains.
+- **Grok → Bug Hunter** — opt-in only, selected with `-m grok`. Absent from the
+  default roster; as the sole successful reviewer it also judges the consilium.
+
+Kimi K3 uses `MOONSHOT_API_KEY` and Moonshot quota; Grok uses your `grok login`
+account and xAI quota. Rival skips failed reviewers and proceeds when at least
+one remains.
 
 All reviewers emit **structured JSON** with file, line, severity, category, confidence (1-10), and fix suggestions.
 
@@ -323,14 +371,17 @@ For an explicit multi-model selection, requested order controls judge priority. 
 echo 'explain the auth flow' | rival run sol --prompt-stdin --workdir .
 echo 'explain the auth flow' | rival run k3 --prompt-stdin --workdir .   # needs MOONSHOT_API_KEY
 echo 'explain the auth flow' | rival run fable --prompt-stdin --workdir .
+echo 'explain the auth flow' | rival run grok --prompt-stdin --workdir .  # needs `grok login`
 
 # Review via the default two-model roster
 rival review src/api/
 
 # Exact one-model reviews
 rival review --model sol src/api/
+rival review --model grok src/api/
 rival run k3 --review src/api/ --workdir .
 rival run fable --review src/api/ --workdir .
+rival run grok --review src/api/ --workdir .
 
 # Rate a plan/spec doc 1-10 (Sol + Fable; configured efforts, high fallbacks)
 echo 'docs/plan.md' | rival command plan --workdir .
@@ -346,7 +397,7 @@ Monitor running and past sessions in a full-screen terminal UI:
 rival tui
 ```
 
-**List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`.
+**List view** shows all sessions with status, concrete model, effort, elapsed time, workdir, and prompt preview. Multi-session runs are grouped into one row: the megareview glyph repeats per selected reviewer (`❯ mega` through `❯❯❯❯ mega`). Plan reviews (`/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`) show `▤ plan`, and Grok sessions show `𝕏 grok`.
 
 **Detail view** shows full metadata, prompt, and live-streaming log output.
 Group titles and metadata are derived from the sessions: a default megareview
