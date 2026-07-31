@@ -7,6 +7,9 @@
 package logfmt
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -64,4 +67,48 @@ func ExpandTabs(s string, width int) string {
 		width = 0
 	}
 	return strings.ReplaceAll(s, "\t", strings.Repeat(" ", width))
+}
+
+// MaxTailBytes is how much of a log's tail a display surface reads. Logs reach
+// tens of megabytes (62 MB observed), and a renderer that re-reads on a timer
+// cannot afford the whole file: wrapping 62 MB measured ~970ms, against a 1s
+// refresh tick. Earlier output stays reachable by opening the log itself.
+const MaxTailBytes int64 = 256 << 10
+
+// ReadTail returns up to MaxTailBytes from the end of path, reporting whether
+// the file was truncated.
+//
+// A tail that starts mid-file is aligned past the first newline: the raw offset
+// otherwise decapitates whatever multi-byte rune or ANSI escape straddles it,
+// and a beheaded escape renders as literal garbage. Escapes do not span lines,
+// so one alignment fixes both. A single enormous line has no newline to align
+// to — serving the unaligned tail beats serving nothing.
+func ReadTail(path string, maxBytes int64) ([]byte, bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, false, err
+	}
+	truncated := info.Size() > maxBytes
+	if truncated {
+		if _, err := f.Seek(-maxBytes, io.SeekEnd); err != nil {
+			return nil, false, err
+		}
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes))
+	if err != nil {
+		return nil, false, err
+	}
+	if truncated {
+		if idx := bytes.IndexByte(data, '\n'); idx >= 0 && idx+1 < len(data) {
+			data = data[idx+1:]
+		}
+	}
+	return []byte(strings.ToValidUTF8(string(data), "")), truncated, nil
 }

@@ -1,11 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -246,7 +244,7 @@ func New(version string) *http.ServeMux {
 		}
 
 		logPath := filepath.Join(config.SessionDirPath(), id+".log")
-		data, truncated, err := readLogTail(logPath, maxLogTailBytes)
+		data, truncated, err := logfmt.ReadTail(logPath, maxLogTailBytes)
 		if err != nil {
 			http.Error(w, "log not found", http.StatusNotFound)
 			return
@@ -327,41 +325,6 @@ func loadPromptResponse(path string, summary *session.Session) (promptResponse, 
 		SourceBytes: info.Size(),
 		PromptBytes: originalBytes,
 	}, nil
-}
-
-func readLogTail(path string, maxBytes int64) ([]byte, bool, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, false, err
-	}
-	truncated := info.Size() > maxBytes
-	if truncated {
-		if _, err := f.Seek(-maxBytes, io.SeekEnd); err != nil {
-			return nil, false, err
-		}
-	}
-
-	data, err := io.ReadAll(io.LimitReader(f, maxBytes))
-	if err != nil {
-		return nil, false, err
-	}
-	if truncated {
-		// The seek lands at an arbitrary byte, which decapitates whatever
-		// multi-byte rune or ANSI escape straddles it. Starting the tail after
-		// the first newline fixes both at once (escapes do not span lines).
-		// A single enormous line has no newline to align to; serving the
-		// unaligned tail beats serving nothing.
-		if idx := bytes.IndexByte(data, '\n'); idx >= 0 && idx+1 < len(data) {
-			data = data[idx+1:]
-		}
-	}
-	return []byte(strings.ToValidUTF8(string(data), "")), truncated, nil
 }
 
 func groupSessions(sessions []*session.Session) []sessionGroup {
