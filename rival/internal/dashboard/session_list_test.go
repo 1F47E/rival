@@ -8,7 +8,7 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func TestCLILabelUsesPublicModelNames(t *testing.T) {
