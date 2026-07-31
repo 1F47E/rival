@@ -135,6 +135,48 @@ func (m *Model) selectedItem() *displayItem {
 	return &m.items[m.selected]
 }
 
+// itemKey identifies a display item across refreshes. A group is keyed by its
+// GroupID, a solo session by its own ID; both are stable for the run's lifetime.
+func itemKey(item *displayItem) string {
+	s := item.Primary()
+	if s == nil {
+		return ""
+	}
+	if s.GroupID != "" {
+		return "group:" + s.GroupID
+	}
+	return "solo:" + s.ID
+}
+
+// reanchorSelection restores the selection to the item identified by key after
+// the item list has been rebuilt.
+//
+// The index alone is not a stable handle: LoadAll sorts by StartTime descending
+// and MarkRunning stamps StartTime at launch, so a queued run starting while the
+// user reads a detail view shifts every row below it. Re-anchoring by index
+// would silently swap the displayed session — and point "x" at the wrong PID.
+// A vanished item drops the user back to the list rather than showing another
+// run's log under the old heading.
+func (m *Model) reanchorSelection(key string) {
+	if key == "" {
+		return
+	}
+	for i := range m.items {
+		if itemKey(&m.items[i]) == key {
+			m.selected = i
+			return
+		}
+	}
+	if m.viewMode == viewDetail {
+		m.viewMode = viewList
+		m.promptExpanded = false
+		m.logView.SetContent("")
+	}
+	if m.selected >= len(m.items) {
+		m.selected = max(0, len(m.items)-1)
+	}
+}
+
 // contentHeight is the number of rows available to the body between the banner
 // and the help bar. Both viewContent and syncDetailViewport MUST use it: if the
 // two ever compute a different height the viewport renders a frame the view
@@ -357,9 +399,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case SessionEvent:
+		anchor := ""
+		if item := (&m).selectedItem(); item != nil {
+			anchor = itemKey(item)
+		}
 		m.totalSessions = len(msg.Sessions)
 		m.allItems = groupSessions(msg.Sessions)
 		m.paginateItems()
+		(&m).reanchorSelection(anchor)
 		if m.viewMode == viewDetail {
 			(&m).syncDetailViewport(false)
 		}

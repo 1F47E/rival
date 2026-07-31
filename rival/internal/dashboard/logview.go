@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/1F47E/rival/internal/config"
@@ -18,11 +17,26 @@ func sanitizeLog(raw string) string {
 	return logfmt.ExpandTabs(logfmt.Sanitize(raw), logfmt.TabWidth)
 }
 
+// publicLogText sanitizes raw log bytes and then applies public model naming.
+//
+// The order matters and matches the server: PublicRuntimeLog redacts concrete
+// model ids by plain string replacement, so an escape interleaved in an id
+// ("gpt\x1b[0m-5.6-sol") slips past it. Stripping escapes afterwards would then
+// reassemble the internal id on screen.
+func publicLogText(s *session.Session, raw string) string {
+	return logfmt.ExpandTabs(
+		config.PublicRuntimeLog(s.CLI, s.Model, logfmt.Sanitize(raw)),
+		logfmt.TabWidth,
+	)
+}
+
 // wrapLogLines reads one session log, applies public model naming, strips
 // terminal control sequences, and hard-wraps by display width so wide runes
 // and tabs cannot push a line past wrapWidth.
 func wrapLogLines(s *session.Session, wrapWidth int) []string {
-	data, err := os.ReadFile(s.LogFile)
+	// Tail-only: the detail view rebuilds this on every 1s tick, and wrapping a
+	// whole multi-megabyte log takes about as long as the tick interval.
+	data, truncated, err := logfmt.ReadTail(s.LogFile, logfmt.MaxTailBytes)
 	if err != nil {
 		return nil
 	}
@@ -30,7 +44,10 @@ func wrapLogLines(s *session.Session, wrapWidth int) []string {
 		return nil
 	}
 
-	text := sanitizeLog(config.PublicRuntimeLog(s.CLI, s.Model, string(data)))
+	text := publicLogText(s, string(data))
+	if truncated {
+		text = labelStyle.Render("... earlier output omitted — press o to open the full log") + "\n" + text
+	}
 	text = strings.TrimRight(text, "\n")
 	if wrapWidth > 0 {
 		text = ansi.Hardwrap(text, wrapWidth, true)

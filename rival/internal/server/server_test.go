@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/logfmt"
 	"github.com/1F47E/rival/internal/session"
 )
 
@@ -399,7 +400,7 @@ func TestReadLogTailAlignsToLineBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	tail, truncated, err := logfmt.ReadTail(path, maxLogTailBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +438,7 @@ func TestReadLogTailFallsBackWhenNoNewline(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
-	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	tail, truncated, err := logfmt.ReadTail(path, maxLogTailBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +458,7 @@ func TestReadLogTailFallsBackWhenAlignmentEmptiesTail(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
-	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	tail, truncated, err := logfmt.ReadTail(path, maxLogTailBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +614,7 @@ func TestPromptResponseAndLogTailAreBounded(t *testing.T) {
 	if err := os.WriteFile(logPath, logData, 0600); err != nil {
 		t.Fatal(err)
 	}
-	tail, truncated, err := readLogTail(logPath, maxLogTailBytes)
+	tail, truncated, err := logfmt.ReadTail(logPath, maxLogTailBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

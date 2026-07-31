@@ -227,3 +227,95 @@ func TestDetailScrollKeysReachTheViewport(t *testing.T) {
 		t.Fatal("g did not jump the viewport to the top")
 	}
 }
+
+// A queued run starting while a detail view is open re-sorts the list (LoadAll
+// orders by StartTime, MarkRunning stamps it at launch). The selection must
+// follow the session the user opened, not the index it happened to occupy.
+func TestDetailSelectionSurvivesReorder(t *testing.T) {
+	watched := &session.Session{
+		ID: "11111111-1111-1111-1111-111111111111", CLI: "codex", Model: config.GPT56SolModel,
+		Mode: "review", Status: "running", StartTime: time.Now().Add(-time.Minute), PID: 4242,
+		LogFile: writeTempLog(t, "watched.log", strings.Repeat("watched output\n", 50)),
+	}
+	other := &session.Session{
+		ID: "22222222-2222-2222-2222-222222222222", CLI: "claude", Model: config.FableModel,
+		Mode: "review", Status: "queued", StartTime: time.Now().Add(-2 * time.Minute), PID: 9999,
+		LogFile: writeTempLog(t, "other.log", strings.Repeat("other output\n", 50)),
+	}
+
+	m := New()
+	t.Cleanup(m.cancel)
+	updated, _ := m.Update(SessionEvent{Sessions: []*session.Session{watched, other}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(Model)
+	updated, _ = m.Update(key("enter"))
+	m = updated.(Model)
+
+	if got := m.selectedItem().Primary().ID; got != watched.ID {
+		t.Fatalf("opened the wrong session: %s", got)
+	}
+
+	// The queued run starts and sorts above the watched one.
+	other.Status = "running"
+	other.StartTime = time.Now()
+	updated, _ = m.Update(SessionEvent{Sessions: []*session.Session{other, watched}})
+	m = updated.(Model)
+
+	if m.viewMode != viewDetail {
+		t.Fatal("reorder dropped the user out of the detail view")
+	}
+	if got := m.selectedItem().Primary().ID; got != watched.ID {
+		t.Fatalf("detail view followed the index, not the session: showing %s, want %s", got, watched.ID)
+	}
+	if got := m.selectedItem().Primary().PID; got != watched.PID {
+		t.Fatalf("x would target pid %d instead of %d", got, watched.PID)
+	}
+}
+
+// A session that disappears entirely returns the user to the list rather than
+// leaving another run's log under the old heading.
+func TestDetailExitsWhenSelectionDisappears(t *testing.T) {
+	gone := &session.Session{
+		ID: "33333333-3333-3333-3333-333333333333", CLI: "codex", Model: config.GPT56SolModel,
+		Mode: "review", Status: "running", StartTime: time.Now(),
+		LogFile: writeTempLog(t, "gone.log", "some output\n"),
+	}
+	survivor := &session.Session{
+		ID: "44444444-4444-4444-4444-444444444444", CLI: "codex", Model: config.GPT56SolModel,
+		Mode: "review", Status: "running", StartTime: time.Now().Add(-time.Minute),
+		LogFile: writeTempLog(t, "survivor.log", "other output\n"),
+	}
+
+	m := New()
+	t.Cleanup(m.cancel)
+	updated, _ := m.Update(SessionEvent{Sessions: []*session.Session{gone, survivor}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(Model)
+	updated, _ = m.Update(key("enter"))
+	m = updated.(Model)
+
+	updated, _ = m.Update(SessionEvent{Sessions: []*session.Session{survivor}})
+	m = updated.(Model)
+
+	if m.viewMode != viewList {
+		t.Fatal("a vanished session left the user in a detail view of someone else's run")
+	}
+}
+
+// PublicRuntimeLog redacts by plain string replacement, so an escape inside a
+// model id slips past it. Sanitizing first is what closes that.
+func TestDetailLogRedactsModelIDSplitByANSI(t *testing.T) {
+	s := &session.Session{
+		ID: "55555555-5555-5555-5555-555555555555", CLI: "codex", Model: config.GPT56SolModel,
+		LogFile: writeTempLog(t, "leak.log", "model: gpt\x1b[0m-5.6-sol\n"),
+	}
+	got := strings.Join(wrapLogLines(s, 80), "\n")
+	// Assert on what renders: the ESC is invisible, so a byte-wise Contains of
+	// the raw id is a false pass for exactly the reason the redaction failed.
+	visible := strings.ReplaceAll(got, "\x1b", "")
+	if strings.Contains(visible, config.GPT56SolModel) {
+		t.Fatalf("internal model id readable once the invisible ESC is dropped: %q", got)
+	}
+}
