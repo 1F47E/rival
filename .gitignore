@@ -12,3 +12,6 @@ secrets.*
 oauth_link.txt
 *oauth*link*
 .playwright-cli/
+
+# local feature worktrees
+worktrees/
