@@ -284,18 +284,185 @@ func TestPublicSessionsUsesOnlyPublicNames(t *testing.T) {
 	}
 }
 
-func TestPublicLogDataNormalizesRuntimeBanner(t *testing.T) {
-	raw := []byte("OpenAI Codex v1\n--------\nmodel: " + config.GPT56SolModel + "\n--------\n")
-	data, ok := publicLogData("a", raw, []*session.Session{{ID: "a", CLI: "codex", Model: config.GPT56SolModel}})
-	if !ok {
-		t.Fatal("expected matching session metadata")
+// serveLog writes one session (metadata + log file) into a temp HOME and
+// returns what GET /api/sessions/<id>/log actually serves.
+func serveLog(t *testing.T, id string, s *session.Session, raw []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	dir := config.SessionDirPath()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
 	}
-	got := string(data)
+	s.ID = id
+	s.LogFile = filepath.Join(dir, id+".log")
+	if s.Status == "" {
+		s.Status = "completed"
+	}
+	if s.StartTime.IsZero() {
+		s.StartTime = time.Now()
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.LogFile, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+id+"/log", nil)
+	rr := httptest.NewRecorder()
+	New("test").ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("log status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	return rr
+}
+
+func TestLogEndpointNormalizesRuntimeBanner(t *testing.T) {
+	raw := []byte("OpenAI Codex v1\n--------\nmodel: " + config.GPT56SolModel + "\n--------\n")
+	rr := serveLog(t, "00000000-0000-4000-8000-0000000000a1",
+		&session.Session{CLI: "codex", Model: config.GPT56SolModel}, raw)
+	got := rr.Body.String()
 	if strings.Contains(got, config.GPT56SolModel) || strings.Contains(got, "Codex") || !strings.Contains(got, "Sol runtime") {
 		t.Fatalf("public log was not normalized: %q", got)
 	}
-	if _, ok := publicLogData("missing", raw, nil); ok {
-		t.Fatal("orphan log must fail closed without session metadata")
+}
+
+// The web page renders the served bytes as text: an ESC leaks through as an
+// invisible byte plus a literal "[31m", a "\r" concatenates every progress
+// frame into one absurd line, and C0 controls become replacement boxes. Tabs
+// must survive — CSS tab-size renders them, and expanding here would fight it.
+func TestLogEndpointSanitizesControlBytesAndKeepsTabs(t *testing.T) {
+	raw := []byte("\x1b[31mRED\x1b[0m\nprog 10%\rprog 99%\nbell\x07here\n\tindented\n")
+	rr := serveLog(t, "00000000-0000-4000-8000-0000000000a2",
+		&session.Session{CLI: "codex", Model: config.GPT56SolModel}, raw)
+	got := rr.Body.String()
+
+	for _, banned := range []string{"\x1b", "\r", "\x07", "[31m", "[0m"} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("served log still contains %q: %q", banned, got)
+		}
+	}
+	for _, r := range got {
+		if r != '\n' && r != '\t' && (r < 0x20 || r == 0x7f) {
+			t.Fatalf("served log contains control char %#U: %q", r, got)
+		}
+	}
+	if !strings.Contains(got, "RED") || !strings.Contains(got, "bellhere") {
+		t.Fatalf("sanitizer ate visible text: %q", got)
+	}
+	if strings.Contains(got, "prog 10%") || !strings.Contains(got, "prog 99%") {
+		t.Fatalf("progress frames not collapsed to the last: %q", got)
+	}
+	if !strings.Contains(got, "\tindented") {
+		t.Fatalf("tab was not preserved for the web path: %q", got)
+	}
+}
+
+// replaceConcreteModelIDs is a plain string replacement, so an ANSI escape
+// interleaved in a model id used to smuggle the internal id straight to the
+// browser. Sanitizing before redacting closes that.
+func TestLogEndpointRedactsModelIDSplitByANSI(t *testing.T) {
+	split := config.GPT56SolModel[:3] + "\x1b[0m" + config.GPT56SolModel[3:]
+	raw := []byte("model: " + split + "\n")
+	rr := serveLog(t, "00000000-0000-4000-8000-0000000000a3",
+		&session.Session{CLI: "codex", Model: config.GPT56SolModel}, raw)
+	got := rr.Body.String()
+	if strings.Contains(got, config.GPT56SolModel) {
+		t.Fatalf("internal model id leaked past ANSI-split redaction: %q", got)
+	}
+	// The escape is invisible in a browser, so an unsanitized response reads as
+	// the intact internal id even though a byte-wise Contains misses it.
+	// Dropping the ESC bytes reconstructs exactly what the user would see.
+	visible := strings.ReplaceAll(got, "\x1b", "")
+	if strings.Contains(visible, config.GPT56SolModel[:3]+"[0m"+config.GPT56SolModel[3:]) {
+		t.Fatalf("internal model id readable once the invisible ESC is dropped: %q", got)
+	}
+	if !strings.Contains(got, config.SolLabel) {
+		t.Fatalf("public label missing: %q", got)
+	}
+}
+
+// A blind seek to size-maxBytes lands mid-rune and mid-escape. Aligning the
+// tail to the next newline fixes both, since escapes never span a line here.
+func TestReadLogTailAlignsToLineBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.log")
+
+	// One long line of multi-byte runes plus an ANSI escape, repeated until the
+	// file is well over the cap, so the cut point lands inside a line.
+	line := "\x1b[31m" + strings.Repeat("あ", 64) + "\x1b[0m tail marker\n"
+	var b strings.Builder
+	for b.Len() < int(maxLogTailBytes)*2 {
+		b.WriteString(line)
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated {
+		t.Fatal("oversized log must report truncated")
+	}
+	if len(tail) > int(maxLogTailBytes) {
+		t.Fatalf("tail = %d bytes, want <= %d", len(tail), maxLogTailBytes)
+	}
+	if !utf8.Valid(tail) {
+		t.Fatal("tail is not valid UTF-8")
+	}
+	// Line-aligned: the tail must begin a whole line, i.e. with the escape that
+	// opens every line — never mid-rune or mid-escape.
+	if !strings.HasPrefix(string(tail), "\x1b[31m") {
+		t.Fatalf("tail does not start on a line boundary: %q", string(tail)[:32])
+	}
+	// A beheaded escape would leave a literal "[0m"/"[31m" with no ESC before
+	// it. Every "[" in the aligned tail must be preceded by an ESC.
+	for i, r := range string(tail) {
+		if r == '[' && (i == 0 || tail[i-1] != 0x1b) {
+			t.Fatalf("dangling escape remnant at %d: %q", i, string(tail)[max(0, i-8):i+8])
+		}
+	}
+	if strings.Count(string(tail), "\x1b[31m") != strings.Count(string(tail), "\x1b[0m") {
+		t.Fatal("unbalanced escapes: tail was cut inside a line")
+	}
+}
+
+// A single enormous line has no newline to align to; serving the unaligned tail
+// beats serving nothing at all.
+func TestReadLogTailFallsBackWhenNoNewline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "huge.log")
+	raw := strings.Repeat("x", int(maxLogTailBytes)*2) + "END"
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated || len(tail) == 0 {
+		t.Fatalf("no-newline fallback: truncated=%v bytes=%d", truncated, len(tail))
+	}
+	if !strings.HasSuffix(string(tail), "END") {
+		t.Fatal("no-newline fallback did not serve the end of the log")
+	}
+}
+
+// A tail whose only newline is the final byte would align to an empty
+// remainder; the fallback must keep serving the unaligned bytes.
+func TestReadLogTailFallsBackWhenAlignmentEmptiesTail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trailing-newline.log")
+	raw := strings.Repeat("y", int(maxLogTailBytes)*2) + "\n"
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	tail, truncated, err := readLogTail(path, maxLogTailBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated || len(tail) == 0 {
+		t.Fatalf("empty-after-alignment fallback: truncated=%v bytes=%d", truncated, len(tail))
 	}
 }
 

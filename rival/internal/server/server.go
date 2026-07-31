@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/logfmt"
 	"github.com/1F47E/rival/internal/session"
 )
 
@@ -249,7 +251,11 @@ func New(version string) *http.ServeMux {
 			http.Error(w, "log not found", http.StatusNotFound)
 			return
 		}
-		data = []byte(config.PublicRuntimeLog(s.CLI, s.Model, string(data)))
+		// Sanitize before redacting. Raw escapes would otherwise reach the
+		// browser as literal garbage, and — worse — an escape interleaved in a
+		// concrete model id ("gpt\x1b[0m-5.6-sol") defeats the plain string
+		// replacement that redacts it.
+		data = []byte(config.PublicRuntimeLog(s.CLI, s.Model, logfmt.Sanitize(string(data))))
 		if truncated {
 			w.Header().Set("X-Rival-Log-Truncated", "true")
 		}
@@ -344,6 +350,16 @@ func readLogTail(path string, maxBytes int64) ([]byte, bool, error) {
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes))
 	if err != nil {
 		return nil, false, err
+	}
+	if truncated {
+		// The seek lands at an arbitrary byte, which decapitates whatever
+		// multi-byte rune or ANSI escape straddles it. Starting the tail after
+		// the first newline fixes both at once (escapes do not span lines).
+		// A single enormous line has no newline to align to; serving the
+		// unaligned tail beats serving nothing.
+		if idx := bytes.IndexByte(data, '\n'); idx >= 0 && idx+1 < len(data) {
+			data = data[idx+1:]
+		}
 	}
 	return []byte(strings.ToValidUTF8(string(data), "")), truncated, nil
 }
@@ -511,15 +527,6 @@ func publicSessions(sessions []*session.Session) []publicSession {
 		})
 	}
 	return result
-}
-
-func publicLogData(id string, data []byte, sessions []*session.Session) ([]byte, bool) {
-	for _, s := range sessions {
-		if s.ID == id {
-			return []byte(config.PublicRuntimeLog(s.CLI, s.Model, string(data))), true
-		}
-	}
-	return nil, false
 }
 
 func groupElapsed(sessions []*session.Session) string {
