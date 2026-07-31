@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 )
@@ -24,19 +25,21 @@ func TestGroupDetailReservesSpaceForEveryPlanLog(t *testing.T) {
 		{ID: "fable", GroupID: "paired-plan", CLI: "fable", Model: config.FableModel, Mode: "plan", Effort: "low", Status: "completed", LogFile: writeLog("fable.log", "fable output\n")},
 	}}
 
-	got := renderGroupDetailView(item, 80, 24, false)
-	for _, heading := range []string{"SOL REVIEW · EFFORT ultra", "FABLE REVIEW · EFFORT low"} {
-		if !strings.Contains(got, heading) {
-			t.Fatalf("24-line grouped detail omitted %q:\n%s", heading, got)
+	// The viewport scrolls the log, so there is no line budget: every member's
+	// heading AND body must be present in full.
+	got := buildGroupLogContent(item, 80)
+	for _, want := range []string{
+		"SOL REVIEW · EFFORT ultra", "sol output",
+		"FABLE REVIEW · EFFORT low", "fable output",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("grouped log content omitted %q:\n%s", want, got)
 		}
-	}
-	if lines := strings.Count(got, "\n") + 1; lines > 24 {
-		t.Fatalf("group detail rendered %d lines, want at most 24", lines)
 	}
 }
 
 func TestSingleDetailStillShowsItsEffort(t *testing.T) {
-	got := renderSingleDetailView(&session.Session{
+	item := &displayItem{Sessions: []*session.Session{{
 		ID:        "single",
 		CLI:       "codex",
 		Model:     config.GPT56SolModel,
@@ -44,9 +47,17 @@ func TestSingleDetailStillShowsItsEffort(t *testing.T) {
 		Effort:    "ultra",
 		Status:    "completed",
 		StartTime: time.Now(),
-	}, 80, 30, false)
+	}}}
+	got := renderDetailMeta(item, 80, 30, false)
 	if !strings.Contains(got, "Effort") || !strings.Contains(got, "ultra") {
-		t.Fatalf("single-session detail omitted effort:\n%s", got)
+		t.Fatalf("single-session detail meta omitted effort:\n%s", got)
+	}
+	// "Reviewer" and "Model" used to render the same value twice.
+	if n := strings.Count(got, "Model"); n != 1 {
+		t.Fatalf("expected exactly one Model row, got %d:\n%s", n, got)
+	}
+	if strings.Contains(got, "Reviewer") {
+		t.Fatalf("duplicate Reviewer row still present:\n%s", got)
 	}
 }
 
@@ -83,13 +94,17 @@ func TestGroupLogsDistinguishJudgeAndIncludeAllMembers(t *testing.T) {
 func TestDetailViewHandlesTinyTerminal(t *testing.T) {
 	m := New()
 	defer m.cancel()
-	m.width = 80
-	m.height = 1
 	m.viewMode = viewDetail
 	m.items = []displayItem{{Sessions: []*session.Session{
 		{ID: "tiny", CLI: "fable", Model: config.FableModel, Mode: "plan", Status: "running"},
 	}}}
 	m.allItems = m.items
 
-	_ = m.View()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 1})
+	m = updated.(Model)
+
+	_ = m.View() // must not panic
+	if h := m.logView.Height(); h < 1 {
+		t.Fatalf("viewport height %d, want >= 1", h)
+	}
 }

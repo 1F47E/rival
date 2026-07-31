@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/1F47E/rival/internal/dashboard"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +14,7 @@ var tuiCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dashboard.Version = Version
 		m := dashboard.New()
-		p := tea.NewProgram(m, tea.WithAltScreen())
+		p := tea.NewProgram(m)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("tui: %w", err)
 		}

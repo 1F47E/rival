@@ -4,7 +4,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/logfmt"
 	"github.com/1F47E/rival/internal/session"
 )
 
@@ -244,12 +244,16 @@ func New(version string) *http.ServeMux {
 		}
 
 		logPath := filepath.Join(config.SessionDirPath(), id+".log")
-		data, truncated, err := readLogTail(logPath, maxLogTailBytes)
+		data, truncated, err := logfmt.ReadTail(logPath, maxLogTailBytes)
 		if err != nil {
 			http.Error(w, "log not found", http.StatusNotFound)
 			return
 		}
-		data = []byte(config.PublicRuntimeLog(s.CLI, s.Model, string(data)))
+		// Sanitize before redacting. Raw escapes would otherwise reach the
+		// browser as literal garbage, and — worse — an escape interleaved in a
+		// concrete model id ("gpt\x1b[0m-5.6-sol") defeats the plain string
+		// replacement that redacts it.
+		data = []byte(config.PublicRuntimeLog(s.CLI, s.Model, logfmt.Sanitize(string(data))))
 		if truncated {
 			w.Header().Set("X-Rival-Log-Truncated", "true")
 		}
@@ -321,31 +325,6 @@ func loadPromptResponse(path string, summary *session.Session) (promptResponse, 
 		SourceBytes: info.Size(),
 		PromptBytes: originalBytes,
 	}, nil
-}
-
-func readLogTail(path string, maxBytes int64) ([]byte, bool, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, false, err
-	}
-	truncated := info.Size() > maxBytes
-	if truncated {
-		if _, err := f.Seek(-maxBytes, io.SeekEnd); err != nil {
-			return nil, false, err
-		}
-	}
-
-	data, err := io.ReadAll(io.LimitReader(f, maxBytes))
-	if err != nil {
-		return nil, false, err
-	}
-	return []byte(strings.ToValidUTF8(string(data), "")), truncated, nil
 }
 
 func groupSessions(sessions []*session.Session) []sessionGroup {
@@ -511,15 +490,6 @@ func publicSessions(sessions []*session.Session) []publicSession {
 		})
 	}
 	return result
-}
-
-func publicLogData(id string, data []byte, sessions []*session.Session) ([]byte, bool) {
-	for _, s := range sessions {
-		if s.ID == id {
-			return []byte(config.PublicRuntimeLog(s.CLI, s.Model, string(data))), true
-		}
-	}
-	return nil, false
 }
 
 func groupElapsed(sessions []*session.Session) string {

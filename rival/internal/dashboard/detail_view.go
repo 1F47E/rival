@@ -2,26 +2,53 @@ package dashboard
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
-	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDetailView(item *displayItem, width, height int, promptExpanded bool) string {
+// renderDetailMeta renders only the metadata block of the detail view (title,
+// fields, error, prompt) plus the "Log" heading. The log body itself lives in a
+// scrollable viewport owned by the model, so this function has no log budget
+// math — it only clamps itself to height-3 lines so the viewport is always left
+// at least three rows to draw in.
+func renderDetailMeta(item *displayItem, width, height int, promptExpanded bool) string {
 	if item == nil || item.Primary() == nil {
 		return labelStyle.Render("Select a session to view details")
 	}
 
+	var meta string
 	if item.IsGroup() {
-		return renderGroupDetailView(item, width, height, promptExpanded)
+		meta = renderGroupDetailMeta(item, width, promptExpanded)
+	} else {
+		meta = renderSingleDetailMeta(item.Primary(), width, promptExpanded)
 	}
-	return renderSingleDetailView(item.Primary(), width, height, promptExpanded)
+	return clampMeta(meta, height)
 }
 
-func renderSingleDetailView(s *session.Session, width, height int, promptExpanded bool) string {
+// clampMeta truncates the meta block so at least three lines remain for the log
+// viewport. When the cut lands inside an expanded prompt the collapsed hint is
+// restored so the user still knows there is more text behind "p".
+func clampMeta(meta string, height int) string {
+	maxMetaLines := height - 3
+	if maxMetaLines < 1 {
+		maxMetaLines = 1
+	}
+	lines := renderedLines(meta)
+	if len(lines) <= maxMetaLines {
+		return meta
+	}
+	lines = lines[:maxMetaLines]
+	hint := labelStyle.Render("... (p to expand)")
+	if lines[len(lines)-1] != hint {
+		lines[len(lines)-1] = hint
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderSingleDetailMeta(s *session.Session, width int, promptExpanded bool) string {
 	var meta strings.Builder
 
 	id := s.ID
@@ -32,7 +59,6 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 	meta.WriteString("\n\n")
 
 	// Metadata fields.
-	addField(&meta, "Reviewer", config.EngineLabel(s.CLI, s.Model), width)
 	addField(&meta, "Model", config.EngineLabel(s.CLI, s.Model), width)
 	addField(&meta, "Effort", s.Effort, width)
 	addField(&meta, "Mode", s.Mode, width)
@@ -58,40 +84,12 @@ func renderSingleDetailView(s *session.Session, width, height int, promptExpande
 	renderErrorSection(&meta, s, width)
 	renderPromptSection(&meta, s, width, promptExpanded)
 	meta.WriteString("\n")
+	meta.WriteString(titleStyle.Render("Log"))
 
-	metaStr := meta.String()
-	metaLines := strings.Count(metaStr, "\n") + 1
-
-	logHeight := height - metaLines - 1
-	if logHeight < 3 {
-		logHeight = 3
-	}
-
-	lines := wrapLogLines(s, width)
-	logTitle := "Log"
-	if len(lines) > logHeight {
-		logTitle = "Log (recent)"
-	}
-	logTitleStr := titleStyle.Render(logTitle) + "\n"
-
-	var logContent string
-	if len(lines) == 0 {
-		logContent = labelStyle.Render("(empty log)")
-	} else if len(lines) <= logHeight {
-		logContent = strings.Join(lines, "\n")
-	} else {
-		logContent = strings.Join(lines[len(lines)-logHeight:], "\n")
-	}
-
-	full := metaStr + logTitleStr + logContent
-	result := strings.Split(full, "\n")
-	if len(result) > height {
-		result = result[:height]
-	}
-	return strings.Join(result, "\n")
+	return meta.String()
 }
 
-func renderGroupDetailView(item *displayItem, width, height int, promptExpanded bool) string {
+func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool) string {
 	s := item.Primary()
 
 	var essential strings.Builder
@@ -126,42 +124,11 @@ func renderGroupDetailView(item *displayItem, width, height int, promptExpanded 
 		addField(&essential, "Review", s.ReviewScope, width)
 	}
 
-	// Logs are the primary content of a grouped detail view. Reserve a heading
-	// and at least one content line for every member before spending space on
-	// the shared prompt, so a normal terminal always exposes every model.
-	minLogLines := len(item.Sessions) * 2
-	maxMetaLines := height - minLogLines
-	if maxMetaLines < 0 {
-		maxMetaLines = 0
-	}
-	metaLines := renderedLines(essential.String())
-	if len(metaLines) > maxMetaLines {
-		metaLines = metaLines[:maxMetaLines]
-	}
+	renderPromptSection(&essential, s, width, promptExpanded)
+	essential.WriteString("\n")
+	essential.WriteString(titleStyle.Render("Log"))
 
-	if len(metaLines) < maxMetaLines {
-		var prompt strings.Builder
-		renderPromptSection(&prompt, s, width, promptExpanded)
-		optional := renderedLines(prompt.String())
-		room := maxMetaLines - len(metaLines)
-		if len(optional) > room {
-			optional = optional[:room]
-		}
-		metaLines = append(metaLines, optional...)
-	}
-
-	remaining := height - len(metaLines)
-	for i, sess := range item.Sessions {
-		membersLeft := len(item.Sessions) - i
-		budget := remaining / membersLeft
-		section := groupLogLines(sess, width, budget)
-		metaLines = append(metaLines, section...)
-		remaining -= len(section)
-	}
-	if len(metaLines) > height {
-		metaLines = metaLines[:height]
-	}
-	return strings.Join(metaLines, "\n")
+	return essential.String()
 }
 
 func renderedLines(text string) []string {
@@ -170,40 +137,6 @@ func renderedLines(text string) []string {
 		return nil
 	}
 	return strings.Split(text, "\n")
-}
-
-func groupLogLines(sess *session.Session, width, budget int) []string {
-	if budget <= 0 {
-		return nil
-	}
-	label := groupLogLabel(sess)
-	if sess.Status == "failed" && sess.ErrorMsg != "" {
-		label += " (FAILED)"
-	}
-	lines := []string{titleStyle.Render(fmt.Sprintf("=== %s ===", label))}
-	if budget == 1 {
-		return lines
-	}
-
-	if sess.Status == "failed" && sess.ErrorMsg != "" {
-		message := config.PublicRuntimeError(sess.CLI, sess.Model, sess.ErrorMsg)
-		for _, line := range wrapText(message, width) {
-			lines = append(lines, failedStyle.Render(line))
-			if len(lines) == budget {
-				return lines
-			}
-		}
-	}
-
-	logLines := wrapLogLines(sess, width)
-	if len(logLines) == 0 {
-		return append(lines, labelStyle.Render("(empty log)"))
-	}
-	room := budget - len(lines)
-	if len(logLines) > room {
-		logLines = logLines[len(logLines)-room:]
-	}
-	return append(lines, logLines...)
 }
 
 func groupLogLabel(sess *session.Session) string {
@@ -306,35 +239,4 @@ func wrapText(text string, wrapWidth int) []string {
 		result = append(result, line)
 	}
 	return result
-}
-
-// wrapLogLines reads one session log, applies public model naming, and wraps
-// long lines to wrapWidth.
-func wrapLogLines(s *session.Session, wrapWidth int) []string {
-	data, err := os.ReadFile(s.LogFile)
-	if err != nil {
-		return nil
-	}
-	if len(data) == 0 {
-		return nil
-	}
-
-	publicLog := config.PublicRuntimeLog(s.CLI, s.Model, string(data))
-	rawLines := strings.Split(strings.TrimRight(publicLog, "\n"), "\n")
-
-	var lines []string
-	for _, rawLine := range rawLines {
-		runes := []rune(rawLine)
-		if wrapWidth > 0 && len(runes) > wrapWidth {
-			for len(runes) > wrapWidth {
-				lines = append(lines, string(runes[:wrapWidth]))
-				runes = runes[wrapWidth:]
-			}
-			lines = append(lines, string(runes))
-		} else {
-			lines = append(lines, rawLine)
-		}
-	}
-
-	return lines
 }
