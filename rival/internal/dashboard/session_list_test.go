@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
-	"github.com/charmbracelet/lipgloss"
 )
 
 func TestCLILabelUsesPublicModelNames(t *testing.T) {
