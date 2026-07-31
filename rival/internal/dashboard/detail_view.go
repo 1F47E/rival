@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/1F47E/rival/internal/config"
@@ -306,35 +305,4 @@ func wrapText(text string, wrapWidth int) []string {
 		result = append(result, line)
 	}
 	return result
-}
-
-// wrapLogLines reads one session log, applies public model naming, and wraps
-// long lines to wrapWidth.
-func wrapLogLines(s *session.Session, wrapWidth int) []string {
-	data, err := os.ReadFile(s.LogFile)
-	if err != nil {
-		return nil
-	}
-	if len(data) == 0 {
-		return nil
-	}
-
-	publicLog := config.PublicRuntimeLog(s.CLI, s.Model, string(data))
-	rawLines := strings.Split(strings.TrimRight(publicLog, "\n"), "\n")
-
-	var lines []string
-	for _, rawLine := range rawLines {
-		runes := []rune(rawLine)
-		if wrapWidth > 0 && len(runes) > wrapWidth {
-			for len(runes) > wrapWidth {
-				lines = append(lines, string(runes[:wrapWidth]))
-				runes = runes[wrapWidth:]
-			}
-			lines = append(lines, string(runes))
-		} else {
-			lines = append(lines, rawLine)
-		}
-	}
-
-	return lines
 }
