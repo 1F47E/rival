@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/1F47E/rival/internal/dashboard"
 	tea "charm.land/bubbletea/v2"
+	"github.com/1F47E/rival/internal/dashboard"
 	"github.com/spf13/cobra"
 )
 

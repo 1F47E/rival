@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -64,4 +65,54 @@ func wrapLogLines(s *session.Session, wrapWidth int) []string {
 		text = ansi.Hardwrap(text, wrapWidth, true)
 	}
 	return strings.Split(text, "\n")
+}
+
+// buildLogContent renders one session's whole log, pre-wrapped to width. There
+// is no line budget: the caller scrolls this content in a viewport.
+func buildLogContent(s *session.Session, width int) string {
+	if s == nil {
+		return labelStyle.Render("(empty log)")
+	}
+	lines := wrapLogLines(s, width)
+	if len(lines) == 0 {
+		return labelStyle.Render("(empty log)")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// buildGroupLogContent renders every group member's heading, runtime error and
+// full log back to back, pre-wrapped to width. Like buildLogContent it has no
+// line budget — the viewport scrolls it.
+func buildGroupLogContent(item *displayItem, width int) string {
+	if item == nil {
+		return labelStyle.Render("(empty log)")
+	}
+	var b strings.Builder
+	for _, sess := range item.Sessions {
+		label := groupLogLabel(sess)
+		if sess.Status == "failed" && sess.ErrorMsg != "" {
+			label += " (FAILED)"
+		}
+		b.WriteString(titleStyle.Render(fmt.Sprintf("=== %s ===", label)))
+		b.WriteString("\n")
+
+		if sess.Status == "failed" && sess.ErrorMsg != "" {
+			message := config.PublicRuntimeError(sess.CLI, sess.Model, sess.ErrorMsg)
+			for _, line := range wrapText(message, width) {
+				b.WriteString(failedStyle.Render(line))
+				b.WriteString("\n")
+			}
+		}
+
+		logLines := wrapLogLines(sess, width)
+		if len(logLines) == 0 {
+			b.WriteString(labelStyle.Render("(empty log)"))
+			b.WriteString("\n")
+		} else {
+			b.WriteString(strings.Join(logLines, "\n"))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
