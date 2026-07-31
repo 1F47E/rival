@@ -9,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/1F47E/rival/internal/config"
-	"github.com/1F47E/rival/internal/session"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/1F47E/rival/internal/config"
+	"github.com/1F47E/rival/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -86,7 +88,8 @@ type Model struct {
 	cancel         context.CancelFunc
 	errText        string
 	quitting       bool
-	totalSessions  int // total session count (before grouping)
+	totalSessions  int            // total session count (before grouping)
+	logView        viewport.Model // scrollable log pane for the detail view
 }
 
 // Version is set from cmd package before launching the TUI.
@@ -101,6 +104,9 @@ func New() Model {
 		events:       events,
 		ctx:          ctx,
 		cancel:       cancel,
+		// Real dimensions arrive with the first WindowSizeMsg and are applied by
+		// syncDetailViewport; the log content is pre-wrapped, so SoftWrap stays off.
+		logView: viewport.New(viewport.WithWidth(0), viewport.WithHeight(0)),
 	}
 }
 
@@ -119,6 +125,62 @@ func (m *Model) paginateItems() {
 // hasMore returns true if there are hidden items beyond the visible page.
 func (m *Model) hasMore() bool {
 	return m.visibleCount < len(m.allItems)
+}
+
+// selectedItem returns the currently selected display item, or nil.
+func (m *Model) selectedItem() *displayItem {
+	if m.selected < 0 || m.selected >= len(m.items) {
+		return nil
+	}
+	return &m.items[m.selected]
+}
+
+// contentHeight is the number of rows available to the body between the banner
+// and the help bar. Both viewContent and syncDetailViewport MUST use it: if the
+// two ever compute a different height the viewport renders a frame the view
+// then clips, which is what leaves stale rows on screen.
+func (m Model) contentHeight() int {
+	headerLines := strings.Count(m.renderBanner(), "\n")
+	h := m.height - headerLines - 1 // -1 for the help bar
+	if h < 0 {
+		h = 0
+	}
+	return h
+}
+
+// syncDetailViewport rebuilds the log viewport's size and content for the
+// current selection. resetToBottom forces the tail into view (entering detail);
+// otherwise the tail is followed only if the user was already parked at the
+// bottom.
+func (m *Model) syncDetailViewport(resetToBottom bool) {
+	item := m.selectedItem()
+	if m.viewMode != viewDetail || item == nil || item.Primary() == nil {
+		m.logView.SetContent("")
+		return
+	}
+
+	// Capture the follow state BEFORE any resize. Shrinking the viewport raises
+	// the old offset above the new max-bottom, so sampling AtBottom after
+	// SetHeight reports false for a user who never scrolled and silently kills
+	// tail-follow.
+	wasAtBottom := m.logView.AtBottom()
+
+	height := m.contentHeight()
+	meta := renderDetailMeta(item, m.width, height, m.promptExpanded)
+	metaLines := strings.Count(meta, "\n") + 1
+
+	m.logView.SetWidth(m.width)
+	m.logView.SetHeight(max(1, height-metaLines))
+
+	if item.IsGroup() {
+		m.logView.SetContent(buildGroupLogContent(item, m.width))
+	} else {
+		m.logView.SetContent(buildLogContent(item.Primary(), m.width))
+	}
+
+	if resetToBottom || wasAtBottom {
+		m.logView.GotoBottom()
+	}
 }
 
 // Init starts the file watcher and waits for events.
@@ -165,6 +227,10 @@ func hasRunning(items []displayItem) bool {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		// Keys this feature owns are handled FIRST, before the list switch. The
+		// list cases match "j"/"k"/"g"/"G" unconditionally (their viewList test is
+		// inside the case body), so anything routed after them would be swallowed
+		// in detail mode and the advertised scroll keys would do nothing.
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
@@ -173,93 +239,130 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
-		case "j", "down":
-			if m.viewMode == viewList {
-				if m.selected < len(m.items)-1 {
-					m.selected++
-				}
-			}
-
-		case "k", "up":
-			if m.viewMode == viewList {
-				if m.selected > 0 {
-					m.selected--
-				}
-			}
-
-		case "enter":
-			if m.viewMode == viewList && len(m.items) > 0 {
-				m.viewMode = viewDetail
-				m.promptExpanded = false
-			}
-
 		case "esc", "backspace":
 			if m.viewMode == viewDetail {
 				m.viewMode = viewList
 				m.promptExpanded = false
-			}
-
-		case "g":
-			if m.viewMode == viewList {
-				m.selected = 0
-			}
-
-		case "G":
-			if m.viewMode == viewList && len(m.items) > 0 {
-				m.selected = len(m.items) - 1
-			}
-
-		case "l":
-			if m.viewMode == viewList && m.hasMore() {
-				m.visibleCount += pageSize
-				m.paginateItems()
+				(&m).syncDetailViewport(false)
+				return m, nil
 			}
 
 		case "p":
 			if m.viewMode == viewDetail {
 				m.promptExpanded = !m.promptExpanded
+				// Meta height just changed, so the viewport must be resized —
+				// this is the path that exercises capture-before-resize.
+				(&m).syncDetailViewport(false)
+				return m, nil
 			}
 
 		case "o":
-			if m.viewMode == viewDetail && m.selected < len(m.items) {
-				item := m.items[m.selected]
-				if item.IsGroup() {
-					openPublicGroupLogs(item.Sessions)
-				} else if s := item.Primary(); s != nil && s.LogFile != "" {
-					openPublicLog(s)
+			if m.viewMode == viewDetail {
+				if item := (&m).selectedItem(); item != nil {
+					if item.IsGroup() {
+						openPublicGroupLogs(item.Sessions)
+					} else if s := item.Primary(); s != nil && s.LogFile != "" {
+						openPublicLog(s)
+					}
 				}
+				return m, nil
 			}
 
 		case "x":
-			if m.viewMode == viewDetail && m.selected < len(m.items) {
-				item := m.items[m.selected]
-				for _, s := range item.Sessions {
-					// Queued sessions carry the waiting rival process's PID, so
-					// SIGTERM cancels the queue wait (the process's signal handler
-					// removes its ticket and fails the session).
-					if (s.Status != "running" && s.Status != "queued") || s.PID <= 0 {
-						continue
-					}
-					if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
-						// Process already dead — mark failed immediately.
-						_ = s.Fail(1, "killed (process already dead)")
-					} else {
-						// Signal sent — mark failed so TUI updates instantly.
-						// The subprocess executor will overwrite with its own status.
-						_ = s.Fail(137, "killed by user")
+			if m.viewMode == viewDetail {
+				if item := (&m).selectedItem(); item != nil {
+					for _, s := range item.Sessions {
+						// Queued sessions carry the waiting rival process's PID, so
+						// SIGTERM cancels the queue wait (the process's signal handler
+						// removes its ticket and fails the session).
+						if (s.Status != "running" && s.Status != "queued") || s.PID <= 0 {
+							continue
+						}
+						if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
+							// Process already dead — mark failed immediately.
+							_ = s.Fail(1, "killed (process already dead)")
+						} else {
+							// Signal sent — mark failed so TUI updates instantly.
+							// The subprocess executor will overwrite with its own status.
+							_ = s.Fail(137, "killed by user")
+						}
 					}
 				}
+				return m, nil
+			}
+
+		case "g":
+			if m.viewMode == viewDetail {
+				m.logView.GotoTop()
+				return m, nil
+			}
+
+		case "G":
+			if m.viewMode == viewDetail {
+				m.logView.GotoBottom()
+				return m, nil
+			}
+		}
+
+		// In detail mode every remaining key belongs to the viewport
+		// (j/k/up/down/pgup/pgdn/space/u/d). Return immediately — falling
+		// through to the list switch would move the list selection instead.
+		if m.viewMode == viewDetail {
+			var cmd tea.Cmd
+			m.logView, cmd = m.logView.Update(msg)
+			return m, cmd
+		}
+
+		// List mode only.
+		switch msg.String() {
+		case "j", "down":
+			if m.selected < len(m.items)-1 {
+				m.selected++
+			}
+
+		case "k", "up":
+			if m.selected > 0 {
+				m.selected--
+			}
+
+		case "enter":
+			if len(m.items) > 0 {
+				m.viewMode = viewDetail
+				m.promptExpanded = false
+				// Open at the tail: live output and final verdicts both live at
+				// the end of the log.
+				(&m).syncDetailViewport(true)
+			}
+
+		case "g":
+			m.selected = 0
+
+		case "G":
+			if len(m.items) > 0 {
+				m.selected = len(m.items) - 1
+			}
+
+		case "l":
+			if m.hasMore() {
+				m.visibleCount += pageSize
+				m.paginateItems()
 			}
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.viewMode == viewDetail {
+			(&m).syncDetailViewport(false)
+		}
 
 	case SessionEvent:
 		m.totalSessions = len(msg.Sessions)
 		m.allItems = groupSessions(msg.Sessions)
 		m.paginateItems()
+		if m.viewMode == viewDetail {
+			(&m).syncDetailViewport(false)
+		}
 		cmds := []tea.Cmd{waitForEvent(m.events)}
 		if hasRunning(m.items) {
 			cmds = append(cmds, tickCmd())
@@ -268,6 +371,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		// Re-render for live timers and log tails. Keep ticking while running.
+		if m.viewMode == viewDetail {
+			(&m).syncDetailViewport(false)
+		}
 		if hasRunning(m.items) {
 			return m, tickCmd()
 		}
@@ -481,12 +587,7 @@ func (m Model) viewContent() string {
 	}
 
 	header := m.renderBanner()
-	headerLines := strings.Count(header, "\n")
-
-	contentHeight := m.height - headerLines - 1 // -1 for help bar
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
+	contentHeight := m.contentHeight()
 
 	var content string
 	var help string
@@ -499,18 +600,39 @@ func (m Model) viewContent() string {
 			helpText += "  l: load more"
 		}
 		helpText += "  q: quit"
-		help = helpStyle.Render(helpText)
+		help = m.renderHelp(helpText, "  j/k: navigate  enter: open  q: quit")
 
 	case viewDetail:
-		var item *displayItem
-		if m.selected < len(m.items) {
-			item = &m.items[m.selected]
-		}
-		content = clipLines(renderDetailView(item, m.width, contentHeight, m.promptExpanded), contentHeight)
-		help = helpStyle.Render("  p: prompt  o: open log  x: stop  esc: back  q: quit")
+		// Update owns the log content — the view only draws what the viewport
+		// already holds, so no file is read here.
+		meta := renderDetailMeta(m.selectedItem(), m.width, contentHeight, m.promptExpanded)
+		content = clipLines(meta+"\n"+m.logView.View(), contentHeight)
+		help = m.renderHelp(
+			"  j/k: scroll  g/G: top/bottom  p: prompt  o: open log  x: stop  esc: back  q: quit",
+			"  j/k: scroll  g/G: top/bottom  esc: back  q: quit",
+		)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, header+content, help)
+}
+
+// renderHelp renders the help bar so it never exceeds the terminal width.
+// lipgloss.JoinVertical pads every row to the widest line, so a help bar wider
+// than the terminal drags the entire frame over-width and the terminal hard-wraps
+// it — the exact corruption this feature exists to remove. Fall back to a short
+// form, then to a display-width truncation.
+func (m Model) renderHelp(full, short string) string {
+	if m.width <= 0 {
+		return ""
+	}
+	text := full
+	if ansi.StringWidth(text) > m.width {
+		text = short
+	}
+	if ansi.StringWidth(text) > m.width {
+		text = ansi.Truncate(text, m.width, "")
+	}
+	return helpStyle.Render(text)
 }
 
 // clipLines hard-truncates content to at most maxLines lines.

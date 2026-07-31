@@ -7,18 +7,30 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
+
+// fitWidth truncates a row to the terminal width by display cells. The column
+// layout has a ~75-cell floor, so on a narrow terminal the assembled row would
+// otherwise overflow and the terminal would hard-wrap it — which drags every
+// following row out of place.
+func fitWidth(s string, width int) string {
+	if width <= 0 || ansi.StringWidth(s) <= width {
+		return s
+	}
+	return ansi.Truncate(s, width, "")
+}
 
 func renderSessionList(items []displayItem, selected int, width, height int, hasMore bool, hiddenCount int) string {
 	if len(items) == 0 {
-		return labelStyle.Render("No sessions yet. Run rival to get started.")
+		return fitWidth(labelStyle.Render("No sessions yet. Run rival to get started."), width)
 	}
 
 	var b strings.Builder
 
 	// Header row.
 	header := formatHeaderRow(width)
-	b.WriteString(headerStyle.Render(header))
+	b.WriteString(fitWidth(headerStyle.Render(header), width))
 	b.WriteString("\n")
 
 	maxItems := height - 2 // header + separator
@@ -39,16 +51,16 @@ func renderSessionList(items []displayItem, selected int, width, height int, has
 		item := items[i]
 		line := formatItemRow(&item, width)
 		if i == selected {
-			b.WriteString(selectedItemStyle.Render(line))
+			b.WriteString(fitWidth(selectedItemStyle.Render(line), width))
 		} else {
-			b.WriteString(normalItemStyle.Render(line))
+			b.WriteString(fitWidth(normalItemStyle.Render(line), width))
 		}
 		b.WriteString("\n")
 	}
 
 	if hasMore {
 		more := fmt.Sprintf("  ▼ %d more — press l to load", hiddenCount)
-		b.WriteString(labelStyle.Render(more))
+		b.WriteString(fitWidth(labelStyle.Render(more), width))
 		b.WriteString("\n")
 	}
 
