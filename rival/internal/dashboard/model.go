@@ -11,8 +11,8 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const (
@@ -164,7 +164,7 @@ func hasRunning(items []displayItem) bool {
 // Update handles messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
@@ -453,8 +453,21 @@ func (m Model) renderBanner() string {
 	return out.String()
 }
 
-// View renders the UI.
-func (m Model) View() string {
+// View renders the UI. AltScreen is set on the view (bubbletea v2 dropped the
+// tea.WithAltScreen program option).
+func (m Model) View() tea.View {
+	return altScreenView(m.viewContent())
+}
+
+// altScreenView wraps rendered content in an alt-screen tea.View.
+func altScreenView(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
+}
+
+// viewContent renders the frame body.
+func (m Model) viewContent() string {
 	if m.quitting {
 		return ""
 	}
