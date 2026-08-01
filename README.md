@@ -242,6 +242,25 @@ configured Fable effort when present, otherwise its low fallback. The native
 binary accepts an explicit override, for example
 `rival command plan --model sol --effort ultra`.
 
+**Antislop review** (quality-only: slop & over-engineering, never bugs):
+
+```
+/rival-antislop                             — cut list for the changed files (auto-detect)
+/rival-antislop src/api/                    — cut list for a specific scope
+/rival-antislop -m fable src/               — with Fable instead of Sol
+/rival-antislop-plan path/to/plan.md        — cut list for a plan/spec document
+```
+
+Antislop is the report-only counterpart of Claude Code's built-in `/simplify`:
+the model works through reuse/DRY, simplification, efficiency, altitude,
+backward-compat hoarding, library reinvention, and AI-slop signatures (comment
+slop, silent fallbacks, pass-through wrappers, speculative generality — plus
+scope creep and ceremony padding for plans), then returns a **leanness rating
+(1-10)** and a numbered cut list. It never reports bugs — that's what the code
+review commands are for. Default model is **sol**; `-m` accepts `sol` and
+`fable`. Native form: `rival command antislop` (`plan <path>` on stdin starts
+plan mode; to review a directory literally named `plan`, pass `./plan`).
+
 **Model selection** (`-m`, `--model`): `sol`, `k3` (Kimi K3 needs
 `MOONSHOT_API_KEY`), and `grok` (opt-in, needs `grok login`); comma-separated or
 repeated. An explicit list replaces the complete roster, so naming `grok` is the
