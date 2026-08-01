@@ -1,6 +1,6 @@
 ---
 name: rival-antislop
-version: 3.24.0
+version: 3.25.0
 description: Quality-only antislop review of changed code (or a given scope) via the rival binary — hunts slop and over-engineering, returns a leanness rating and a cut list, never bugs. Default model Sol. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop.
 argument-hint: "[<scope>]"
 allowed-tools: Bash, Read, Write

@@ -1,6 +1,6 @@
 ---
 name: rival-antislop-plan
-version: 3.24.0
+version: 3.25.0
 description: Quality-only antislop review of a plan/spec markdown document via the rival binary — hunts scope creep, over-engineering, and ceremony padding, returns a leanness rating and a cut list, never bugs. Default model Sol. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read, Write
