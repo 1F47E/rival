@@ -127,12 +127,23 @@ func RunPlanReview(ctx context.Context, absPath, effort, workdir, groupID string
 	return runPlanReview(ctx, defaultPlanExecutor(), absPath, effort, workdir, groupID, noQueue, clis)
 }
 
+// RunDocReview runs a plan-shaped review (summary + 1-10 rating + findings)
+// with a caller-built prompt. target is recorded as the sessions' review scope.
+// Antislop runs use this directly; RunPlanReview wraps it with the standard
+// plan-review prompt. Sessions keep mode/queue class "plan" — same queue
+// semantics, no new mode.
+func RunDocReview(ctx context.Context, prompt, target, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+	return runDocReview(ctx, defaultPlanExecutor(), prompt, target, effort, workdir, groupID, noQueue, clis)
+}
+
 func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+	return runDocReview(ctx, ex, buildPlanPrompt(absPath), absPath, effort, workdir, groupID, noQueue, clis)
+}
+
+func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
 	if len(clis) == 0 {
 		return nil, fmt.Errorf("no plan models requested")
 	}
-
-	prompt := buildPlanPrompt(absPath)
 
 	// Preflight each CLI BEFORE enqueuing so a doomed run never occupies a slot.
 	// Unavailable CLIs are skipped; sessions are created only for the survivors.
@@ -172,7 +183,7 @@ func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdi
 		if err != nil {
 			return nil, fmt.Errorf("resolve %s plan effort: %w", config.EngineLabel(cli, model), err)
 		}
-		sess, err := session.NewQueued(cli, "plan", model, effectiveEffort, workdir, prompt, absPath, groupID)
+		sess, err := session.NewQueued(cli, "plan", model, effectiveEffort, workdir, prompt, target, groupID)
 		if err != nil {
 			return nil, fmt.Errorf("create %s plan session: %w", config.EngineLabel(cli, model), err)
 		}

@@ -378,3 +378,39 @@ func loadPlanTestConfig(t *testing.T, contents string) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// Antislop calls runDocReview directly with its own prompt; the inherited
+// single-fable low-effort fallback is a deliberate keep, and the target must
+// land as the session's review scope.
+func TestRunDocReviewKeepsFableLowFallbackAndTarget(t *testing.T) {
+	loadPlanTestConfig(t, "")
+
+	type observation struct {
+		effort string
+		scope  string
+		prompt string
+	}
+	observed := make(chan observation, 1)
+	ex := planExecutor{
+		preflight: func(string) error { return nil },
+		run: func(_ context.Context, sess *session.Session, _, prompt, effort, _ string) (string, int, error) {
+			observed <- observation{effort: effort, scope: sess.ReviewScope, prompt: prompt}
+			return realPlanJSON, 0, nil
+		},
+	}
+
+	_, err := runDocReview(context.Background(), ex, "ANTISLOP PROMPT", "src/api/", "", t.TempDir(), "doc", true, []string{"fable"})
+	if err != nil {
+		t.Fatalf("runDocReview: %v", err)
+	}
+	got := <-observed
+	if got.effort != "low" {
+		t.Errorf("single-fable effort = %q, want the inherited low fallback", got.effort)
+	}
+	if got.scope != "src/api/" {
+		t.Errorf("session review scope = %q, want the antislop target", got.scope)
+	}
+	if got.prompt != "ANTISLOP PROMPT" {
+		t.Errorf("prompt = %q, want the caller-built prompt passed through", got.prompt)
+	}
+}

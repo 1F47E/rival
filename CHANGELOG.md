@@ -4,6 +4,22 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Added — antislop: quality-only slop & over-engineering review
+
+New `rival command antislop` plus two skills, `/rival-antislop` (changed code
+or an explicit scope) and `/rival-antislop-plan` (a plan/spec markdown
+document). The model — Sol by default, `-m` accepts `sol`/`fable` — hunts
+reuse/DRY violations, needless complexity, wrong-altitude fixes,
+backward-compat hoarding, library reinvention, and AI-slop signatures
+(comment slop, silent fallbacks, pass-through wrappers, speculative
+generality; scope creep and ceremony padding for plans), then returns a
+leanness rating (1-10) and a numbered cut list. Report-only, never hunts
+bugs. Derived from Claude Code's built-in `/simplify` skill, adapted to
+rival's detached, queued, read-only reviewer architecture. Internals:
+plan-review runner generalized to `RunDocReview`, shared `buildDiffPreamble`
+helper replaces two hand-rolled gitscope preamble copies, and
+`isPlaceholderFinding` now strips any pipe-delimited echoed category enum.
+
 ### Breaking — model surface reduced to Sol, Fable, and K3
 
 This change is queued for the next major release.

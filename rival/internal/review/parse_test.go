@@ -219,3 +219,37 @@ func TestParseConsiliumOutput_RealCapturedLog(t *testing.T) {
 		t.Fatalf("recommendation = %q, want the real verdict request_changes", out.Recommendation.Status)
 	}
 }
+
+// A real finding with an uncertain dual category ("bug|security") must NOT be
+// treated as a placeholder — only the exact contract enum literals are echoes.
+func TestParsePlanOutput_KeepsRealDualCategoryFinding(t *testing.T) {
+	raw := `{"summary":"real","rating":6,"findings":[` +
+		`{"file":"a.go","line":3,"severity":"high","category":"bug|security",` +
+		`"title":"real dual-category finding","body":"b","confidence":8}]}`
+	out, err := ParsePlanOutput(raw)
+	if err != nil {
+		t.Fatalf("ParsePlanOutput: %v", err)
+	}
+	if len(out.Findings) != 1 || out.Findings[0].Title != "real dual-category finding" {
+		t.Fatalf("got %+v, want the dual-category finding kept", out.Findings)
+	}
+}
+
+// A partial echo of the antislop schema example — real severity, copied
+// pipe-delimited category enum — must be stripped as a placeholder. This is
+// the partial-echo case the file/severity literals alone do not catch.
+func TestParsePlanOutput_DropsPartiallyEchoedAntislopExample(t *testing.T) {
+	raw := `{"summary":"lean enough","rating":9,"findings":[` +
+		`{"file":"cmd/command_antislop.go","line":10,"severity":"high",` +
+		`"category":"reuse|simplify|efficiency|altitude|compat|reinvention|slop|yagni",` +
+		`"title":"echoed example","body":"copied from the schema","confidence":8},` +
+		`{"file":"cmd/command_antislop.go","line":20,"severity":"medium","category":"slop",` +
+		`"title":"real finding","body":"a real cut","confidence":7}]}`
+	out, err := ParsePlanOutput(raw)
+	if err != nil {
+		t.Fatalf("ParsePlanOutput: %v", err)
+	}
+	if len(out.Findings) != 1 || out.Findings[0].Title != "real finding" {
+		t.Fatalf("got %+v, want only the real finding kept", out.Findings)
+	}
+}

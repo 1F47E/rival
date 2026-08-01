@@ -24,6 +24,7 @@ func ParseReviewArgs(raw string) (*ParseResult, error) {
 	for s != "" {
 		token, rest := popReviewToken(s)
 		if token == "--" {
+			result.Escaped = true
 			if rest = strings.TrimSpace(rest); rest != "" {
 				scopeParts = append(scopeParts, rest)
 			}

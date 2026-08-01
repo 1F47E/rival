@@ -6,11 +6,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
-	"github.com/1F47E/rival/internal/config"
-	"github.com/1F47E/rival/internal/gitscope"
 	"github.com/1F47E/rival/internal/parser"
 	"github.com/1F47E/rival/internal/review"
 	"github.com/google/uuid"
@@ -85,17 +82,10 @@ func commandMegareviewAction(cmd *cobra.Command, args []string) error {
 	// Build scope.
 	scope := parsed.ReviewScope
 	if parsed.AutoScope {
-		files := gitscope.Resolve(workdir)
+		preamble, files := buildDiffPreamble(workdir)
 		if files != "" {
 			log.Info().Str("files", files).Msg("git scope: auto-detected changed files")
-			scope = strings.ReplaceAll(config.DiffReviewPreamble, "{FILES}", files)
-			diffStat := gitscope.DiffStat(workdir)
-			if diffStat != "" {
-				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
-			} else {
-				scope = strings.ReplaceAll(scope, "{DIFFSTAT}", "")
-			}
-			scope += "\nFocus your review on the changed files listed above."
+			scope = preamble + "\nFocus your review on the changed files listed above."
 		} else {
 			scope = "the entire project"
 		}
