@@ -83,15 +83,24 @@ func FormatPlanConsole(out *PlanOutput, file string) string {
 	var sb strings.Builder
 	sb.WriteString("\n═══ RIVAL PLAN REVIEW ═══\n\n")
 	fmt.Fprintf(&sb, "File: %s\n", file)
-	formatPlanBody(out, &sb)
+	formatPlanBody(out, &sb, planRatingLabel, planEmptyLine)
 	return sb.String()
 }
 
+// Body labels for the two review flavors sharing formatPlanBody.
+const (
+	planRatingLabel     = "Rating"
+	planEmptyLine       = "No bugs or gaps found."
+	antislopRatingLabel = "Leanness"
+	antislopEmptyLine   = "No slop found."
+)
+
 // formatPlanBody writes the rating/summary/findings/tally for one PlanOutput into
-// sb. It carries no header or File line, so it is shared by both the single-CLI
-// (FormatPlanConsole) and multi-model (FormatPlanMultiConsole) renderers.
-func formatPlanBody(out *PlanOutput, sb *strings.Builder) {
-	fmt.Fprintf(sb, "Rating: %d/10\n\n", out.Rating)
+// sb. It carries no header or File line, so it is shared by the single-CLI
+// (FormatPlanConsole), multi-model (FormatPlanMultiConsole), and antislop
+// renderers; ratingLabel and emptyLine are the only flavor-specific strings.
+func formatPlanBody(out *PlanOutput, sb *strings.Builder, ratingLabel, emptyLine string) {
+	fmt.Fprintf(sb, "%s: %d/10\n\n", ratingLabel, out.Rating)
 	if s := strings.TrimSpace(out.Summary); s != "" {
 		fmt.Fprintf(sb, "Summary: %s\n\n", s)
 	}
@@ -109,7 +118,7 @@ func formatPlanBody(out *PlanOutput, sb *strings.Builder) {
 	})
 
 	if len(findings) == 0 {
-		sb.WriteString("No bugs or gaps found.\n")
+		sb.WriteString(emptyLine + "\n")
 		return
 	}
 
@@ -175,6 +184,33 @@ func FormatPlanResult(result *PlanRunResult, file string) string {
 	return FormatPlanMultiConsole(result.Results, result.Skipped, file)
 }
 
+// FormatAntislopResult renders a PlanRunResult from an antislop run. Same
+// dispatch as FormatPlanResult with the antislop header and body labels; the
+// target line is "File: …" in plan mode and "Scope: …" in code mode.
+func FormatAntislopResult(result *PlanRunResult, target string, planMode bool) string {
+	targetLabel := "Scope"
+	if planMode {
+		targetLabel = "File"
+	}
+	targetLine := fmt.Sprintf("%s: %s", targetLabel, target)
+
+	if result == nil || len(result.Results) == 0 {
+		return "No antislop review output.\n"
+	}
+	if len(result.Results) == 1 && len(result.Skipped) == 0 {
+		r := result.Results[0]
+		if r.Parsed == nil {
+			return config.PublicRuntimeLog(r.CLI, r.Model, r.Raw)
+		}
+		var sb strings.Builder
+		sb.WriteString("\n═══ RIVAL ANTISLOP REVIEW ═══\n\n")
+		sb.WriteString(targetLine + "\n")
+		formatPlanBody(r.Parsed, &sb, antislopRatingLabel, antislopEmptyLine)
+		return sb.String()
+	}
+	return formatDocMultiConsole(result.Results, result.Skipped, "RIVAL ANTISLOP REVIEW", targetLine, antislopRatingLabel, antislopEmptyLine)
+}
+
 // PlanCLIResult is one CLI's plan-review outcome. Parsed is nil when the CLI's
 // output could not be parsed into structured JSON, in which case Raw holds the
 // unparsed CLI output so nothing the model produced is lost.
@@ -200,19 +236,25 @@ func planSkippedLabel(skipped SkippedCLI) string {
 // is nil falls back to printing its Raw output so a parse failure never drops
 // the model's work.
 func FormatPlanMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, file string) string {
+	return formatDocMultiConsole(results, skipped, "RIVAL PLAN REVIEW", "File: "+file, planRatingLabel, planEmptyLine)
+}
+
+// formatDocMultiConsole is the multi-model renderer shared by plan and antislop
+// reviews; headerName, targetLine, and the body labels are the only differences.
+func formatDocMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, headerName, targetLine, ratingLabel, emptyLine string) string {
 	var sb strings.Builder
 
 	labels := make([]string, 0, len(results))
 	for _, r := range results {
 		labels = append(labels, planEngineLabel(r.CLI, r.Model))
 	}
-	fmt.Fprintf(&sb, "\n═══ RIVAL PLAN REVIEW (%s) ═══\n\n", strings.Join(labels, " + "))
-	fmt.Fprintf(&sb, "File: %s\n", file)
+	fmt.Fprintf(&sb, "\n═══ %s (%s) ═══\n\n", headerName, strings.Join(labels, " + "))
+	sb.WriteString(targetLine + "\n")
 
 	for i, r := range results {
 		fmt.Fprintf(&sb, "\n── %s ──\n\n", planEngineLabel(r.CLI, r.Model))
 		if r.Parsed != nil {
-			formatPlanBody(r.Parsed, &sb)
+			formatPlanBody(r.Parsed, &sb, ratingLabel, emptyLine)
 		} else {
 			// Parse failed — emit normalized raw output so nothing is lost while
 			// internal runtime identifiers stay out of the public result.

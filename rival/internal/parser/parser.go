@@ -16,6 +16,7 @@ type ParseResult struct {
 	ReviewScope string
 	Prompt      string
 	IsEmpty     bool
+	Escaped     bool // true when the scope was passed after "--" (take it verbatim)
 }
 
 // ParseGPT56SolArgs parses raw arguments for the gpt-5.6-sol command.
