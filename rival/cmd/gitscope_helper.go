@@ -9,11 +9,29 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// buildDiffPreamble builds the DiffReviewPreamble block (changed-file list +
+// diff stats) for workdir. files=="" means git detected no changes; the raw
+// files list is returned alongside so callers can record it as the review
+// scope without a second gitscope.Resolve fork.
+func buildDiffPreamble(workdir string) (preamble, files string) {
+	files = gitscope.Resolve(workdir)
+	if files == "" {
+		return "", ""
+	}
+	preamble = strings.ReplaceAll(config.DiffReviewPreamble, "{FILES}", files)
+	if diffStat := gitscope.DiffStat(workdir); diffStat != "" {
+		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
+	} else {
+		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "")
+	}
+	return preamble, files
+}
+
 // resolveGitScope auto-detects changed files via git and updates the parsed result.
 // If git finds files, it rebuilds the prompt with DiffReviewPreamble + ReviewPrompt.
 // If git finds nothing, it falls back to "the entire project".
 func resolveGitScope(parsed *parser.ParseResult, workdir string) {
-	files := gitscope.Resolve(workdir)
+	preamble, files := buildDiffPreamble(workdir)
 	if files == "" {
 		log.Debug().Msg("git scope: no changes detected, falling back to full project")
 		return // keep "the entire project" default
@@ -22,15 +40,6 @@ func resolveGitScope(parsed *parser.ParseResult, workdir string) {
 	log.Info().Str("files", files).Msg("git scope: auto-detected changed files")
 	parsed.AutoScope = false
 	parsed.ReviewScope = files
-	// Preamble lists the files in a code block; ReviewPrompt uses them as scope.
-	preamble := strings.ReplaceAll(config.DiffReviewPreamble, "{FILES}", files)
-	// Add diff stats if available.
-	diffStat := gitscope.DiffStat(workdir)
-	if diffStat != "" {
-		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "\nDiff stats:\n```\n"+diffStat+"\n```\n")
-	} else {
-		preamble = strings.ReplaceAll(preamble, "{DIFFSTAT}", "")
-	}
 	review := strings.ReplaceAll(config.ReviewPrompt, "{SCOPE}", "the changed files listed above")
 	parsed.Prompt = preamble + review
 }

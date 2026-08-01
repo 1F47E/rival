@@ -90,11 +90,20 @@ func isExampleSummary(s string) bool {
 
 // isPlaceholderFinding matches a finding copied from the schema example: the enum
 // fields hold the literal pipe-delimited option lists, or the file is the
-// contract's placeholder. Real findings never have these field values.
+// contract's placeholder. Real findings never have these field values. The
+// category is compared against every prompt contract's exact enum literal
+// (code review, plan, antislop) — exact matches only, because models under
+// uncertainty emit real dual categories like "bug|security" that a looser
+// pipe check would silently drop.
 func isPlaceholderFinding(file, severity, category string) bool {
+	switch category {
+	case "bug|security|performance|concurrency|architecture|tests|ux",
+		"bug|gap|ambiguity|scope|verification",
+		"reuse|simplify|efficiency|altitude|compat|reinvention|slop|yagni":
+		return true
+	}
 	return file == "path/to/file" ||
-		severity == "critical|high|medium|low" ||
-		category == "bug|security|performance|concurrency|architecture|tests|ux"
+		severity == "critical|high|medium|low"
 }
 
 // dropPlaceholderReviewerFindings removes individual schema-example findings so a
