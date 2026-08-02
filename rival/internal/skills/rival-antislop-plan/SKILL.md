@@ -1,7 +1,7 @@
 ---
 name: rival-antislop-plan
-version: 3.25.0
-description: Quality-only antislop review of a plan/spec markdown document via the rival binary — hunts scope creep, over-engineering, and ceremony padding, returns a leanness rating and a cut list, never bugs. Default model Sol. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop-plan.
+version: 3.26.0
+description: Quality-only antislop review of a plan/spec markdown document via the rival binary — hunts scope creep, over-engineering, and ceremony padding, returns a leanness rating and a cut list, never bugs. Default model Sol at xhigh effort. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read, Write
 ---
@@ -30,7 +30,8 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 > - `/rival-antislop-plan -m fable path/to/plan.md` — review with Fable instead of Sol
 > - `/rival-antislop-plan -re high path/to/plan.md` — pick reasoning effort
 >
-> Input is a single path to a markdown plan/spec file. Default model is sol.
+> Input is a single path to a markdown plan/spec file. Default model is sol,
+> default effort xhigh.
 
 ### Execute — launch detached, then watch in the background
 

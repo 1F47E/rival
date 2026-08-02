@@ -34,7 +34,8 @@ Input starts plan mode with the token "plan" followed by the document path
 scope. "--" ends option parsing AND takes the rest verbatim as a code scope,
 so "-- plan handling in the parser" reviews code; "./plan" reviews a
 directory named plan. Default model is sol; -m accepts sol and fable
-(comma-separated).`
+(comma-separated). Default reasoning effort is xhigh; override with
+-re/--effort or per model in ~/.rival/config.yaml.`
 
 var defaultAntislopModels = []string{config.SolLabel}
 
@@ -171,7 +172,7 @@ func commandAntislopAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunDocReview(ctx, prompt, target, effort, workdir, groupID, noQueue, clis)
+	result, err := review.RunDocReview(ctx, prompt, target, effort, config.DefaultAntislopEffort, workdir, groupID, noQueue, clis)
 	if err != nil {
 		return err
 	}

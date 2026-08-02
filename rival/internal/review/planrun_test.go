@@ -379,10 +379,11 @@ type errString string
 
 func (e errString) Error() string { return string(e) }
 
-// Antislop calls runDocReview directly with its own prompt; the inherited
-// single-fable low-effort fallback is a deliberate keep, and the target must
-// land as the session's review scope.
-func TestRunDocReviewKeepsFableLowFallbackAndTarget(t *testing.T) {
+// Antislop calls runDocReview directly with its own prompt and an xhigh
+// fallback effort (config override still wins); the target must land as the
+// session's review scope. An empty fallback keeps plan semantics — covered by
+// TestRunPlanReviewResolvesPerModelEfforts's lone-fable low case.
+func TestRunDocReviewAppliesFallbackEffortAndTarget(t *testing.T) {
 	loadPlanTestConfig(t, "")
 
 	type observation struct {
@@ -399,13 +400,13 @@ func TestRunDocReviewKeepsFableLowFallbackAndTarget(t *testing.T) {
 		},
 	}
 
-	_, err := runDocReview(context.Background(), ex, "ANTISLOP PROMPT", "src/api/", "", t.TempDir(), "doc", true, []string{"fable"})
+	_, err := runDocReview(context.Background(), ex, "ANTISLOP PROMPT", "src/api/", "", "xhigh", t.TempDir(), "doc", true, []string{"fable"})
 	if err != nil {
 		t.Fatalf("runDocReview: %v", err)
 	}
 	got := <-observed
-	if got.effort != "low" {
-		t.Errorf("single-fable effort = %q, want the inherited low fallback", got.effort)
+	if got.effort != "xhigh" {
+		t.Errorf("single-fable effort = %q, want the xhigh fallback", got.effort)
 	}
 	if got.scope != "src/api/" {
 		t.Errorf("session review scope = %q, want the antislop target", got.scope)

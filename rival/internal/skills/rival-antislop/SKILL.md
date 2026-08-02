@@ -1,7 +1,7 @@
 ---
 name: rival-antislop
-version: 3.25.0
-description: Quality-only antislop review of changed code (or a given scope) via the rival binary — hunts slop and over-engineering, returns a leanness rating and a cut list, never bugs. Default model Sol. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop.
+version: 3.26.0
+description: Quality-only antislop review of changed code (or a given scope) via the rival binary — hunts slop and over-engineering, returns a leanness rating and a cut list, never bugs. Default model Sol at xhigh effort. Detached + watched in the background. Use only when the user explicitly invokes /rival-antislop.
 argument-hint: "[<scope>]"
 allowed-tools: Bash, Read, Write
 ---
@@ -29,8 +29,8 @@ For a plan/spec document instead, use `/rival-antislop-plan`.
 > - `/rival-antislop -m fable src/` — review with Fable instead of Sol
 > - `/rival-antislop -re high -m sol,fable src/` — pick effort and both models
 >
-> Default model is sol. To review a directory literally named "plan",
-> pass `./plan`.
+> Default model is sol, default effort xhigh. To review a directory literally
+> named "plan", pass `./plan`.
 
 Empty `$ARGUMENTS` is valid input (auto-scope) — do NOT stop; proceed to
 Execute with an empty input file.

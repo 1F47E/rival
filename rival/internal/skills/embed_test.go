@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestPlanSolSkillPinsUltraEffort(t *testing.T) {
+func TestPlanSolSkillPinsXhighEffort(t *testing.T) {
 	data, err := Files.ReadFile("rival-plan-sol/SKILL.md")
 	if err != nil {
 		t.Fatal(err)
@@ -15,8 +15,8 @@ func TestPlanSolSkillPinsUltraEffort(t *testing.T) {
 	for _, want := range []string{
 		"version: ",
 		"argument-hint: \"<path-to-plan.md>\"",
-		"rival command plan --model sol --effort ultra --detach",
-		"Always run at **ultra**",
+		"rival command plan --model sol --effort xhigh --detach",
+		"Always run at **xhigh**",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("plan-sol skill missing %q", want)
@@ -60,7 +60,7 @@ func TestGrokSkillIsEmbedded(t *testing.T) {
 	}
 }
 
-func TestPlanSkillRunsBothModelsAtUltra(t *testing.T) {
+func TestPlanSkillRunsBothModelsAtXhigh(t *testing.T) {
 	const name = "rival-plan"
 	if !slices.Contains(Names, name) {
 		t.Fatalf("paired plan skill %q is not active", name)
@@ -76,7 +76,7 @@ func TestPlanSkillRunsBothModelsAtUltra(t *testing.T) {
 	for _, want := range []string{
 		"name: rival-plan",
 		"Sol and Fable",
-		"rival command plan --model sol,fable --effort ultra --detach",
+		"rival command plan --model sol,fable --effort xhigh --detach",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("paired plan skill missing %q", want)

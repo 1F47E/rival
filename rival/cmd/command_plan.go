@@ -17,13 +17,13 @@ import (
 )
 
 const planUsage = `Usage:
-  /rival-plan path/to/plan.md — review with Sol and Fable at ultra effort
-  /rival-plan-sol path/to/plan.md — review with Sol at ultra effort
+  /rival-plan path/to/plan.md — review with Sol and Fable at xhigh effort
+  /rival-plan-sol path/to/plan.md — review with Sol at xhigh effort
   /rival-plan-fable path/to/plan.md — review with Fable
   rival command plan --help — show native command options
 
 Input is a single path to a markdown plan/spec file. The /rival-plan and
-/rival-plan-sol skills always use ultra. Native command effort defaults to high
+/rival-plan-sol skills always use xhigh. Native command effort defaults to high
 (low for Fable alone), unless overridden per model in ~/.rival/config.yaml.
 --model accepts sol and fable. An unavailable model is skipped, not fatal.`
 
@@ -205,7 +205,7 @@ func mergePlanEffort(flagEffort string, flagSet bool, inputEffort string) (strin
 
 // parsePlanInput extracts an optional skill-facing -re/--effort prefix while
 // leaving the rest of the input intact as the path (including spaces). Native
-// callers can use --effort; slash-command skills pass `-re ultra plan.md` on
+// callers can use --effort; slash-command skills pass `-re xhigh plan.md` on
 // stdin. A leading `--` escapes a path beginning with a dash.
 func parsePlanInput(raw string) (path, effort string, err error) {
 	s := strings.TrimSpace(raw)
