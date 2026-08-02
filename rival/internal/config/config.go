@@ -29,6 +29,7 @@ const (
 
 	DefaultReviewEffort        = "high"
 	DefaultPlanEffort          = "high"
+	DefaultAntislopEffort      = "xhigh"
 	DefaultConfidenceThreshold = 6
 	SessionDir                 = ".rival/sessions"
 	QueueDir                   = ".rival/queue"

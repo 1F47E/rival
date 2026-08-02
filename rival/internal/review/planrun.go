@@ -129,18 +129,19 @@ func RunPlanReview(ctx context.Context, absPath, effort, workdir, groupID string
 
 // RunDocReview runs a plan-shaped review (summary + 1-10 rating + findings)
 // with a caller-built prompt. target is recorded as the sessions' review scope.
-// Antislop runs use this directly; RunPlanReview wraps it with the standard
-// plan-review prompt. Sessions keep mode/queue class "plan" — same queue
-// semantics, no new mode.
-func RunDocReview(ctx context.Context, prompt, target, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
-	return runDocReview(ctx, defaultPlanExecutor(), prompt, target, effort, workdir, groupID, noQueue, clis)
+// fallbackEffort is the surface's default when neither the invocation nor
+// ~/.rival/config.yaml names an effort; empty keeps the plan-review defaults
+// (DefaultPlanEffort, low for a lone Fable). Antislop passes "xhigh".
+// Sessions keep mode/queue class "plan" — same queue semantics, no new mode.
+func RunDocReview(ctx context.Context, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+	return runDocReview(ctx, defaultPlanExecutor(), prompt, target, effort, fallbackEffort, workdir, groupID, noQueue, clis)
 }
 
 func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
-	return runDocReview(ctx, ex, buildPlanPrompt(absPath), absPath, effort, workdir, groupID, noQueue, clis)
+	return runDocReview(ctx, ex, buildPlanPrompt(absPath), absPath, effort, "", workdir, groupID, noQueue, clis)
 }
 
-func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
 	if len(clis) == 0 {
 		return nil, fmt.Errorf("no plan models requested")
 	}
@@ -175,11 +176,14 @@ func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, 
 			continue
 		}
 		model := planModelForCLI(cli)
-		fallbackEffort := config.DefaultPlanEffort
-		if len(clis) == 1 && cli == "fable" {
-			fallbackEffort = "low"
+		modelFallback := fallbackEffort
+		if modelFallback == "" {
+			modelFallback = config.DefaultPlanEffort
+			if len(clis) == 1 && cli == "fable" {
+				modelFallback = "low"
+			}
 		}
-		effectiveEffort, err := config.ResolveEffort(model, effort, fallbackEffort)
+		effectiveEffort, err := config.ResolveEffort(model, effort, modelFallback)
 		if err != nil {
 			return nil, fmt.Errorf("resolve %s plan effort: %w", config.EngineLabel(cli, model), err)
 		}

@@ -1,6 +1,6 @@
 ---
 name: rival-grok
-version: 3.25.0
+version: 3.26.0
 description: Run Grok (grok-4.5) through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-grok.
 argument-hint: "[-re low|medium|high] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write

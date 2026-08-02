@@ -4,6 +4,14 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Changed — plan reviews default to xhigh, antislop runs at xhigh
+
+`/rival-plan` and `/rival-plan-sol` now pin **xhigh** instead of ultra, and
+antislop's default effort is **xhigh** for every model (explicit `-re` and
+per-model `~/.rival/config.yaml` efforts still win; `RunDocReview` gained a
+surface fallback-effort parameter). README moved the antislop section to the
+top of the skills list.
+
 ### Added — antislop: quality-only slop & over-engineering review
 
 New `rival command antislop` plus two skills, `/rival-antislop` (changed code

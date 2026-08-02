@@ -50,7 +50,7 @@ rival install
 > `go install github.com/1F47E/rival@latest` is not supported because the Go
 > module lives in a repository subdirectory.
 
-`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, `/rival-k3`, and `/rival-grok` are available. Install also removes superseded skill names.
+`rival install` copies the slash-command skills (embedded in the binary) into `~/.claude/skills/`. After that, `/rival-review`, `/rival-sol`, `/rival-plan`, `/rival-plan-sol`, `/rival-plan-fable`, `/rival-fable`, `/rival-k3`, `/rival-grok`, `/rival-antislop`, and `/rival-antislop-plan` are available. Install also removes superseded skill names.
 
 Use `rival install --force` to overwrite without prompting.
 
@@ -168,6 +168,42 @@ Claude Code so it discovers the refreshed skills.
 
 ### Slash-command skills
 
+**Antislop review — NEW** (quality-only: slop & over-engineering, never bugs):
+
+```
+/rival-antislop                             — cut list for the changed files (auto-detect)
+/rival-antislop src/api/                    — cut list for a specific scope
+/rival-antislop -m fable src/               — with Fable instead of Sol
+/rival-antislop-plan path/to/plan.md        — cut list for a plan/spec document
+```
+
+Every other rival command hunts bugs. Antislop hunts the opposite failure
+mode: code (or a plan) that *works* but shouldn't exist in that shape — the
+signature bloat of AI-generated changes. An independent model (default
+**sol**, `-m` accepts `sol`/`fable`) reads the diff or document and works
+through:
+
+- **Reuse & DRY** — re-implementations of helpers the codebase already has;
+  duplicated logic that needs one home
+- **Simplification / efficiency / altitude** — needless complexity, wasted
+  work, special-cases bolted on where the underlying mechanism should change
+  (same angles as Claude Code's built-in `/simplify`, which this derives from)
+- **Backward-compat hoarding** — shims, legacy fallbacks, `doThingV2`
+  duplicates kept without a named external consumer
+- **Library reinvention** — hand-rolled parsers/retry/date-math a stdlib or
+  existing dependency already provides
+- **AI-slop signatures** — comment slop, silent fallbacks, pass-through
+  wrappers, speculative generality; scope creep and ceremony padding in plans
+
+Output is a **leanness rating (1-10)** and a numbered cut list — every finding
+names the concrete cut or replacement. Default effort is **xhigh** (override
+with `-re` or per model in `~/.rival/config.yaml`). Report-only: it proposes, your session
+applies. `/rival-antislop-plan` slots in as a pre-review gate for freshly
+written plans, so over-engineering gets cut before implementation starts.
+Native form: `rival command antislop` (`plan <path>` on stdin starts plan
+mode; `-- <scope>` takes a scope verbatim; a directory literally named `plan`
+is `./plan`).
+
 **Default review** (runs Sol + Kimi K3):
 
 ```
@@ -230,36 +266,17 @@ Claude Code so it discovers the refreshed skills.
 **Plan/spec review** (single path to a markdown plan, rated 1-10):
 
 ```
-/rival-plan path/to/plan.md                 — review with Sol + Fable at ultra effort
-/rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at ultra effort
+/rival-plan path/to/plan.md                 — review with Sol + Fable at xhigh effort
+/rival-plan-sol path/to/plan.md             — rate the plan 1-10 with Sol at xhigh effort
 /rival-plan-fable path/to/plan.md           — same, with Fable (low fallback unless configured)
 ```
 
 Each model rates the plan 1-10 and returns numbered findings. `/rival-plan` runs
-Sol and Fable in parallel at **ultra** and shows both results.
-`/rival-plan-sol` also always uses **ultra**. `/rival-plan-fable` uses the
+Sol and Fable in parallel at **xhigh** and shows both results.
+`/rival-plan-sol` also always uses **xhigh**. `/rival-plan-fable` uses the
 configured Fable effort when present, otherwise its low fallback. The native
 binary accepts an explicit override, for example
-`rival command plan --model sol --effort ultra`.
-
-**Antislop review** (quality-only: slop & over-engineering, never bugs):
-
-```
-/rival-antislop                             — cut list for the changed files (auto-detect)
-/rival-antislop src/api/                    — cut list for a specific scope
-/rival-antislop -m fable src/               — with Fable instead of Sol
-/rival-antislop-plan path/to/plan.md        — cut list for a plan/spec document
-```
-
-Antislop is the report-only counterpart of Claude Code's built-in `/simplify`:
-the model works through reuse/DRY, simplification, efficiency, altitude,
-backward-compat hoarding, library reinvention, and AI-slop signatures (comment
-slop, silent fallbacks, pass-through wrappers, speculative generality — plus
-scope creep and ceremony padding for plans), then returns a **leanness rating
-(1-10)** and a numbered cut list. It never reports bugs — that's what the code
-review commands are for. Default model is **sol**; `-m` accepts `sol` and
-`fable`. Native form: `rival command antislop` (`plan <path>` on stdin starts
-plan mode; to review a directory literally named `plan`, pass `./plan`).
+`rival command plan --model sol --effort xhigh`.
 
 **Model selection** (`-m`, `--model`): `sol`, `k3` (Kimi K3 needs
 `MOONSHOT_API_KEY`), and `grok` (opt-in, needs `grok login`); comma-separated or
@@ -287,7 +304,7 @@ supports. Grok-4.5 exposes only `low`, `medium`, and `high` (its own default is
 `high`), so Rival clamps the wider ladder onto that menu: `xhigh`, `ultra`, and
 `max` become `high`, and `minimal` or `none` becomes `low`. The clamped value is
 what the session records, so `rival sessions` never reports an effort that was
-not actually sent. `/rival-plan` and `/rival-plan-sol` explicitly request `ultra`, so
+not actually sent. `/rival-plan` and `/rival-plan-sol` explicitly request `xhigh`, so
 that skill choice wins over this file; `/rival-plan-fable` uses its configured
 value or low fallback. When a grouped run uses different per-model efforts, the
 dashboard summary shows `mixed` and each member detail shows its actual effort.
