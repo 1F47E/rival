@@ -32,55 +32,6 @@ run detached and report back when done.
 All accept `-re <effort>` (`low`/`medium`/`high`/`xhigh`) and, where a roster
 applies, `-m <model[,model]>`.
 
-### What a run looks like
-
-Real `/rival-antislop` output (another project, reviewing a hand-rolled
-Anthropic client):
-
-```
-═══ RIVAL ANTISLOP REVIEW ═══
-
-Scope: _go/
-Leanness: 5/10
-
-Summary: The existing llm.Client seam is appropriate, but the Anthropic addition builds an
-unnecessary protocol implementation and spreads provider selection across configuration, CLI,
-runtime, and diagnostics. Most of that surface can be replaced by the official SDK and one-time
-provider resolution.
-
-1. [high] Replace the hand-written Anthropic protocol with the official Go SDK —
-   _go/internal/llm/anthropic.go:31
-   This 467-line client plus 292 lines of protocol-level tests recreates request unions, SSE
-   decoding, event accumulation, authentication headers, status handling, and stream errors.
-   Fix: Use github.com/anthropics/anthropic-sdk-go. Build anthropic.MessageNewParams, call
-   client.Messages.NewStreaming, feed events to Message.Accumulate, and retain only the adapters
-   between SDK messages and the local Request/Response types.
-   (reinvention, confidence 9)
-
-2. [high] One startup decision leaked through every layer — _go/internal/config/config.go:27
-   Config now carries six endpoint/key/model fields, validates them through a provider switch,
-   and adds three selector wrappers. The same choice is repeated in root.go, ask.go, and
-   doctor.go.
-   Fix: Restore provider-neutral active fields (LLMBaseURL, LLMAPIKey, Model), resolve the
-   provider once in config.Load, and centralize client construction in an llm.NewClient factory.
-   (altitude, confidence 9)
-
-3. [med] Use the Models API instead of generating a diagnostic message —
-   _go/cmd/code-answers/doctor.go:104
-   Every doctor run sends a token-generating Messages request solely to validate credentials.
-   Fix: Call the SDK's client.Models.Get for cfg.Model — a metadata lookup, not paid inference.
-   (efficiency, confidence 10)
-
-4. [med] Share provider-neutral error normalization — _go/internal/llm/anthropic.go:438
-   normalizeError duplicates openai.go's committed-output suppression, context handling, typed
-   error passthrough, and retryable-transport default.
-   Fix: Move the shared policy into a package-level helper in llm.go; each provider only converts
-   its SDK-specific HTTP error into *llm.Error first.
-   (reinvention, confidence 9)
-
-Findings: 4 total — 0 crit, 2 high, 2 med, 0 low
-```
-
 ## Install
 
 ```bash
