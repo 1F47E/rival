@@ -39,10 +39,6 @@ func init() {
 	commandPlanCmd.Flags().String("workdir", ".", "working directory")
 	commandPlanCmd.Flags().Bool("no-queue", false, "bypass the review queue")
 	commandPlanCmd.Flags().StringSliceP("model", "m", defaultPlanModels, "plan review model(s): sol, fable (comma-separated)")
-	commandPlanCmd.Flags().StringSlice("cli", nil, "legacy plan reviewer selector")
-	if err := commandPlanCmd.Flags().MarkHidden("cli"); err != nil {
-		panic(err)
-	}
 	commandCmd.AddCommand(commandPlanCmd)
 	commandPlanCmd.Flags().String("effort", config.DefaultPlanEffort, "override reasoning effort for every selected model: low, medium, high, ultra")
 }
@@ -79,35 +75,10 @@ func parsePlanModels(raw []string) ([]string, error) {
 	return out, nil
 }
 
-// parsePlanCLIs validates and de-duplicates the --cli values, preserving order.
-func parsePlanCLIs(raw []string) ([]string, error) {
-	seen := make(map[string]bool)
-	var out []string
-	for _, v := range raw {
-		c := strings.ToLower(strings.TrimSpace(v))
-		switch c {
-		case "codex", "fable":
-			if !seen[c] {
-				seen[c] = true
-				out = append(out, c)
-			}
-		case "":
-			continue
-		default:
-			return nil, fmt.Errorf("unknown legacy plan selector; use --model with sol or fable")
-		}
-	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("no plan models selected; use --model with sol or fable")
-	}
-	return out, nil
-}
-
 func commandPlanAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 	rawModels, _ := cmd.Flags().GetStringSlice("model")
-	rawCLIs, _ := cmd.Flags().GetStringSlice("cli")
 	effort, _ := cmd.Flags().GetString("effort")
 	effortSet := cmd.Flags().Changed("effort")
 	if !effortSet {
@@ -123,21 +94,7 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 
-	modelsSet := cmd.Flags().Changed("model")
-	legacySet := cmd.Flags().Changed("cli")
-	if modelsSet && legacySet {
-		err := fmt.Errorf("model selection was provided more than once; use --model")
-		_, _ = fmt.Fprintln(os.Stdout, err.Error())
-		return &ExitCodeError{Code: 1, Err: err}
-	}
-
-	var clis []string
-	var err error
-	if legacySet {
-		clis, err = parsePlanCLIs(rawCLIs)
-	} else {
-		clis, err = parsePlanModels(rawModels)
-	}
+	clis, err := parsePlanModels(rawModels)
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}

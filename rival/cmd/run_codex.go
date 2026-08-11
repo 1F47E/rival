@@ -23,28 +23,9 @@ var runSolCmd = &cobra.Command{
 	RunE:  runGPT56SolAction,
 }
 
-// Retained for scripts created before the short model-named command was introduced.
-var runGPT56SolCmd = &cobra.Command{
-	Use:    config.GPT56SolModel,
-	Hidden: true,
-	RunE:   runGPT56SolAction,
-}
-
-var runCodexCmd = &cobra.Command{
-	Use:    "codex",
-	Hidden: true,
-	RunE:   runGPT56SolAction,
-}
-
 func init() {
 	configureRunGPT56SolFlags(runSolCmd)
-	configureRunGPT56SolFlags(runGPT56SolCmd)
-	configureRunGPT56SolFlags(runCodexCmd)
-	mirrorHiddenHelp(runGPT56SolCmd, runSolCmd)
-	mirrorHiddenHelp(runCodexCmd, runSolCmd)
 	runCmd.AddCommand(runSolCmd)
-	runCmd.AddCommand(runGPT56SolCmd)
-	runCmd.AddCommand(runCodexCmd)
 }
 
 func configureRunGPT56SolFlags(cmd *cobra.Command) {
