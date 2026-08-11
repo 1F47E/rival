@@ -1,12 +1,16 @@
 package parser
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/1F47E/rival/internal/config"
+)
 
 // Every advertised effort must parse — the value is ignored downstream (K3
 // runs max only), so rejecting "max"/"ultra" while the docs say "pinned to
 // max regardless of -re" would be a trap.
 func TestParseKimiArgsAcceptsAndIgnoresAllEffortNames(t *testing.T) {
-	for _, effort := range kimiEffortNames {
+	for _, effort := range append(append([]string{}, config.ValidEfforts...), "max") {
 		parsed, err := ParseKimiArgs("-re " + effort + " hello")
 		if err != nil {
 			t.Fatalf("-re %s: %v", effort, err)

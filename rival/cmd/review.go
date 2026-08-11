@@ -51,8 +51,8 @@ func reviewAction(cmd *cobra.Command, args []string) error {
 	workdir, _ := cmd.Flags().GetString("workdir")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
-	if effort != "" && !config.IsValidReviewEffort(effort) {
-		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ReviewEfforts)
+	if effort != "" && !config.IsValidEffort(effort) {
+		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
 	}
 
 	// Build scope from args or auto-detect via git.

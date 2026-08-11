@@ -3,6 +3,8 @@ package parser
 import (
 	"strings"
 	"testing"
+
+	"github.com/1F47E/rival/internal/config"
 )
 
 func TestParseArgs_Empty(t *testing.T) {
@@ -396,6 +398,24 @@ func TestParseGrokArgs_Empty(t *testing.T) {
 		}
 		if r.Effort != "" {
 			t.Errorf("expected omitted effort for configured default resolution, got %q", r.Effort)
+		}
+	}
+}
+
+// One ladder means every surface accepts the same levels. Fable used to reject
+// ultra while its own plan skill documented it.
+func TestEverySurfaceAcceptsTheSharedLadder(t *testing.T) {
+	parsers := map[string]func(string) (*ParseResult, error){
+		"fable": ParseFableArgs,
+		"sol":   ParseGPT56SolArgs,
+		"grok":  ParseGrokArgs,
+		"kimi":  ParseKimiArgs,
+	}
+	for name, parse := range parsers {
+		for _, effort := range config.ValidEfforts {
+			if _, err := parse("-re " + effort + " hello"); err != nil {
+				t.Errorf("%s rejected -re %s: %v", name, effort, err)
+			}
 		}
 	}
 }

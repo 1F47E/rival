@@ -99,8 +99,8 @@ func commandAntislopAction(cmd *cobra.Command, args []string) error {
 	flagEffort, _ := cmd.Flags().GetString("effort")
 	effortSet := cmd.Flags().Changed("effort")
 
-	if effortSet && !config.IsValidReviewEffort(flagEffort) {
-		err := fmt.Errorf("invalid effort %q, must be one of: %v", flagEffort, config.ReviewEfforts)
+	if effortSet && !config.IsValidEffort(flagEffort) {
+		err := fmt.Errorf("invalid effort %q, must be one of: %v", flagEffort, config.ValidEfforts)
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}

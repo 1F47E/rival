@@ -39,8 +39,8 @@ func runGrokAction(cmd *cobra.Command, args []string) error {
 	reviewScope, _ := cmd.Flags().GetString("review")
 	noQueue, _ := cmd.Flags().GetBool("no-queue")
 
-	if effort != "" && !config.IsValidReviewEffort(effort) {
-		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ReviewEfforts)
+	if effort != "" && !config.IsValidEffort(effort) {
+		return fmt.Errorf("invalid effort level %q, must be one of: %v", effort, config.ValidEfforts)
 	}
 	effort, err := config.ResolveEffort(config.GrokModel, effort, config.DefaultReviewEffort)
 	if err != nil {

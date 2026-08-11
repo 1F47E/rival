@@ -42,14 +42,13 @@ const (
 	QueuePollInterval    = 2 * time.Second
 )
 
-// ValidEfforts includes xhigh for compatibility with existing commands and
-// saved invocations. Review and plan help intentionally advertises the simpler
-// low/medium/high/ultra ladder, with high as the default.
-var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
-
-// ReviewEfforts is the public effort ladder shown by code-review and
-// plan-review commands. xhigh remains accepted as a compatibility alias.
-var ReviewEfforts = []string{"low", "medium", "high", "ultra"}
+// ValidEfforts is the one effort ladder every surface accepts and advertises.
+//
+// xhigh and ultra are NOT interchangeable: the codex runtime passes the value
+// through verbatim and Sol treats ultra as its own reasoning level, so neither
+// may be aliased to the other. Runtimes that expose a shorter menu clamp at
+// their own boundary (see ClaudeEffortLevel and GrokEffort).
+var ValidEfforts = []string{"low", "medium", "high", "xhigh", "ultra"}
 
 // ClaudeEffortLevel maps rival effort levels to claude CLI --effort values.
 var ClaudeEffortLevel = map[string]string{
@@ -588,13 +587,6 @@ func IsValidEffort(e string) bool {
 	return false
 }
 
-// IsValidReviewEffort validates review and plan effort values. It intentionally
-// accepts xhigh so existing invocations keep working even though new help text
-// presents ultra as the top-level choice.
-func IsValidReviewEffort(e string) bool {
-	return IsValidEffort(e) || e == "ultra"
-}
-
 // SessionDirPath returns the absolute path to ~/.rival/sessions.
 func SessionDirPath() string {
 	home, err := os.UserHomeDir()
@@ -827,7 +819,7 @@ func validConfiguredModelEffort(label, effort string) bool {
 	if label == "kimi-k3" {
 		return effort == "max"
 	}
-	return IsValidReviewEffort(effort)
+	return IsValidEffort(effort)
 }
 
 // ResolveEffort applies the documented precedence for one concrete model:
@@ -841,7 +833,7 @@ func ResolveEffort(model, override, fallback string) (string, error) {
 		if label == "kimi-k3" {
 			return "max", nil
 		}
-		if !IsValidReviewEffort(override) {
+		if !IsValidEffort(override) {
 			return "", fmt.Errorf("invalid effort %q for %s", override, label)
 		}
 		return override, nil
@@ -858,7 +850,7 @@ func ResolveEffort(model, override, fallback string) (string, error) {
 	if label == "kimi-k3" {
 		return "max", nil
 	}
-	if !IsValidReviewEffort(fallback) {
+	if !IsValidEffort(fallback) {
 		return "", fmt.Errorf("invalid fallback effort %q for %s", fallback, label)
 	}
 	return fallback, nil

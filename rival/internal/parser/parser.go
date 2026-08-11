@@ -23,7 +23,7 @@ type ParseResult struct {
 // Grammar: [-re level] [review [scope] | prompt]. An omitted effort stays
 // empty so the command can apply the configured Sol default.
 func ParseGPT56SolArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, "", config.IsValidReviewEffort, config.ReviewEfforts)
+	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
 // ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
@@ -36,27 +36,19 @@ func ParseFableArgs(raw string) (*ParseResult, error) {
 // Identical grammar to Sol: an omitted effort stays empty so the command can
 // apply grok's configured default.
 func ParseGrokArgs(raw string) (*ParseResult, error) {
-	return parseArgsWithEffort(raw, "", config.IsValidReviewEffort, config.ReviewEfforts)
+	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
-
-// kimiEffortNames is the accepted -re ladder for the kimi command. Every value
-// is accepted and ignored — Kimi K3 supports only max reasoning — so the list
-// deliberately includes max and ultra: rejecting the one level the docs
-// advertise ("pinned to max") would be a trap.
-var kimiEffortNames = []string{"low", "medium", "high", "xhigh", "ultra", "max"}
 
 // ParseKimiArgs parses raw arguments for the kimi command. The -re flag is
 // accepted for grammar consistency, but the executor always runs Kimi K3 at
 // max reasoning — the model supports no other level.
 func ParseKimiArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", func(e string) bool {
-		for _, v := range kimiEffortNames {
-			if v == e {
-				return true
-			}
-		}
-		return false
-	}, kimiEffortNames)
+		// K3 runs at max regardless (OpencodeVariant pins it), but rejecting
+		// the level the docs advertise would be a trap, so accept the shared
+		// ladder plus max and discard the value later.
+		return config.IsValidEffort(e) || e == "max"
+	}, append(append([]string{}, config.ValidEfforts...), "max"))
 }
 
 func parseArgsWithEffort(raw, defaultEffort string, validEffort func(string) bool, effortNames []string) (*ParseResult, error) {

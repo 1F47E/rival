@@ -117,8 +117,8 @@ func commandPlanAction(cmd *cobra.Command, args []string) error {
 		effort = ""
 	}
 
-	if effort != "" && !config.IsValidReviewEffort(effort) {
-		err := fmt.Errorf("invalid effort %q, must be one of: %v", effort, config.ReviewEfforts)
+	if effort != "" && !config.IsValidEffort(effort) {
+		err := fmt.Errorf("invalid effort %q, must be one of: %v", effort, config.ValidEfforts)
 		_, _ = fmt.Fprintln(os.Stdout, err.Error())
 		return &ExitCodeError{Code: 1, Err: err}
 	}
@@ -236,7 +236,7 @@ func parsePlanInput(raw string) (path, effort string, err error) {
 	if effort == "" || strings.HasPrefix(effort, "-") {
 		return "", "", fmt.Errorf("option %s requires a value", name)
 	}
-	if !config.IsValidReviewEffort(effort) {
+	if !config.IsValidEffort(effort) {
 		return "", "", fmt.Errorf("invalid effort %q, must be one of: low, medium, high, ultra", effort)
 	}
 	path = strings.TrimSpace(rest)

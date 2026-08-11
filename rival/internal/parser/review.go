@@ -41,8 +41,8 @@ func ParseReviewArgs(raw string) (*ParseResult, error) {
 			if err != nil {
 				return nil, err
 			}
-			if !config.IsValidReviewEffort(value) {
-				return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", value, strings.Join(config.ReviewEfforts, ", "))
+			if !config.IsValidEffort(value) {
+				return nil, fmt.Errorf("invalid effort level %q, must be one of: %s", value, strings.Join(config.ValidEfforts, ", "))
 			}
 			result.Effort = value
 			s = remaining
