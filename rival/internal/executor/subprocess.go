@@ -45,7 +45,7 @@ func safeEnv() []string {
 	for _, kv := range os.Environ() {
 		blocked := false
 		for _, prefix := range blockedEnvPrefixes {
-			if strings.HasPrefix(kv, prefix+"=") || strings.HasPrefix(kv, prefix) {
+			if strings.HasPrefix(kv, prefix) {
 				blocked = true
 				break
 			}

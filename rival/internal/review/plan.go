@@ -221,16 +221,6 @@ type PlanCLIResult struct {
 	Raw    string
 }
 
-// planEngineLabel is the human-facing model name for a plan block. The adapter
-// is intentionally never exposed in plan-review output.
-func planEngineLabel(cli, model string) string {
-	return config.EngineLabel(cli, model)
-}
-
-func planSkippedLabel(skipped SkippedCLI) string {
-	return config.EngineLabel(skipped.CLI, skipped.Model)
-}
-
 // FormatPlanMultiConsole renders 2+ models' plan reviews as separate labelled
 // blocks under one header, followed by any skipped models. A result whose Parsed
 // is nil falls back to printing its Raw output so a parse failure never drops
@@ -246,13 +236,13 @@ func formatDocMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, header
 
 	labels := make([]string, 0, len(results))
 	for _, r := range results {
-		labels = append(labels, planEngineLabel(r.CLI, r.Model))
+		labels = append(labels, config.EngineLabel(r.CLI, r.Model))
 	}
 	fmt.Fprintf(&sb, "\n═══ %s (%s) ═══\n\n", headerName, strings.Join(labels, " + "))
 	sb.WriteString(targetLine + "\n")
 
 	for i, r := range results {
-		fmt.Fprintf(&sb, "\n── %s ──\n\n", planEngineLabel(r.CLI, r.Model))
+		fmt.Fprintf(&sb, "\n── %s ──\n\n", config.EngineLabel(r.CLI, r.Model))
 		if r.Parsed != nil {
 			formatPlanBody(r.Parsed, &sb, ratingLabel, emptyLine)
 		} else {
@@ -271,7 +261,7 @@ func formatDocMultiConsole(results []PlanCLIResult, skipped []SkippedCLI, header
 		sb.WriteString("\n")
 		for _, s := range skipped {
 			reason := config.PublicRuntimeError(s.CLI, s.Model, s.Reason)
-			fmt.Fprintf(&sb, "Skipped: %s — %s\n", planSkippedLabel(s), reason)
+			fmt.Fprintf(&sb, "Skipped: %s — %s\n", s.Label(), reason)
 		}
 	}
 
