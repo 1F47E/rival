@@ -334,8 +334,7 @@ func newConsiliumSession(judgeCLI, model, scope, effort, workdir, groupID string
 // "megareview" or "plan") covering ticketSessions and blocks until promoted, then
 // marks only runSessions running. Any ticketSessions not in runSessions (e.g. a
 // megareview's consilium judge) stay queued until their own phase but are already
-// in the ticket for liveness. Mirrors cmd.waitForQueueSlot but lives here to
-// avoid an import cycle.
+// in the ticket for liveness.
 // WaitForGroupSlot enqueues one ticket covering ticketSessions and blocks
 // until a slot is free, then marks runSessions running. The two lists differ
 // for a megareview, whose judge holds a ticket without starting yet; pass the
