@@ -21,6 +21,13 @@ import (
 // arrives, there is no log readback afterwards, and a nonzero exit returns
 // immediately instead of falling through.
 func runModelRun(spec modelSpec, opts runOptions) error {
+	// Effort first. It is pure validation, so a bad value must fail fast
+	// rather than hide behind an auth error or block on --prompt-stdin.
+	effort, err := spec.resolveEffort(opts.effort)
+	if err != nil {
+		return err
+	}
+
 	if err := spec.preflight(opts.workdir); err != nil {
 		return err
 	}
@@ -47,11 +54,6 @@ func runModelRun(spec modelSpec, opts runOptions) error {
 	}
 	if prompt == "" {
 		return fmt.Errorf("empty prompt")
-	}
-
-	effort, err := spec.resolveEffort(opts.effort)
-	if err != nil {
-		return err
 	}
 
 	sess, err := session.NewQueued(spec.cli, mode, spec.model, effort, opts.workdir, prompt, opts.reviewScope, "")
@@ -100,7 +102,7 @@ func runModelRun(spec modelSpec, opts runOptions) error {
 		// The hint goes to stderr here, because stdout already carries the
 		// mirrored provider output.
 		if hint := spec.authHint(sess.LogFile); hint != "" {
-			_, _ = fmt.Fprint(os.Stderr, hint)
+			_, _ = fmt.Fprintln(os.Stderr, hint)
 		}
 		return &ExitCodeError{Code: result.ExitCode, Err: fmt.Errorf("%s", exitMsg)}
 	}

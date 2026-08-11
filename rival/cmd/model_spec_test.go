@@ -91,3 +91,30 @@ func TestSessionModeNamesTheRun(t *testing.T) {
 		t.Errorf("raw mode = %q", got)
 	}
 }
+
+// An invalid effort must fail before the workflow touches the provider or
+// blocks on stdin. Ordering this wrong hides the real error behind an auth
+// failure, or hangs forever waiting for input that will never come.
+func TestRunModelRunValidatesEffortBeforeAnythingElse(t *testing.T) {
+	preflightCalled := false
+	spec := solSpec()
+	spec.preflight = func(string) error {
+		preflightCalled = true
+		return nil
+	}
+
+	// promptStdin is set but nothing is piped: if the workflow reached the
+	// read, this test would block instead of returning.
+	err := runModelRun(spec, runOptions{
+		workdir:     t.TempDir(),
+		noQueue:     true,
+		effort:      "not-a-level",
+		promptStdin: true,
+	})
+	if err == nil {
+		t.Fatal("expected an invalid effort to error")
+	}
+	if preflightCalled {
+		t.Error("preflight ran before the effort was validated")
+	}
+}
