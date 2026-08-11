@@ -15,6 +15,7 @@ import (
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/logfmt"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 )
 
 //go:embed templates/index.html
@@ -103,7 +104,7 @@ type promptResponse struct {
 
 func New(version string) *http.ServeMux {
 	mux := http.NewServeMux()
-	cache := newSessionCache(config.SessionDirPath())
+	cache := sessionview.New(config.SessionDirPath())
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -132,7 +133,7 @@ func New(version string) *http.ServeMux {
 			return
 		}
 
-		sessions, revision := cache.load()
+		sessions, revision := cache.Load()
 		groups := groupSessions(sessions)
 		totalGroups := len(groups)
 		if offset > len(groups) {
@@ -191,7 +192,7 @@ func New(version string) *http.ServeMux {
 			return
 		}
 
-		sessions, _ := cache.load()
+		sessions, _ := cache.Load()
 		for _, group := range groupSessions(sessions) {
 			if group.ID != id {
 				continue
@@ -221,10 +222,10 @@ func New(version string) *http.ServeMux {
 			return
 		}
 
-		s := cache.get(id)
+		s := cache.Get(id)
 		if s == nil {
-			_, _ = cache.load()
-			s = cache.get(id)
+			_, _ = cache.Load()
+			s = cache.Get(id)
 		}
 		if s == nil {
 			http.Error(w, "session metadata not found", http.StatusNotFound)
@@ -327,137 +328,48 @@ func loadPromptResponse(path string, summary *session.Session) (promptResponse, 
 	}, nil
 }
 
+// groupSessions turns stored sessions into the dashboard DTOs. Bucketing and
+// every derived value come from internal/sessionview, so the web dashboard and
+// the TUI cannot disagree.
 func groupSessions(sessions []*session.Session) []sessionGroup {
-	type bucket struct {
-		sessions []*session.Session
-	}
-	groups := make(map[string]*bucket)
-	var order []string
-
-	for _, s := range sessions {
-		if s.GroupID != "" {
-			if g, ok := groups[s.GroupID]; ok {
-				g.sessions = append(g.sessions, s)
-			} else {
-				groups[s.GroupID] = &bucket{sessions: []*session.Session{s}}
-				order = append(order, s.GroupID)
-			}
-		} else {
-			key := "solo:" + s.ID
-			groups[key] = &bucket{sessions: []*session.Session{s}}
-			order = append(order, key)
-		}
-	}
-
-	result := make([]sessionGroup, 0, len(order))
-	for _, key := range order {
-		b := groups[key]
-		session.SortGroupMembers(b.sessions)
-		primary := b.sessions[0]
-		g := sessionGroup{
-			ID:            primary.ID,
-			IsGroup:       len(b.sessions) > 1 || primary.GroupID != "",
-			Sessions:      publicSessions(b.sessions),
-			Status:        groupStatus(b.sessions),
-			Effort:        groupEffort(b.sessions),
-			WorkDir:       primary.WorkDir,
-			PromptPreview: primary.PromptPreview,
-		}
-		if primary.GroupID != "" {
-			g.ID = primary.GroupID
-		}
-
-		if g.IsGroup {
-			// Derive the group kind + models from the sessions so a plan group
-			// (Sol + Fable) is not mislabelled a megareview.
-			g.Kind = groupKind(b.sessions)
-			g.CLI = groupCLIs(b.sessions)
-			g.Models = groupModels(b.sessions)
-		} else {
-			g.CLI = config.EngineLabel(primary.CLI, primary.Model)
-			g.Models = config.EngineLabel(primary.CLI, primary.Model)
-		}
-
-		g.Elapsed = groupElapsed(b.sessions)
-		result = append(result, g)
+	buckets := sessionview.Group(sessions)
+	result := make([]sessionGroup, 0, len(buckets))
+	for _, b := range buckets {
+		result = append(result, bucketToGroup(b))
 	}
 	return result
 }
 
-func groupStatus(sessions []*session.Session) string {
-	// Tier: running > queued > failed > completed.
-	for _, s := range sessions {
-		if s.Status == "running" {
-			return "running"
-		}
+// bucketToGroup renders one bucket as the public DTO.
+func bucketToGroup(b sessionview.Bucket) sessionGroup {
+	primary := b.Sessions[0]
+	g := sessionGroup{
+		ID:            primary.ID,
+		IsGroup:       len(b.Sessions) > 1 || primary.GroupID != "",
+		Sessions:      publicSessions(b.Sessions),
+		Status:        sessionview.Status(b.Sessions),
+		Effort:        sessionview.Effort(b.Sessions),
+		WorkDir:       primary.WorkDir,
+		PromptPreview: primary.PromptPreview,
+		Elapsed:       sessionview.Elapsed(b.Sessions),
 	}
-	for _, s := range sessions {
-		if s.Status == "queued" {
-			return "queued"
-		}
+	if primary.GroupID != "" {
+		g.ID = primary.GroupID
 	}
-	for _, s := range sessions {
-		if s.Status == "failed" {
-			return "failed"
-		}
-	}
-	return "completed"
-}
 
-// groupKind returns the group kind: "plan" if any session is a plan review,
-// otherwise "megareview". Plan groups run Sol + Fable.
-func groupKind(sessions []*session.Session) string {
-	for _, s := range sessions {
-		if s.Mode == "plan" {
-			return "plan"
-		}
+	if g.IsGroup {
+		// Derive the kind and models from the members so a plan or antislop
+		// group is not mislabelled a megareview.
+		g.Kind = sessionview.Kind(b.Sessions)
+		labels := sessionview.EngineLabels(b.Sessions)
+		g.CLI = sessionview.JoinLabels(labels, "+")
+		g.Models = sessionview.JoinLabels(labels, " + ")
+	} else {
+		label := config.EngineLabel(primary.CLI, primary.Model)
+		g.CLI = label
+		g.Models = label
 	}
-	return "megareview"
-}
-
-func groupEffort(sessions []*session.Session) string {
-	if len(sessions) == 0 {
-		return ""
-	}
-	effort := sessions[0].Effort
-	for _, s := range sessions[1:] {
-		if s.Effort != effort {
-			return "mixed"
-		}
-	}
-	return effort
-}
-
-// groupEngineLabel names one session's model for group display.
-func groupEngineLabel(s *session.Session) string {
-	return config.EngineLabel(s.CLI, s.Model)
-}
-
-// groupCLIs returns the group's distinct public model names joined with "+".
-func groupCLIs(sessions []*session.Session) string {
-	seen := map[string]bool{}
-	var clis []string
-	for _, s := range sessions {
-		label := groupEngineLabel(s)
-		if label != "" && !seen[label] {
-			seen[label] = true
-			clis = append(clis, label)
-		}
-	}
-	return strings.Join(clis, "+")
-}
-
-func groupModels(sessions []*session.Session) string {
-	seen := map[string]bool{}
-	var models []string
-	for _, s := range sessions {
-		label := config.EngineLabel(s.CLI, s.Model)
-		if label != "" && !seen[label] {
-			seen[label] = true
-			models = append(models, label)
-		}
-	}
-	return strings.Join(models, " + ")
+	return g
 }
 
 // publicSessions returns shallow copies with public model names for the web
@@ -490,43 +402,4 @@ func publicSessions(sessions []*session.Session) []publicSession {
 		})
 	}
 	return result
-}
-
-func groupElapsed(sessions []*session.Session) string {
-	now := time.Now()
-	var earliest, latest time.Time
-	for _, s := range sessions {
-		start := s.StartTime
-		if s.QueuedAt != nil && (start.IsZero() || s.QueuedAt.Before(start)) {
-			start = *s.QueuedAt
-		}
-		if start.IsZero() {
-			continue
-		}
-
-		end := start
-		switch {
-		case s.Status == "running" || s.Status == "queued":
-			end = now
-		case s.EndTime != nil:
-			end = *s.EndTime
-		case s.Duration != "":
-			if duration, err := time.ParseDuration(s.Duration); err == nil {
-				end = start.Add(duration)
-			}
-		}
-		if end.Before(start) {
-			end = start
-		}
-		if earliest.IsZero() || start.Before(earliest) {
-			earliest = start
-		}
-		if latest.IsZero() || end.After(latest) {
-			latest = end
-		}
-	}
-	if !earliest.IsZero() && latest.After(earliest) {
-		return latest.Sub(earliest).Round(time.Second).String()
-	}
-	return "-"
 }

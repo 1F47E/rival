@@ -234,7 +234,7 @@ func TestRunPlanCLI_RestoresPlanMode(t *testing.T) {
 			return realPlanJSON, 0, nil
 		},
 	}
-	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", t.TempDir())
+	out := runPlanCLI(context.Background(), ex, sess, "fable", "p", t.TempDir(), "plan")
 	if out.ExitCode != 0 {
 		t.Fatalf("run failed: %+v", out)
 	}
@@ -400,7 +400,7 @@ func TestRunDocReviewAppliesFallbackEffortAndTarget(t *testing.T) {
 		},
 	}
 
-	_, err := runDocReview(context.Background(), ex, "ANTISLOP PROMPT", "src/api/", "", "xhigh", t.TempDir(), "doc", true, []string{"fable"})
+	_, err := runDocReview(context.Background(), ex, "antislop", "ANTISLOP PROMPT", "src/api/", "", "xhigh", t.TempDir(), "doc", true, []string{"fable"})
 	if err != nil {
 		t.Fatalf("runDocReview: %v", err)
 	}
@@ -413,5 +413,50 @@ func TestRunDocReviewAppliesFallbackEffortAndTarget(t *testing.T) {
 	}
 	if got.prompt != "ANTISLOP PROMPT" {
 		t.Errorf("prompt = %q, want the caller-built prompt passed through", got.prompt)
+	}
+}
+
+// Antislop runs must carry their own session mode. They previously reused
+// "plan", so every dashboard labelled them plan reviews.
+func TestRunDocReviewRecordsTheRequestedMode(t *testing.T) {
+	loadPlanTestConfig(t, "")
+
+	observed := make(chan string, 1)
+	ex := planExecutor{
+		preflight: func(string) error { return nil },
+		run: func(_ context.Context, sess *session.Session, _, _, _, _ string) (string, int, error) {
+			observed <- sess.Mode
+			return realPlanJSON, 0, nil
+		},
+	}
+
+	_, err := runDocReview(context.Background(), ex, "antislop", "PROMPT", "src/", "", "xhigh", t.TempDir(), "mode", true, []string{"fable"})
+	if err != nil {
+		t.Fatalf("runDocReview: %v", err)
+	}
+	if got := <-observed; got != "antislop" {
+		t.Errorf("session mode = %q, want antislop", got)
+	}
+}
+
+// The plan wrapper must keep its own mode after the mode parameter lands.
+func TestRunPlanReviewStillRecordsPlanMode(t *testing.T) {
+	loadPlanTestConfig(t, "")
+
+	observed := make(chan string, 1)
+	ex := planExecutor{
+		preflight: func(string) error { return nil },
+		run: func(_ context.Context, sess *session.Session, _, _, _, _ string) (string, int, error) {
+			observed <- sess.Mode
+			return realPlanJSON, 0, nil
+		},
+	}
+
+	_, err := runPlanReview(context.Background(), ex, "/tmp/plan.md", "", t.TempDir(), "mode", true, []string{"fable"})
+	if err != nil {
+		t.Fatalf("runPlanReview: %v", err)
+	}
+	if got := <-observed; got != "plan" {
+		t.Errorf("session mode = %q, want plan", got)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -94,6 +95,7 @@ const (
 	iconOpencode = "❯" // OpenCode model
 	iconGrok     = "𝕏" // Grok
 	iconPlan     = "▤" // Plan/spec review
+	iconAntislop = "⌁" // Antislop quality review
 )
 
 // cliLabel returns a display label with icon for a CLI name.
@@ -153,33 +155,19 @@ func formatGroupRow(item *displayItem, width int) string {
 	)
 }
 
+// The derivations below delegate to internal/sessionview so the TUI and the
+// web dashboard cannot disagree. Only presentation stays here.
+
 func groupEffort(item *displayItem) string {
-	if len(item.Sessions) == 0 {
-		return ""
-	}
-	effort := item.Sessions[0].Effort
-	for _, s := range item.Sessions[1:] {
-		if s.Effort != effort {
-			return "mixed"
-		}
-	}
-	return effort
+	return sessionview.Effort(item.Sessions)
 }
 
-// groupIsPlan reports whether a group is a plan review (any session mode "plan").
-// Plan groups run Sol + Fable; everything else grouped is a megareview.
-func groupIsPlan(item *displayItem) bool {
-	for _, s := range item.Sessions {
-		if s.Mode == "plan" {
-			return true
-		}
-	}
-	return false
-}
-
-// groupIcon returns the list-row icon+label for a group ("plan" vs "mega").
+// groupIcon returns the list-row icon and label for a group.
 func groupIcon(item *displayItem) string {
-	if groupIsPlan(item) {
+	switch sessionview.Kind(item.Sessions) {
+	case "antislop":
+		return iconAntislop + " slop"
+	case "plan":
 		return iconPlan + " plan"
 	}
 	reviewers := 0
@@ -194,105 +182,29 @@ func groupIcon(item *displayItem) string {
 	return strings.Repeat(iconOpencode, reviewers) + " mega"
 }
 
-// groupKindLabel returns the human title/mode word for a group.
+// groupKindLabel returns the human title word for a group.
 func groupKindLabel(item *displayItem) string {
-	if groupIsPlan(item) {
-		return "plan"
-	}
-	return "megareview"
-}
-
-// groupEngineLabel names one session's model for group display.
-func groupEngineLabel(s *session.Session) string {
-	return config.EngineLabel(s.CLI, s.Model)
+	return sessionview.Kind(item.Sessions)
 }
 
 // groupCLIs returns the group's distinct public model names joined with "+".
 func groupCLIs(item *displayItem) string {
-	var clis []string
-	seen := map[string]bool{}
-	for _, s := range item.Sessions {
-		label := groupEngineLabel(s)
-		if label != "" && !seen[label] {
-			seen[label] = true
-			clis = append(clis, label)
-		}
-	}
-	return strings.Join(clis, "+")
+	return sessionview.JoinLabels(sessionview.EngineLabels(item.Sessions), "+")
 }
 
 // groupModels returns the distinct public model names in display order.
 func groupModels(item *displayItem) string {
-	var models []string
-	seen := map[string]bool{}
-	for _, s := range item.Sessions {
-		label := config.EngineLabel(s.CLI, s.Model)
-		if label != "" && !seen[label] {
-			seen[label] = true
-			models = append(models, label)
-		}
-	}
-	return strings.Join(models, " + ")
+	return sessionview.JoinLabels(sessionview.EngineLabels(item.Sessions), " + ")
 }
 
 func groupStatus(item *displayItem) string {
-	// Tier: running > queued > failed > completed.
-	for _, s := range item.Sessions {
-		if s.Status == "running" {
-			return "running"
-		}
-	}
-	for _, s := range item.Sessions {
-		if s.Status == "queued" {
-			return "queued"
-		}
-	}
-	for _, s := range item.Sessions {
-		if s.Status == "failed" {
-			return "failed"
-		}
-	}
-	return "completed"
+	return sessionview.Status(item.Sessions)
 }
 
+// groupElapsed is the wall-clock span of the whole group. It previously
+// reported the longest single member, which disagreed with the web dashboard.
 func groupElapsed(item *displayItem) string {
-	var maxDur time.Duration
-	anyRunning := false
-	for _, s := range item.Sessions {
-		if s.Status == "running" {
-			anyRunning = true
-			d := time.Since(s.StartTime)
-			if d > maxDur {
-				maxDur = d
-			}
-		} else if s.EndTime != nil {
-			d := s.EndTime.Sub(s.StartTime)
-			if d > maxDur {
-				maxDur = d
-			}
-		}
-	}
-	if anyRunning {
-		return maxDur.Round(time.Second).String()
-	}
-	// No running session yet — show the longest queue wait if any are queued.
-	if maxDur == 0 {
-		var maxWait time.Duration
-		for _, s := range item.Sessions {
-			if s.Status == "queued" && s.QueuedAt != nil {
-				if w := time.Since(*s.QueuedAt); w > maxWait {
-					maxWait = w
-				}
-			}
-		}
-		if maxWait > 0 {
-			return maxWait.Round(time.Second).String()
-		}
-	}
-	if maxDur > 0 {
-		return maxDur.Round(time.Second).String()
-	}
-	return "-"
+	return sessionview.Elapsed(item.Sessions)
 }
 
 func formatSessionRow(s *session.Session, width int) string {

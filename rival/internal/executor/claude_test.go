@@ -69,3 +69,28 @@ func TestSetClaudeTransportModePreservesPlanTask(t *testing.T) {
 		t.Fatalf("standalone mode = %q, want docker", standalone.Mode)
 	}
 }
+
+// A task session is named by its mode in both dashboards. Writing the
+// transport over that mode labels the run for its whole live execution, which
+// is how antislop runs appeared as megareviews while running.
+func TestSetClaudeTransportModePreservesTaskModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode string
+		want string
+	}{
+		{"plan survives", session.ModePlan, session.ModePlan},
+		{"antislop survives", session.ModeAntislop, session.ModeAntislop},
+		{"raw records transport", "raw", "native"},
+		{"review records transport", "review", "native"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := &session.Session{Mode: tt.mode}
+			setClaudeTransportMode(sess, "native")
+			if sess.Mode != tt.want {
+				t.Errorf("mode = %q, want %q", sess.Mode, tt.want)
+			}
+		})
+	}
+}

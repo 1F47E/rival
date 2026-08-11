@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -41,34 +42,21 @@ func (d *displayItem) IsGroup() bool {
 	return len(d.Sessions) > 1 || (len(d.Sessions) == 1 && d.Sessions[0].GroupID != "")
 }
 
-// groupSessions merges sessions sharing a GroupID into display items.
+// groupSessions merges sessions sharing a GroupID into display items. The
+// bucketing itself lives in internal/sessionview, shared with the web
+// dashboard.
 func groupSessions(sessions []*session.Session) []displayItem {
-	// Collect groups by GroupID, preserving order of first appearance.
-	groups := make(map[string]*displayItem)
-	var order []string
-
-	for _, s := range sessions {
-		if s.GroupID != "" {
-			if g, ok := groups[s.GroupID]; ok {
-				g.Sessions = append(g.Sessions, s)
-			} else {
-				groups[s.GroupID] = &displayItem{Sessions: []*session.Session{s}}
-				order = append(order, s.GroupID)
-			}
-		} else {
-			// Standalone session — use ID as unique key.
-			key := "solo:" + s.ID
-			groups[key] = &displayItem{Sessions: []*session.Session{s}}
-			order = append(order, key)
-		}
-	}
-
-	items := make([]displayItem, 0, len(order))
-	for _, key := range order {
-		session.SortGroupMembers(groups[key].Sessions)
-		items = append(items, *groups[key])
+	buckets := sessionview.Group(sessions)
+	items := make([]displayItem, 0, len(buckets))
+	for _, b := range buckets {
+		items = append(items, toDisplayItem(b))
 	}
 	return items
+}
+
+// toDisplayItem adapts a shared bucket to the TUI's row type.
+func toDisplayItem(b sessionview.Bucket) displayItem {
+	return displayItem{Sessions: b.Sessions}
 }
 
 const pageSize = 100
@@ -90,6 +78,10 @@ type Model struct {
 	quitting       bool
 	totalSessions  int            // total session count (before grouping)
 	logView        viewport.Model // scrollable log pane for the detail view
+	// prompts holds full prompt text for the sessions in the open detail view.
+	// The list itself is built from summaries, which drop prompts to stay cheap.
+	// Loaded on detail entry, cleared on exit.
+	prompts map[string]string
 }
 
 // Version is set from cmd package before launching the TUI.
@@ -108,6 +100,29 @@ func New() Model {
 		// syncDetailViewport; the log content is pre-wrapped, so SoftWrap stays off.
 		logView: viewport.New(viewport.WithWidth(0), viewport.WithHeight(0)),
 	}
+}
+
+// loadPrompts reads the full prompt for every member of the selected item.
+// The list is built from summaries, which drop prompts, so the detail view
+// loads them on demand. A session that cannot be read keeps its preview.
+func (m *Model) loadPrompts() {
+	item := m.selectedItem()
+	if item == nil {
+		return
+	}
+	prompts := make(map[string]string, len(item.Sessions))
+	for _, s := range item.Sessions {
+		if s.Prompt != "" {
+			prompts[s.ID] = s.Prompt
+			continue
+		}
+		full, err := session.Load(s.ID)
+		if err != nil || full == nil {
+			continue
+		}
+		prompts[s.ID] = full.Prompt
+	}
+	m.prompts = prompts
 }
 
 // paginateItems sets the visible slice from allItems.
@@ -208,7 +223,7 @@ func (m *Model) syncDetailViewport(resetToBottom bool) {
 	wasAtBottom := m.logView.AtBottom()
 
 	height := m.contentHeight()
-	meta := renderDetailMeta(item, m.width, height, m.promptExpanded)
+	meta := renderDetailMeta(item, m.width, height, m.promptExpanded, m.prompts)
 	metaLines := strings.Count(meta, "\n") + 1
 
 	m.logView.SetWidth(m.width)
@@ -285,6 +300,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode == viewDetail {
 				m.viewMode = viewList
 				m.promptExpanded = false
+				m.prompts = nil // full prompts are only needed while the detail view is open
 				(&m).syncDetailViewport(false)
 				return m, nil
 			}
@@ -322,11 +338,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						if err := syscall.Kill(s.PID, syscall.SIGTERM); err != nil {
 							// Process already dead — mark failed immediately.
-							_ = s.Fail(1, "killed (process already dead)")
+							failSessionForKill(s, 1, "killed (process already dead)")
 						} else {
 							// Signal sent — mark failed so TUI updates instantly.
 							// The subprocess executor will overwrite with its own status.
-							_ = s.Fail(137, "killed by user")
+							failSessionForKill(s, 137, "killed by user")
 						}
 					}
 				}
@@ -371,6 +387,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.items) > 0 {
 				m.viewMode = viewDetail
 				m.promptExpanded = false
+				(&m).loadPrompts()
 				// Open at the tail: live output and final verdicts both live at
 				// the end of the log.
 				(&m).syncDetailViewport(true)
@@ -652,7 +669,7 @@ func (m Model) viewContent() string {
 	case viewDetail:
 		// Update owns the log content — the view only draws what the viewport
 		// already holds, so no file is read here.
-		meta := renderDetailMeta(m.selectedItem(), m.width, contentHeight, m.promptExpanded)
+		meta := renderDetailMeta(m.selectedItem(), m.width, contentHeight, m.promptExpanded, m.prompts)
 		content = clipLines(meta+"\n"+m.logView.View(), contentHeight)
 		help = m.renderHelp(
 			"  j/k: scroll  g/G: top/bottom  p: prompt  o: open log  x: stop  esc: back  q: quit",

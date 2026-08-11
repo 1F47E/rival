@@ -7,6 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 )
 
 // renderDetailMeta renders only the metadata block of the detail view (title,
@@ -14,16 +15,16 @@ import (
 // scrollable viewport owned by the model, so this function has no log budget
 // math — it only clamps itself to height-3 lines so the viewport is always left
 // at least three rows to draw in.
-func renderDetailMeta(item *displayItem, width, height int, promptExpanded bool) string {
+func renderDetailMeta(item *displayItem, width, height int, promptExpanded bool, prompts map[string]string) string {
 	if item == nil || item.Primary() == nil {
 		return labelStyle.Render("Select a session to view details")
 	}
 
 	var meta string
 	if item.IsGroup() {
-		meta = renderGroupDetailMeta(item, width, promptExpanded)
+		meta = renderGroupDetailMeta(item, width, promptExpanded, prompts)
 	} else {
-		meta = renderSingleDetailMeta(item.Primary(), width, promptExpanded)
+		meta = renderSingleDetailMeta(item.Primary(), width, promptExpanded, prompts)
 	}
 	return clampMeta(meta, height)
 }
@@ -48,7 +49,7 @@ func clampMeta(meta string, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func renderSingleDetailMeta(s *session.Session, width int, promptExpanded bool) string {
+func renderSingleDetailMeta(s *session.Session, width int, promptExpanded bool, prompts map[string]string) string {
 	var meta strings.Builder
 
 	id := s.ID
@@ -82,14 +83,14 @@ func renderSingleDetailMeta(s *session.Session, width int, promptExpanded bool) 
 	}
 
 	renderErrorSection(&meta, s, width)
-	renderPromptSection(&meta, s, width, promptExpanded)
+	renderPromptSection(&meta, s, width, promptExpanded, prompts)
 	meta.WriteString("\n")
 	meta.WriteString(titleStyle.Render("Log"))
 
 	return meta.String()
 }
 
-func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool) string {
+func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool, prompts map[string]string) string {
 	s := item.Primary()
 
 	var essential strings.Builder
@@ -102,7 +103,10 @@ func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool) st
 		id = id[:8]
 	}
 	title := "Megareview"
-	if groupIsPlan(item) {
+	switch sessionview.Kind(item.Sessions) {
+	case "antislop":
+		title = "Antislop Review"
+	case "plan":
 		title = "Plan Review"
 	}
 	essential.WriteString(titleStyle.Render(fmt.Sprintf("%s %s", title, id)))
@@ -124,7 +128,7 @@ func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool) st
 		addField(&essential, "Review", s.ReviewScope, width)
 	}
 
-	renderPromptSection(&essential, s, width, promptExpanded)
+	renderPromptSection(&essential, s, width, promptExpanded, prompts)
 	essential.WriteString("\n")
 	essential.WriteString(titleStyle.Render("Log"))
 
@@ -144,7 +148,7 @@ func groupLogLabel(sess *session.Session) string {
 	if sess.Mode == "consilium" {
 		role = "JUDGE"
 	}
-	label := strings.ToUpper(groupEngineLabel(sess)) + " " + role
+	label := strings.ToUpper(config.EngineLabel(sess.CLI, sess.Model)) + " " + role
 	if sess.Effort != "" {
 		label += " · EFFORT " + sess.Effort
 	}
@@ -169,11 +173,21 @@ func renderErrorSection(b *strings.Builder, s *session.Session, width int) {
 	}
 }
 
-func renderPromptSection(b *strings.Builder, s *session.Session, width int, promptExpanded bool) {
-	prompt := s.Prompt
-	if prompt == "" {
-		prompt = s.PromptPreview
+// promptFor returns the best prompt text available for a session: the full
+// stored prompt when the detail view loaded it, then whatever the record
+// carries, then the summary preview.
+func promptFor(s *session.Session, prompts map[string]string) string {
+	if full, ok := prompts[s.ID]; ok && full != "" {
+		return full
 	}
+	if s.Prompt != "" {
+		return s.Prompt
+	}
+	return s.PromptPreview
+}
+
+func renderPromptSection(b *strings.Builder, s *session.Session, width int, promptExpanded bool, prompts map[string]string) {
+	prompt := promptFor(s, prompts)
 	if prompt == "" {
 		return
 	}

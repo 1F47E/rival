@@ -132,16 +132,17 @@ func RunPlanReview(ctx context.Context, absPath, effort, workdir, groupID string
 // fallbackEffort is the surface's default when neither the invocation nor
 // ~/.rival/config.yaml names an effort; empty keeps the plan-review defaults
 // (DefaultPlanEffort, low for a lone Fable). Antislop passes "xhigh".
-// Sessions keep mode/queue class "plan" — same queue semantics, no new mode.
-func RunDocReview(ctx context.Context, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
-	return runDocReview(ctx, defaultPlanExecutor(), prompt, target, effort, fallbackEffort, workdir, groupID, noQueue, clis)
+// mode is the session mode and the queue ticket label ("plan" or "antislop").
+// Queue behavior does not depend on it: the concurrency limit is global.
+func RunDocReview(ctx context.Context, mode, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+	return runDocReview(ctx, defaultPlanExecutor(), mode, prompt, target, effort, fallbackEffort, workdir, groupID, noQueue, clis)
 }
 
 func runPlanReview(ctx context.Context, ex planExecutor, absPath, effort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
-	return runDocReview(ctx, ex, buildPlanPrompt(absPath), absPath, effort, "", workdir, groupID, noQueue, clis)
+	return runDocReview(ctx, ex, "plan", buildPlanPrompt(absPath), absPath, effort, "", workdir, groupID, noQueue, clis)
 }
 
-func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
+func runDocReview(ctx context.Context, ex planExecutor, mode, prompt, target, effort, fallbackEffort, workdir, groupID string, noQueue bool, clis []string) (*PlanRunResult, error) {
 	if len(clis) == 0 {
 		return nil, fmt.Errorf("no plan models requested")
 	}
@@ -187,7 +188,7 @@ func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, 
 		if err != nil {
 			return nil, fmt.Errorf("resolve %s plan effort: %w", config.EngineLabel(cli, model), err)
 		}
-		sess, err := session.NewQueued(cli, "plan", model, effectiveEffort, workdir, prompt, target, groupID)
+		sess, err := session.NewQueued(cli, mode, model, effectiveEffort, workdir, prompt, target, groupID)
 		if err != nil {
 			return nil, fmt.Errorf("create %s plan session: %w", config.EngineLabel(cli, model), err)
 		}
@@ -204,7 +205,7 @@ func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, 
 
 	// One queue ticket covers all plan sessions; all of them are the run set
 	// (there is no deferred consilium phase like megareview has).
-	release, err := waitForGroupSlot(ctx, noQueue, sessions, sessions, workdir, groupID, "plan")
+	release, err := waitForGroupSlot(ctx, noQueue, sessions, sessions, workdir, groupID, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +227,7 @@ func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, 
 		wg.Add(1)
 		go func(index int, pl plan) {
 			defer wg.Done()
-			runs <- indexedRun{index: index, run: runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, workdir)}
+			runs <- indexedRun{index: index, run: runPlanCLI(ctx, ex, pl.sess, pl.cli, prompt, workdir, mode)}
 		}(i, p)
 	}
 	wg.Wait()
@@ -242,7 +243,7 @@ func runDocReview(ctx context.Context, ex planExecutor, prompt, target, effort, 
 
 // runPlanCLI executes one CLI's plan review and finalizes its session, returning
 // the raw outcome for assemblePlanResults to interpret.
-func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli, prompt, workdir string) planCLIRun {
+func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli, prompt, workdir, mode string) planCLIRun {
 	model := planModelForCLI(cli)
 
 	defer func() {
@@ -256,8 +257,8 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 	raw, exitCode, err := ex.run(ctx, sess, cli, prompt, sess.Effort, workdir)
 
 	// Keep this defensive restoration for injected/custom executors. The built-in
-	// Fable executor preserves plan mode throughout the live run.
-	sess.Mode = "plan"
+	// Fable executor preserves the session mode throughout the live run.
+	sess.Mode = mode
 
 	if err != nil {
 		reason := runTimeoutReason(ctx, config.EngineLabel(cli, model), planFailureReason(cli, err.Error()))

@@ -7,6 +7,7 @@ import (
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog/log"
 )
@@ -34,10 +35,21 @@ func WatchSessions(ctx context.Context, events chan<- SessionEvent) error {
 		return err
 	}
 
-	// Send initial state.
-	sessions := session.LoadAll()
-	events <- SessionEvent{Sessions: sessions}
+	// One shared cache serves every reload below. It reparses only the files
+	// whose size or mtime changed, instead of re-reading every session JSON
+	// (prompts included) on each event.
+	cache := sessionview.New(dir)
 
+	// Send initial state.
+	sessions, _ := cache.Load()
+	select {
+	case events <- SessionEvent{Sessions: sessions}:
+	case <-ctx.Done():
+		_ = watcher.Close()
+		return ctx.Err()
+	}
+
+	var lastRevision uint64
 	go func() {
 		defer func() { _ = watcher.Close() }()
 		for {
@@ -52,8 +64,21 @@ func WatchSessions(ctx context.Context, events chan<- SessionEvent) error {
 					isJSON := strings.HasSuffix(event.Name, ".json") && !strings.HasSuffix(event.Name, ".json.tmp")
 					isLog := strings.HasSuffix(event.Name, ".log")
 					if isJSON || isLog {
-						sessions := session.LoadAll()
-						events <- SessionEvent{Sessions: sessions}
+						sessions, revision := cache.Load()
+						// Log appends fire constantly during a run. When nothing
+						// the dashboard displays changed, skip the redraw.
+						if revision == lastRevision && !isJSON {
+							continue
+						}
+						lastRevision = revision
+						// A blocked send would stall this goroutine and leak it
+						// past cancellation, because the buffered channel fills
+						// under log churn.
+						select {
+						case events <- SessionEvent{Sessions: sessions}:
+						case <-ctx.Done():
+							return
+						}
 					}
 				}
 			case err, ok := <-watcher.Errors:
