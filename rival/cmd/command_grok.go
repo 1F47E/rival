@@ -11,6 +11,7 @@ import (
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/executor"
 	"github.com/1F47E/rival/internal/parser"
+	"github.com/1F47E/rival/internal/review"
 	"github.com/1F47E/rival/internal/session"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -115,7 +116,8 @@ func commandGrokAction(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	release, err := waitForQueueSlot(ctx, noQueue, []*session.Session{sess}, mode, workdir)
+	sessions := []*session.Session{sess}
+	release, err := review.WaitForGroupSlot(ctx, noQueue, sessions, sessions, workdir, sess.GroupID, mode)
 	if err != nil {
 		return err
 	}
@@ -130,14 +132,14 @@ func commandGrokAction(cmd *cobra.Command, args []string) error {
 	// write access. No stdout mirror in command mode — skill reads final output.
 	result, err := executor.RunGrok(runCtx, sess, parsed.Prompt, effort, workdir, mode == "review", nil)
 	if err != nil {
-		if saveErr := sess.Fail(1, runTimeoutFailMsg(runCtx, err.Error())); saveErr != nil {
+		if saveErr := sess.Fail(1, review.RunTimeoutReason(runCtx, config.EngineLabel(sess.CLI, sess.Model), err.Error())); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 		return err
 	}
 
 	if result.ExitCode != 0 {
-		if saveErr := sess.Fail(result.ExitCode, runTimeoutFailMsg(runCtx, fmt.Sprintf("%s exited with code %d", config.GrokLabel, result.ExitCode))); saveErr != nil {
+		if saveErr := sess.Fail(result.ExitCode, review.RunTimeoutReason(runCtx, config.EngineLabel(sess.CLI, sess.Model), fmt.Sprintf("%s exited with code %d", config.GrokLabel, result.ExitCode))); saveErr != nil {
 			log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session failure")
 		}
 	} else {

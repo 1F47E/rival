@@ -19,15 +19,21 @@ func buildPlanPrompt(absPath string) string {
 	return strings.ReplaceAll(config.PlanReviewPrompt, "{FILE}", absPath)
 }
 
-// runTimeoutReason turns an executor error into a session-failure reason. When
-// the run's context hit the RIVAL_RUN_TIMEOUT deadline, it returns a clear
-// "run timeout" message so a hung provider CLI is distinguishable from a normal
-// failure; otherwise it returns the provider's own error text.
-func runTimeoutReason(ctx context.Context, model, fallback string) string {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Sprintf("%s run timeout after %s (RIVAL_RUN_TIMEOUT) — model did not finish", model, config.RunTimeout())
+// RunTimeoutReason turns a failed run into a session-failure reason. When the
+// run's context hit the RIVAL_RUN_TIMEOUT deadline it reports the timeout, so
+// a hung provider is distinguishable from a normal failure; otherwise it
+// returns fallback, which is the provider's own error text.
+//
+// label names the model in the message. Pass an empty label when the caller
+// has no model name to report.
+func RunTimeoutReason(ctx context.Context, label, fallback string) string {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fallback
 	}
-	return fallback
+	if label == "" {
+		return fmt.Sprintf("run timeout after %s (RIVAL_RUN_TIMEOUT) — model did not finish", config.RunTimeout())
+	}
+	return fmt.Sprintf("%s run timeout after %s (RIVAL_RUN_TIMEOUT) — model did not finish", label, config.RunTimeout())
 }
 
 // planFailureReason keeps user-facing failures model-specific even though the
@@ -205,7 +211,7 @@ func runDocReview(ctx context.Context, ex planExecutor, mode, prompt, target, ef
 
 	// One queue ticket covers all plan sessions; all of them are the run set
 	// (there is no deferred consilium phase like megareview has).
-	release, err := waitForGroupSlot(ctx, noQueue, sessions, sessions, workdir, groupID, mode)
+	release, err := WaitForGroupSlot(ctx, noQueue, sessions, sessions, workdir, groupID, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +267,7 @@ func runPlanCLI(ctx context.Context, ex planExecutor, sess *session.Session, cli
 	sess.Mode = mode
 
 	if err != nil {
-		reason := runTimeoutReason(ctx, config.EngineLabel(cli, model), planFailureReason(cli, err.Error()))
+		reason := RunTimeoutReason(ctx, config.EngineLabel(cli, model), planFailureReason(cli, err.Error()))
 		_ = sess.Fail(1, reason)
 		return planCLIRun{CLI: cli, Model: model, Err: err, Reason: reason, ExitCode: -1}
 	}

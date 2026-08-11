@@ -146,7 +146,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// sessions are marked running on promotion; the consilium session stays
 	// queued until its phase, but is already in the ticket for liveness.
 	reviewerSessions := sessions[:len(plans)]
-	release, err := waitForGroupSlot(ctx, noQueue, sessions, reviewerSessions, workdir, groupID, "megareview")
+	release, err := WaitForGroupSlot(ctx, noQueue, sessions, reviewerSessions, workdir, groupID, "megareview")
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,16 @@ func newConsiliumSession(judgeCLI, model, scope, effort, workdir, groupID string
 // megareview's consilium judge) stay queued until their own phase but are already
 // in the ticket for liveness. Mirrors cmd.waitForQueueSlot but lives here to
 // avoid an import cycle.
-func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSessions []*session.Session, workdir, groupID, mode string) (release func(), err error) {
+// WaitForGroupSlot enqueues one ticket covering ticketSessions and blocks
+// until a slot is free, then marks runSessions running. The two lists differ
+// for a megareview, whose judge holds a ticket without starting yet; pass the
+// same slice for both when every session starts together.
+//
+// Progress goes to stderr with the "rival queue:" prefix, because stdout
+// carries the final output that skills present verbatim. On cancel or timeout
+// the sessions are failed with a clear reason. Call the returned release via
+// defer to free the slot.
+func WaitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSessions []*session.Session, workdir, groupID, mode string) (release func(), err error) {
 	markRunning := func() error {
 		for i, s := range runSessions {
 			if err := s.MarkRunning(); err != nil {
