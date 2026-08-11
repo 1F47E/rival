@@ -48,7 +48,7 @@ func TestSingleDetailStillShowsItsEffort(t *testing.T) {
 		Status:    "completed",
 		StartTime: time.Now(),
 	}}}
-	got := renderDetailMeta(item, 80, 30, false)
+	got := renderDetailMeta(item, 80, 30, false, nil)
 	if !strings.Contains(got, "Effort") || !strings.Contains(got, "ultra") {
 		t.Fatalf("single-session detail meta omitted effort:\n%s", got)
 	}
