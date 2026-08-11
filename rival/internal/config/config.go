@@ -15,12 +15,15 @@ import (
 )
 
 const (
-	GPT56SolModel        = "gpt-5.6-sol"
-	CodexModel           = GPT56SolModel // legacy internal alias
-	FableModel           = "claude-fable-5"
-	SolLabel             = "sol"
-	FableLabel           = "fable"
-	K3Label              = "kimi-k3"
+	GPT56SolModel = "gpt-5.6-sol"
+	CodexModel    = GPT56SolModel // legacy internal alias
+	FableModel    = "claude-fable-5"
+	SolLabel      = "sol"
+	FableLabel    = "fable"
+	K3Label       = "kimi-k3"
+	// K3CommandName is the cobra command word for K3. It differs from
+	// K3Label, which is the public display and error name.
+	K3CommandName        = "k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
 	GrokModel            = "grok-4.5"
 	GrokLabel            = "grok"
