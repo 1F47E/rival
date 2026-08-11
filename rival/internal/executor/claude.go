@@ -51,11 +51,16 @@ func runClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, 
 }
 
 // setClaudeTransportMode records the transport for ordinary model runs while
-// preserving a plan session's task identity throughout its live execution.
+// preserving a task session's identity throughout its live execution.
+//
+// Plan and antislop runs are named by their mode in both dashboards. Writing
+// the transport over that mode would label them for the whole live run, so
+// only ordinary runs record it.
 func setClaudeTransportMode(sess *session.Session, transport string) {
-	if sess.Mode != "plan" {
-		sess.Mode = transport
+	if session.IsTaskMode(sess.Mode) {
+		return
 	}
+	sess.Mode = transport
 }
 
 func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
