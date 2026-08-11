@@ -1,4 +1,4 @@
-package server
+package sessionview
 
 import (
 	"errors"
@@ -17,24 +17,30 @@ type cachedSession struct {
 	session *session.Session
 }
 
-// sessionCache keeps the web dashboard responsive without changing the session
-// storage format used by the CLI and TUI. Only files whose metadata changed are
-// reparsed, and parsed summaries never retain full prompts.
-type sessionCache struct {
+// Cache keeps the dashboards responsive without changing the session storage
+// format used by the CLI. Only files whose size or mtime changed are reparsed,
+// and parsed summaries never retain full prompts. Both front ends share one
+// instance per directory, so they cannot read different data.
+type Cache struct {
 	mu       sync.Mutex
 	dir      string
 	files    map[string]cachedSession
 	revision uint64
 }
 
-func newSessionCache(dir string) *sessionCache {
-	return &sessionCache{
+// New returns a Cache over the session directory dir.
+func New(dir string) *Cache {
+	return &Cache{
 		dir:   dir,
 		files: make(map[string]cachedSession),
 	}
 }
 
-func (c *sessionCache) load() ([]*session.Session, uint64) {
+// Load returns every cached session, newest first, plus a revision counter.
+// The revision increments only when this call observes a file that was added,
+// removed, or changed by size or mtime. Two calls with no file change return
+// the same number, so a caller can skip redundant work.
+func (c *Cache) Load() ([]*session.Session, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -89,7 +95,8 @@ func (c *sessionCache) load() ([]*session.Session, uint64) {
 	return cachedSessionValues(c.files), c.revision
 }
 
-func (c *sessionCache) get(id string) *session.Session {
+// Get returns one cached session by ID, or nil when it is not cached.
+func (c *Cache) Get(id string) *session.Session {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if cached, ok := c.files[id+".json"]; ok {

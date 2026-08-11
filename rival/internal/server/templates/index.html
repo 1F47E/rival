@@ -1031,10 +1031,14 @@ function formatElapsedFrom(value) {
 }
 
 function elapsed(group) {
+  // The API value is the wall-clock span of every member, computed by
+  // internal/sessionview. A per-member recompute here would report one
+  // member's time for a whole group, and would disagree with the TUI.
   const primary = group.sessions[0] || {};
+  if (group.elapsed && group.elapsed !== '-') return group.elapsed;
   if (group.status === 'running') return formatElapsedFrom(primary.start_time);
   if (group.status === 'queued') return formatElapsedFrom(primary.queued_at || primary.start_time);
-  return group.elapsed || primary.duration || '—';
+  return primary.duration || '—';
 }
 
 function formatBytes(bytes) {

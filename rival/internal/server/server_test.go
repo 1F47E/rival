@@ -15,6 +15,7 @@ import (
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/logfmt"
 	"github.com/1F47E/rival/internal/session"
+	"github.com/1F47E/rival/internal/sessionview"
 )
 
 func TestGroupSessions(t *testing.T) {
@@ -235,8 +236,8 @@ func TestGroupStatus(t *testing.T) {
 			for _, s := range tt.statuses {
 				sessions = append(sessions, &session.Session{Status: s})
 			}
-			if got := groupStatus(sessions); got != tt.want {
-				t.Errorf("groupStatus(%v) = %q, want %q", tt.statuses, got, tt.want)
+			if got := sessionview.Status(sessions); got != tt.want {
+				t.Errorf("sessionview.Status(%v) = %q, want %q", tt.statuses, got, tt.want)
 			}
 		})
 	}
@@ -249,10 +250,10 @@ func TestGroupModels_Dedupes(t *testing.T) {
 		{Model: config.GPT56SolModel}, // duplicate
 		{Model: ""},                   // skipped
 	}
-	got := groupModels(sessions)
+	got := sessionview.JoinLabels(sessionview.EngineLabels(sessions), " + ")
 	want := config.SolLabel + " + " + config.FableLabel
 	if got != want {
-		t.Errorf("groupModels() = %q, want %q", got, want)
+		t.Errorf("EngineLabels joined = %q, want %q", got, want)
 	}
 }
 
@@ -262,12 +263,12 @@ func TestGroupElapsedUsesWallClockSpanAcrossSequentialMembers(t *testing.T) {
 	judgeStart := reviewerEnd
 	judgeEnd := judgeStart.Add(3 * time.Minute)
 
-	got := groupElapsed([]*session.Session{
+	got := sessionview.Elapsed([]*session.Session{
 		{Status: "completed", StartTime: start, EndTime: &reviewerEnd, Duration: "4m0s"},
 		{Status: "failed", StartTime: judgeStart, EndTime: &judgeEnd, Duration: "3m0s"},
 	})
 	if got != "7m0s" {
-		t.Fatalf("groupElapsed() = %q, want wall-clock span %q", got, "7m0s")
+		t.Fatalf("sessionview.Elapsed() = %q, want wall-clock span %q", got, "7m0s")
 	}
 }
 
