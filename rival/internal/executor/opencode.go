@@ -108,10 +108,6 @@ func opencodeRunArgs(model, effort, workdir string) []string {
 	return args
 }
 
-func opencodeRunEnv(sessionID, model string) []string {
-	return opencodeRunEnvWith(sessionID, model, "", OpencodeRunOpts{})
-}
-
 func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) []string {
 	permission := opts.Permission
 	if permission == "" {

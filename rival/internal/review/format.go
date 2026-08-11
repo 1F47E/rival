@@ -38,7 +38,7 @@ func FormatConsole(output *ConsiliumOutput, inputs []ReviewInput, threshold int,
 	// distinct instead of appearing as repeated "opencode" entries.
 	var reviewers []string
 	for _, input := range inputs {
-		reviewers = append(reviewers, fmt.Sprintf("%s (%s)", config.EngineLabel(input.CLI, input.Model), input.Role))
+		reviewers = append(reviewers, config.EngineLabel(input.CLI, input.Model))
 	}
 	sb.WriteString(fmt.Sprintf("Reviewed by: %s\n", strings.Join(reviewers, ", ")))
 	if len(skipped) > 0 {

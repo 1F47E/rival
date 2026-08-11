@@ -22,7 +22,6 @@ type ReviewerFinding struct {
 type ReviewInput struct {
 	CLI       string          `json:"cli"`
 	Model     string          `json:"model"`
-	Role      string          `json:"role"`
 	RawOutput string          `json:"raw_output"`
 	Parsed    *ReviewerOutput `json:"parsed,omitempty"`
 }

@@ -42,25 +42,17 @@ type RunResult struct {
 type cliResult struct {
 	CLI       string
 	Model     string
-	Role      Role
 	RawOutput string
 	ExitCode  int
 	Err       error
 }
 
-// reviewerPlan pairs a pre-created session with the model, role, and adapter it
+// reviewerPlan pairs a pre-created session with the model and adapter it
 // will run.
 type reviewerPlan struct {
 	cli   string
 	model string
-	role  Role
 	sess  *session.Session
-}
-
-// RunMegaReview runs the curated default roster. It is kept as the stable
-// entry point for callers that do not need per-run model selection.
-func RunMegaReview(ctx context.Context, scope, effort, workdir, groupID string, noQueue bool) (*RunResult, error) {
-	return RunMegaReviewWithModels(ctx, scope, effort, workdir, groupID, noQueue, nil)
 }
 
 // RunMegaReviewWithModels runs the full pipeline: resolve roster → preflight →
@@ -121,21 +113,21 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// Create reviewer sessions up front (status "queued") so they appear in
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
-	addReviewer := func(cli, model string, role Role) error {
+	addReviewer := func(cli, model string) error {
 		effectiveEffort, err := reviewerEffortFor(cli, model, effort)
 		if err != nil {
 			return err
 		}
-		sess, err := newReviewerSession(cli, model, role, scope, effectiveEffort, workdir, groupID)
+		sess, err := newReviewerSession(cli, model, scope, effectiveEffort, workdir, groupID)
 		if err != nil {
 			return err
 		}
-		plans = append(plans, reviewerPlan{cli: cli, model: sess.Model, role: role, sess: sess})
+		plans = append(plans, reviewerPlan{cli: cli, model: sess.Model, sess: sess})
 		sessions = append(sessions, sess)
 		return nil
 	}
 	for _, target := range available {
-		if err := addReviewer(target.CLI, target.Model, Role(target.Role)); err != nil {
+		if err := addReviewer(target.CLI, target.Model); err != nil {
 			return nil, err
 		}
 	}
@@ -178,7 +170,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		wg.Add(1)
 		go func(index int, pl reviewerPlan) {
 			defer wg.Done()
-			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.role, scope, workdir)}
+			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, scope, workdir)}
 		}(i, p)
 	}
 
@@ -232,7 +224,6 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		inputs = append(inputs, ReviewInput{
 			CLI:       r.CLI,
 			Model:     r.Model,
-			Role:      string(r.Role),
 			RawOutput: config.PublicRuntimeLog(r.CLI, r.Model, r.RawOutput),
 			Parsed:    parsed,
 		})
@@ -312,15 +303,12 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 }
 
 // newReviewerSession creates a queued session for one reviewer. An empty model
-// or role is derived from the adapter.
-func newReviewerSession(cli, model string, role Role, scope, effort, workdir, groupID string) (*session.Session, error) {
-	if role == "" {
-		role = RoleForCLI(cli)
-	}
+// is derived from the adapter.
+func newReviewerSession(cli, model string, scope, effort, workdir, groupID string) (*session.Session, error) {
 	if model == "" {
 		model = modelForCLI(cli)
 	}
-	prompt := BuildRolePrompt(role, scope)
+	prompt := BuildReviewerPrompt(scope)
 	sess, err := session.NewQueued(cli, "megareview", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("create %s session: %w", config.EngineLabel(cli, model), err)
@@ -408,16 +396,13 @@ func waitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSess
 	return m.Release, nil
 }
 
-// runReviewer runs one reviewer. An empty model or role falls back to the
+// runReviewer runs one reviewer. An empty model falls back to the
 // adapter-derived default.
-func runReviewer(ctx context.Context, sess *session.Session, cli, model string, role Role, scope, workdir string) cliResult {
-	if role == "" {
-		role = RoleForCLI(cli)
-	}
+func runReviewer(ctx context.Context, sess *session.Session, cli, model string, scope, workdir string) cliResult {
 	if model == "" {
 		model = modelForCLI(cli)
 	}
-	prompt := BuildRolePrompt(role, scope)
+	prompt := BuildReviewerPrompt(scope)
 
 	defer func() {
 		if sess.Status == "running" || sess.Status == "queued" {
@@ -425,18 +410,18 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 		}
 	}()
 
-	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Str("role", string(role)).Msg("starting reviewer")
+	log.Info().Str("session", sess.ID).Str("reviewer", config.EngineLabel(cli, model)).Msg("starting reviewer")
 
 	run, ok := reviewerRunnerFor(cli)
 	if !ok {
-		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("unsupported cli: %s", cli)}
+		return cliResult{CLI: cli, Model: model, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
 	result, err := run(ctx, sess, prompt, sess.Effort, workdir, model)
 
 	if err != nil {
 		reason := config.PublicRuntimeError(cli, model, err.Error())
 		_ = sess.Fail(1, reason)
-		return cliResult{CLI: cli, Model: model, Role: role, Err: errors.New(reason)}
+		return cliResult{CLI: cli, Model: model, Err: errors.New(reason)}
 	}
 
 	// Read the log file to get raw output, including stdout and stderr.
@@ -445,7 +430,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 		if result.ExitCode != 0 {
 			_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", config.EngineLabel(cli, model), result.ExitCode))
 		}
-		return cliResult{CLI: cli, Model: model, Role: role, Err: fmt.Errorf("read log: %w", err), ExitCode: result.ExitCode}
+		return cliResult{CLI: cli, Model: model, Err: fmt.Errorf("read log: %w", err), ExitCode: result.ExitCode}
 	}
 
 	raw := string(logData)
@@ -467,7 +452,6 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 	return cliResult{
 		CLI:       cli,
 		Model:     model,
-		Role:      role,
 		RawOutput: raw,
 		ExitCode:  result.ExitCode,
 	}

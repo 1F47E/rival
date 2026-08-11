@@ -33,8 +33,13 @@ func reloadByID(t *testing.T, id string) *Session {
 func TestReapOrphansSparesDeadProviderWithLiveOwner(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
+	s, err := NewQueued("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// New() used to create a running session outright; MarkRunning reproduces
+	// that state now that queued is the only entry point.
+	if err := s.MarkRunning(); err != nil {
 		t.Fatal(err)
 	}
 	// create() records this test process as the (alive) owner; simulate the
@@ -55,8 +60,13 @@ func TestReapOrphansSparesDeadProviderWithLiveOwner(t *testing.T) {
 func TestReapOrphansReapsWhenOwnerAndProviderDead(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
+	s, err := NewQueued("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// New() used to create a running session outright; MarkRunning reproduces
+	// that state now that queued is the only entry point.
+	if err := s.MarkRunning(); err != nil {
 		t.Fatal(err)
 	}
 	s.PID = deadPID
@@ -86,8 +96,13 @@ func TestReapOrphansReapsWhenOwnerAndProviderDead(t *testing.T) {
 func TestReapOrphansReapsLegacySessionWithoutOwner(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	s, err := New("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
+	s, err := NewQueued("opencode", "raw", config.KimiModel, "max", t.TempDir(), "prompt", "", "")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// New() used to create a running session outright; MarkRunning reproduces
+	// that state now that queued is the only entry point.
+	if err := s.MarkRunning(); err != nil {
 		t.Fatal(err)
 	}
 	s.PID = deadPID

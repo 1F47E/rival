@@ -26,11 +26,6 @@ func ParseGPT56SolArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", config.IsValidReviewEffort, config.ReviewEfforts)
 }
 
-// ParseCodexArgs is retained for internal compatibility with older callers.
-func ParseCodexArgs(raw string) (*ParseResult, error) {
-	return ParseGPT56SolArgs(raw)
-}
-
 // ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
 // Identical grammar to claude.
 func ParseFableArgs(raw string) (*ParseResult, error) {

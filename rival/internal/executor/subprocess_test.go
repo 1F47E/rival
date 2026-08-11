@@ -60,9 +60,12 @@ func TestRunSubprocess_ContextTimeoutKillsChild(t *testing.T) {
 	// Keep all session file writes inside a temp HOME.
 	t.Setenv("HOME", t.TempDir())
 
-	sess, err := session.New("test", "raw", "none", "low", t.TempDir(), "", "", "")
+	sess, err := session.NewQueued("test", "raw", "none", "low", t.TempDir(), "", "", "")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
+	}
+	if err := sess.MarkRunning(); err != nil {
+		t.Fatalf("mark running: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)

@@ -1,26 +1,14 @@
 package review
 
+// These cases moved here when role.go was deleted. They test functions that
+// survived the role removal: model derivation, judge selection, and the K3
+// reasoning-variant pin.
+
 import (
 	"testing"
 
 	"github.com/1F47E/rival/internal/config"
 )
-
-func TestRoleForCLI_Opencode(t *testing.T) {
-	if got := RoleForCLI("opencode"); got != RoleBugHunter {
-		t.Errorf("RoleForCLI(opencode) = %q, want %q", got, RoleBugHunter)
-	}
-	// Sanity: the Sol adapter fallback remains unchanged.
-	if got := RoleForCLI("codex"); got != RoleBugHunter {
-		t.Errorf("RoleForCLI(codex) = %q, want bug_hunter", got)
-	}
-}
-
-func TestRoleForCLI_Grok(t *testing.T) {
-	if got := RoleForCLI(config.GrokLabel); got != RoleBugHunter {
-		t.Errorf("RoleForCLI(grok) = %q, want %q", got, RoleBugHunter)
-	}
-}
 
 func TestModelForCLI_Opencode(t *testing.T) {
 	if got := modelForCLI("opencode"); got != config.KimiModel {
@@ -58,8 +46,8 @@ func TestPickJudge(t *testing.T) {
 				{CLI: "opencode", Model: config.KimiModel},
 			},
 			[]config.ReviewTarget{
-				{CLI: "opencode", Model: config.KimiModel, Role: "code_quality"},
-				{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"},
+				{CLI: "opencode", Model: config.KimiModel},
+				{CLI: "codex", Model: config.GPT56SolModel},
 			},
 			"opencode", config.KimiModel,
 		},
@@ -72,7 +60,7 @@ func TestPickJudge(t *testing.T) {
 		{
 			"single GPT-5.6-Sol success judges itself",
 			[]ReviewInput{{CLI: "codex", Model: config.GPT56SolModel}},
-			[]config.ReviewTarget{{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"}},
+			[]config.ReviewTarget{{CLI: "codex", Model: config.GPT56SolModel}},
 			"codex", config.GPT56SolModel,
 		},
 		{
