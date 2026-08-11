@@ -135,7 +135,7 @@ func formatGroupRow(item *displayItem, width int) string {
 	// Elapsed: max of the group.
 	elapsed := groupElapsed(item)
 
-	wd := truncatePath(s.WorkDir, cols.workdir)
+	wd := truncate(s.WorkDir, cols.workdir)
 	prompt := ""
 	if cols.prompt > 0 {
 		prompt = truncate(s.PromptPreview, cols.prompt)
@@ -221,7 +221,7 @@ func formatSessionRow(s *session.Session, width int) string {
 	elapsed := formatElapsed(s)
 
 	// Truncate workdir and prompt to fit.
-	wd := truncatePath(s.WorkDir, cols.workdir)
+	wd := truncate(s.WorkDir, cols.workdir)
 	prompt := ""
 	if cols.prompt > 0 {
 		prompt = truncate(s.PromptPreview, cols.prompt)
@@ -315,20 +315,6 @@ func truncate(s string, max int) string {
 		return s
 	}
 	if max <= 3 {
-		return string(runes[:max])
-	}
-	return string(runes[:max-1]) + "…"
-}
-
-func truncatePath(path string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	runes := []rune(path)
-	if len(runes) <= max {
-		return path
-	}
-	if max <= 4 {
 		return string(runes[:max])
 	}
 	return string(runes[:max-1]) + "…"

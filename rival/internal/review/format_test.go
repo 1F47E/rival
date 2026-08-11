@@ -13,11 +13,11 @@ func TestFormatConsole_UsesConcreteSelectedModelLabels(t *testing.T) {
 		Recommendation: Recommendation{Status: "approve", Summary: "solid"},
 	}
 	inputs := []ReviewInput{{
-		CLI: "opencode", Model: config.KimiModel, Role: "code_quality",
+		CLI: "opencode", Model: config.KimiModel,
 	}}
 	got := FormatConsole(output, inputs, 6, "opencode", config.KimiModel, nil)
 	for _, want := range []string{
-		"Reviewed by: kimi-k3 (code_quality)",
+		"Reviewed by: kimi-k3",
 		"Judge: kimi-k3 (consilium)",
 	} {
 		if !strings.Contains(got, want) {
@@ -35,9 +35,9 @@ func TestFormatConsole_UsesSolName(t *testing.T) {
 		}},
 		Recommendation: Recommendation{Status: "approve", Summary: "solid"},
 	}
-	inputs := []ReviewInput{{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter"}}
+	inputs := []ReviewInput{{CLI: "codex", Model: config.GPT56SolModel}}
 	got := FormatConsole(output, inputs, 6, "codex", config.GPT56SolModel, nil)
-	if !strings.Contains(got, "Reviewed by: "+config.SolLabel+" (bug_hunter)") ||
+	if !strings.Contains(got, "Reviewed by: "+config.SolLabel) ||
 		!strings.Contains(got, "Judge: "+config.SolLabel+" (consilium)") ||
 		!strings.Contains(got, "Found by: "+config.SolLabel) {
 		t.Fatalf("formatted review does not use the model name:\n%s", got)

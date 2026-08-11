@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/queue"
@@ -50,7 +51,7 @@ var rootCmd = &cobra.Command{
 		// Sessions first: queue ticket liveness reads session state.
 		session.ReapOrphans()
 		queue.New().ReapDead()
-		update.Check(Version)
+		startUpdateCheck()
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -61,9 +62,43 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// updateCheckDone is closed when the background update check finishes. It is
+// nil when no check was started.
+var updateCheckDone chan struct{}
+
+// startUpdateCheck runs the release check off the startup path. A stale cache
+// makes update.Check perform an HTTP GET, and every command used to pay that
+// latency before doing any work.
+func startUpdateCheck() {
+	done := make(chan struct{})
+	updateCheckDone = done
+	go func() {
+		defer close(done)
+		update.Check(Version)
+	}()
+}
+
+// waitForUpdateCheck gives the background check a bounded moment to print its
+// notice after the command finishes. The bound matches the check's own HTTP
+// timeout, so a slow network delays nothing beyond what it already budgets.
+func waitForUpdateCheck() {
+	if updateCheckDone == nil {
+		return
+	}
+	select {
+	case <-updateCheckDone:
+	case <-time.After(updateCheckWait):
+	}
+}
+
+const updateCheckWait = 2 * time.Second
+
 func Execute() {
 	defer telemetry.RecoverPanic()
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	// Both exit paths below call os.Exit, so the join has to happen first.
+	waitForUpdateCheck()
+	if err != nil {
 		var exitErr *ExitCodeError
 		if errors.As(err, &exitErr) {
 			_, _ = fmt.Fprintln(os.Stderr, exitErr.Err)

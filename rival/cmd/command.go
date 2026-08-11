@@ -19,18 +19,3 @@ func init() {
 	commandCmd.PersistentFlags().Bool("detach", false, "run detached in a new process session; prints 'rival: detached pid=N' and exits")
 	rootCmd.AddCommand(commandCmd)
 }
-
-// mirrorHiddenHelp keeps compatibility aliases callable without exposing their
-// legacy names when someone explicitly asks an alias for help.
-func mirrorHiddenHelp(alias, canonical *cobra.Command) {
-	alias.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
-		previousOut := canonical.OutOrStdout()
-		previousErr := canonical.ErrOrStderr()
-		defer canonical.SetOut(previousOut)
-		defer canonical.SetErr(previousErr)
-
-		canonical.SetOut(cmd.OutOrStdout())
-		canonical.SetErr(cmd.ErrOrStderr())
-		_ = canonical.Help()
-	})
-}

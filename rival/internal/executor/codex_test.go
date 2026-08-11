@@ -43,3 +43,15 @@ func TestRunCodexModelRejectsUnsupportedModel(t *testing.T) {
 		t.Fatalf("unsupported Sol model returned a result: %#v", result)
 	}
 }
+
+// Sol exposes ultra as its own reasoning level, distinct from xhigh. Unifying
+// the ladder must not alias the two: the value reaches the runtime verbatim.
+func TestCodexPassesUltraAndXhighThroughUnaliased(t *testing.T) {
+	for _, effort := range []string{"xhigh", "ultra"} {
+		args := codexRunArgs(config.GPT56SolModel, effort, "/tmp")
+		want := "model_reasoning_effort=" + effort
+		if !strings.Contains(strings.Join(args, " "), want) {
+			t.Errorf("codex args for %q missing %q: %v", effort, want, args)
+		}
+	}
+}

@@ -70,12 +70,6 @@ type Session struct {
 	OwnerPIDStart int64 `json:"owner_pid_start,omitempty"`
 }
 
-// New creates a new session in "running" state and writes the initial JSON file.
-// groupID links sessions that belong together (e.g. megareview); pass "" for standalone.
-func New(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string) (*Session, error) {
-	return create(cli, mode, model, effort, workdir, prompt, reviewScope, groupID, "running")
-}
-
 // NewQueued creates a session in "queued" state — visible in the TUI/web while
 // the process waits for a queue slot. Call MarkRunning when the slot is acquired.
 func NewQueued(cli, mode, model, effort, workdir, prompt, reviewScope, groupID string) (*Session, error) {

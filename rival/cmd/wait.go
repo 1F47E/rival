@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -147,7 +149,7 @@ type waiter struct {
 	loadSession func(id string) sessionStatus
 	ralive      func(pid int, start int64) bool
 	now         func() time.Time
-	out         interface{ Write([]byte) (int, error) }
+	out         io.Writer
 }
 
 // run polls until an outcome is decided and returns the exit code. It prints a
@@ -271,7 +273,7 @@ func (w *waiter) lastQueueLine() string {
 		return ""
 	}
 	last := ""
-	for _, line := range splitLines(string(data)) {
+	for _, line := range strings.Split(string(data), "\n") {
 		if len(line) >= 12 && line[:12] == "rival queue:" {
 			last = line
 		}
@@ -306,7 +308,7 @@ func parseLogFile(path string) (pid int, pidStart int64, ids []string, err error
 	// The run's own start lines carry message:"starting …"; reaper lines carry
 	// message:"reaping …". Require both fields on the same line.
 	seen := map[string]bool{}
-	for _, line := range splitLines(text) {
+	for _, line := range strings.Split(text, "\n") {
 		if !startingMarkerRe.MatchString(line) {
 			continue
 		}
@@ -347,19 +349,4 @@ func loadSessionStatus(id string) sessionStatus {
 		ErrorMsg: s.ErrorMsg,
 		found:    true,
 	}
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
 }

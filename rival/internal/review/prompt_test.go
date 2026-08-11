@@ -10,8 +10,8 @@ import (
 func TestBuildConsiliumPrompt_NilParsedBounded(t *testing.T) {
 	bigRaw := strings.Repeat("X", 1_000_000)
 	inputs := []ReviewInput{
-		{CLI: "opencode", Model: config.KimiModel, Role: "arch_security", RawOutput: bigRaw},
-		{CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter", RawOutput: "small"},
+		{CLI: "opencode", Model: config.KimiModel, RawOutput: bigRaw},
+		{CLI: "codex", Model: config.GPT56SolModel, RawOutput: "small"},
 	}
 	prompt := BuildConsiliumPrompt(inputs, "the entire project", 6)
 	if len(prompt) > 20_000 {
@@ -22,7 +22,7 @@ func TestBuildConsiliumPrompt_NilParsedBounded(t *testing.T) {
 func TestBuildConsiliumPrompt_ParsedUsedVerbatim(t *testing.T) {
 	inputs := []ReviewInput{
 		{
-			CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter",
+			CLI: "codex", Model: config.GPT56SolModel,
 			Parsed: &ReviewerOutput{Summary: "all good", Findings: nil},
 		},
 	}
@@ -34,7 +34,7 @@ func TestBuildConsiliumPrompt_ParsedUsedVerbatim(t *testing.T) {
 
 func TestBuildConsiliumPrompt_UsesGPTModelName(t *testing.T) {
 	prompt := BuildConsiliumPrompt([]ReviewInput{{
-		CLI: "codex", Model: config.GPT56SolModel, Role: "bug_hunter", Parsed: &ReviewerOutput{},
+		CLI: "codex", Model: config.GPT56SolModel, Parsed: &ReviewerOutput{},
 	}}, "src/", 6)
 	for _, want := range []string{
 		"REVIEW FROM " + config.SolLabel,
@@ -52,8 +52,8 @@ func TestBuildConsiliumPrompt_UsesGPTModelName(t *testing.T) {
 
 func TestBuildConsiliumPrompt_UsesConcreteOpencodeLabels(t *testing.T) {
 	inputs := []ReviewInput{
-		{CLI: "opencode", Model: config.KimiModel, Role: "arch_security", Parsed: &ReviewerOutput{}},
-		{CLI: "fable", Model: config.FableModel, Role: "code_quality", Parsed: &ReviewerOutput{}},
+		{CLI: "opencode", Model: config.KimiModel, Parsed: &ReviewerOutput{}},
+		{CLI: "fable", Model: config.FableModel, Parsed: &ReviewerOutput{}},
 	}
 	prompt := BuildConsiliumPrompt(inputs, "src/", 6)
 	for _, want := range []string{
@@ -71,7 +71,7 @@ func TestBuildConsiliumPrompt_UsesConcreteOpencodeLabels(t *testing.T) {
 
 func TestBuildConsiliumPrompt_FoundBySchemaMatchesExactSubset(t *testing.T) {
 	prompt := BuildConsiliumPrompt([]ReviewInput{{
-		CLI: "opencode", Model: config.KimiModel, Role: "code_quality", Parsed: &ReviewerOutput{},
+		CLI: "opencode", Model: config.KimiModel, Parsed: &ReviewerOutput{},
 	}}, "src/", 6)
 	if !strings.Contains(prompt, `"found_by": ["kimi-k3"]`) {
 		t.Fatalf("single-model found_by schema does not match selection:\n%s", prompt)

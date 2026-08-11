@@ -15,12 +15,15 @@ import (
 )
 
 const (
-	GPT56SolModel        = "gpt-5.6-sol"
-	CodexModel           = GPT56SolModel // legacy internal alias
-	FableModel           = "claude-fable-5"
-	SolLabel             = "sol"
-	FableLabel           = "fable"
-	K3Label              = "kimi-k3"
+	GPT56SolModel = "gpt-5.6-sol"
+	CodexModel    = GPT56SolModel // legacy internal alias
+	FableModel    = "claude-fable-5"
+	SolLabel      = "sol"
+	FableLabel    = "fable"
+	K3Label       = "kimi-k3"
+	// K3CommandName is the cobra command word for K3. It differs from
+	// K3Label, which is the public display and error name.
+	K3CommandName        = "k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
 	GrokModel            = "grok-4.5"
 	GrokLabel            = "grok"
@@ -42,14 +45,13 @@ const (
 	QueuePollInterval    = 2 * time.Second
 )
 
-// ValidEfforts includes xhigh for compatibility with existing commands and
-// saved invocations. Review and plan help intentionally advertises the simpler
-// low/medium/high/ultra ladder, with high as the default.
-var ValidEfforts = []string{"low", "medium", "high", "xhigh"}
-
-// ReviewEfforts is the public effort ladder shown by code-review and
-// plan-review commands. xhigh remains accepted as a compatibility alias.
-var ReviewEfforts = []string{"low", "medium", "high", "ultra"}
+// ValidEfforts is the one effort ladder every surface accepts and advertises.
+//
+// xhigh and ultra are NOT interchangeable: the codex runtime passes the value
+// through verbatim and Sol treats ultra as its own reasoning level, so neither
+// may be aliased to the other. Runtimes that expose a shorter menu clamp at
+// their own boundary (see ClaudeEffortLevel and GrokEffort).
+var ValidEfforts = []string{"low", "medium", "high", "xhigh", "ultra"}
 
 // ClaudeEffortLevel maps rival effort levels to claude CLI --effort values.
 var ClaudeEffortLevel = map[string]string{
@@ -283,20 +285,19 @@ func publicReviewHeader(line string) string {
 }
 
 // ReviewTarget is one concrete reviewer selected for a megareview run. CLI is
-// the internal executable adapter, Model is the concrete model id, and Role
-// controls the review lens. User-facing output always uses Model.
+// the internal executable adapter and Model is the concrete model id.
+// User-facing output always uses Model.
 type ReviewTarget struct {
 	CLI   string
 	Model string
-	Role  string
 }
 
 // DefaultReviewTargets returns the curated two-model megareview roster. The
 // order is also the consilium judge preference order.
 func DefaultReviewTargets() []ReviewTarget {
 	return []ReviewTarget{
-		{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"},
-		{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"},
+		{CLI: "codex", Model: GPT56SolModel},
+		{CLI: "opencode", Model: KimiModel},
 	}
 }
 
@@ -343,13 +344,13 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		var expanded []ReviewTarget
 		switch alias {
 		case SolLabel, GPT56SolModel:
-			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel, Role: "bug_hunter"}}
+			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel}}
 		case "k3", "kimi-k3":
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
-			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Role: "bug_hunter"}}
+			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel}}
 		case GrokLabel:
 			// Opt-in only: grok never joins the default roster.
-			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel, Role: "bug_hunter"}}
+			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel}}
 		default:
 			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3, grok", raw)
 		}
@@ -589,13 +590,6 @@ func IsValidEffort(e string) bool {
 	return false
 }
 
-// IsValidReviewEffort validates review and plan effort values. It intentionally
-// accepts xhigh so existing invocations keep working even though new help text
-// presents ultra as the top-level choice.
-func IsValidReviewEffort(e string) bool {
-	return IsValidEffort(e) || e == "ultra"
-}
-
 // SessionDirPath returns the absolute path to ~/.rival/sessions.
 func SessionDirPath() string {
 	home, err := os.UserHomeDir()
@@ -828,7 +822,7 @@ func validConfiguredModelEffort(label, effort string) bool {
 	if label == "kimi-k3" {
 		return effort == "max"
 	}
-	return IsValidReviewEffort(effort)
+	return IsValidEffort(effort)
 }
 
 // ResolveEffort applies the documented precedence for one concrete model:
@@ -842,7 +836,7 @@ func ResolveEffort(model, override, fallback string) (string, error) {
 		if label == "kimi-k3" {
 			return "max", nil
 		}
-		if !IsValidReviewEffort(override) {
+		if !IsValidEffort(override) {
 			return "", fmt.Errorf("invalid effort %q for %s", override, label)
 		}
 		return override, nil
@@ -859,17 +853,10 @@ func ResolveEffort(model, override, fallback string) (string, error) {
 	if label == "kimi-k3" {
 		return "max", nil
 	}
-	if !IsValidReviewEffort(fallback) {
+	if !IsValidEffort(fallback) {
 		return "", fmt.Errorf("invalid fallback effort %q for %s", fallback, label)
 	}
 	return fallback, nil
-}
-
-// EffectiveEffort resolves an optional invocation override against the
-// model's built-in default. Callers with a surface-specific legacy default
-// should use ResolveEffort directly.
-func EffectiveEffort(model, override string) (string, error) {
-	return ResolveEffort(model, override, "")
 }
 
 // ClaudeSubscription returns the configured subscription type ("team", "personal", or "").

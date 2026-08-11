@@ -168,13 +168,12 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 	cases := []struct {
 		selector string
 		model    string
-		role     string
 	}{
-		{"sol", GPT56SolModel, "bug_hunter"},
-		{GPT56SolModel, GPT56SolModel, "bug_hunter"},
-		{"k3", KimiModel, "bug_hunter"},
-		{"kimi-k3", KimiModel, "bug_hunter"},
-		{GrokLabel, GrokModel, "bug_hunter"},
+		{"sol", GPT56SolModel},
+		{GPT56SolModel, GPT56SolModel},
+		{"k3", KimiModel},
+		{"kimi-k3", KimiModel},
+		{GrokLabel, GrokModel},
 	}
 	for _, tc := range cases {
 		t.Run(tc.selector, func(t *testing.T) {
@@ -182,7 +181,7 @@ func TestResolveReviewTargets_AliasesAndRoles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(got) != 1 || got[0].Model != tc.model || got[0].Role != tc.role {
+			if len(got) != 1 || got[0].Model != tc.model {
 				t.Fatalf("ResolveReviewTargets(%q) = %+v", tc.selector, got)
 			}
 			wantCLI := "opencode"

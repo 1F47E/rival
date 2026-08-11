@@ -72,8 +72,8 @@ func TestOpencodeRunArgs_UsesOnlySupportedVariants(t *testing.T) {
 
 func TestOpencodeRunEnv_IsolatesSessionDatabases(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "sk-test")
-	first := strings.Join(opencodeRunEnv("session-a", config.KimiModel), "\n")
-	second := strings.Join(opencodeRunEnv("session-b", config.KimiModel), "\n")
+	first := strings.Join(opencodeRunEnvWith("session-a", config.KimiModel, "", OpencodeRunOpts{}), "\n")
+	second := strings.Join(opencodeRunEnvWith("session-b", config.KimiModel, "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(first, "OPENCODE_DB=rival-session-a.db") {
 		t.Fatalf("first env missing isolated DB: %s", first)
 	}

@@ -120,10 +120,10 @@ func TestAssemblePlanResults_EmptyOutputSkips(t *testing.T) {
 }
 
 func TestPlanEngineLabel(t *testing.T) {
-	if got := planEngineLabel("codex", config.GPT56SolModel); got != config.SolLabel {
+	if got := config.EngineLabel("codex", config.GPT56SolModel); got != config.SolLabel {
 		t.Errorf("sol label = %q, want %q", got, config.SolLabel)
 	}
-	if got := planEngineLabel("fable", config.FableModel); got != config.FableLabel {
+	if got := config.EngineLabel("fable", config.FableModel); got != config.FableLabel {
 		t.Errorf("fable label = %q, want %q", got, config.FableLabel)
 	}
 }

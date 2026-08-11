@@ -8,25 +8,20 @@ import (
 	"github.com/1F47E/rival/internal/config"
 )
 
-// BuildRolePrompt builds a role-specific review prompt by combining
-// scope context with role-specific instructions and JSON output contract.
-func BuildRolePrompt(role Role, scope string) string {
+// BuildReviewerPrompt builds the reviewer prompt by combining scope context
+// with the bug-hunter instructions and the JSON output contract.
+func BuildReviewerPrompt(scope string) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Review scope: %s\n\n", scope))
 
-	// Check for user-configured role prompt override.
-	if override, ok := config.RolePromptOverride(string(role)); ok {
+	// A user can still override the reviewer prompt through the "bug_hunter"
+	// key in ~/.rival/config.yaml, which is the only role name the config
+	// surface ever accepted.
+	if override, ok := config.RolePromptOverride("bug_hunter"); ok {
 		sb.WriteString(override)
 	} else {
-		switch role {
-		case RoleBugHunter:
-			sb.WriteString(bugHunterInstructions())
-		case RoleArchSecurity:
-			sb.WriteString(archSecurityInstructions())
-		case RoleCodeQuality:
-			sb.WriteString(codeQualityInstructions())
-		}
+		sb.WriteString(bugHunterInstructions())
 	}
 
 	sb.WriteString(reviewerJSONContract())
@@ -50,7 +45,7 @@ func BuildConsiliumPrompt(inputs []ReviewInput, scope string, threshold int) str
 	sb.WriteString(fmt.Sprintf("## Reviewer Findings (%d reviewers)\n\n", len(inputs)))
 	for _, input := range inputs {
 		label := config.EngineLabel(input.CLI, input.Model)
-		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s [role: %s] ===\n\n", label, input.Role))
+		sb.WriteString(fmt.Sprintf("=== REVIEW FROM %s ===\n\n", label))
 		if input.Parsed != nil {
 			if data, err := json.MarshalIndent(input.Parsed, "", "  "); err == nil {
 				sb.WriteString(string(data))
@@ -104,86 +99,6 @@ Rules:
 - read the code in the review scope before producing findings
 
 You are not the final judge. Optimize for true positives, not completeness.
-`
-}
-
-func archSecurityInstructions() string {
-	return `## Role: Architecture & Security Adversarial Reviewer
-
-You are the architecture and security adversarial reviewer for this code review.
-
-Your job is to attack the change from angles that a code-level bug hunter may miss.
-
-Focus on:
-- architectural regressions
-- broken user flows across multiple files
-- incomplete refactors
-- concurrency and lifecycle issues
-- security and permission problems
-- hidden impact on tests, configuration, and integration boundaries
-- error handling gaps that create silent failures
-
-AI-generated code checklist (check these explicitly):
-- security anti-patterns: string interpolation in SQL/shell queries, innerHTML, hardcoded secrets/tokens, missing auth middleware on new routes
-- over-abstraction: new abstraction layers (factories, interfaces, helpers) not justified by the spec — flag if a simple inline would work
-- unbounded queries: missing LIMIT/pagination on list endpoints, queries that work with 10 rows but die with 10,000
-- scope creep: files modified outside the review scope that weren't requested
-
-Do not spend time on:
-- formatting or naming
-- trivial cleanup
-- low-value debug leftovers unless they create real product risk
-
-Rules:
-- prioritize findings that require reasoning across files or flows
-- challenge whether a new abstraction or refactor is actually complete
-- report only issues supported by the provided context
-- every finding must include exact file and line
-- if the issue is mainly an unfinished flow, explain the broken user outcome clearly
-- read the code in the review scope before producing findings
-
-You are not the final judge. Your value is independent attack from a different angle.
-`
-}
-
-func codeQualityInstructions() string {
-	return `## Role: Code Quality & Developer Experience Reviewer
-
-You are the code quality and developer experience reviewer for this code review.
-
-Your job is to find issues that hurt readability, maintainability, and developer ergonomics.
-
-Focus on:
-- readability and naming clarity
-- unnecessary complexity and over-engineering
-- error message quality and developer-facing UX
-- API ergonomics and consistency
-- maintainability traps and future-proofing pitfalls
-- missing documentation for non-obvious logic
-- developer footguns and surprising behavior
-- dead code and unused abstractions
-- inconsistent patterns within the codebase
-- poor separation of concerns
-
-AI-generated code checklist (check these explicitly):
-- commented-out code with TODO/FIXME: half-finished work disguised as a deliverable — flag it
-- file count vs scope: if the spec is small but the diff creates many new files, flag over-engineering
-- unnecessary abstractions: factories, interfaces, helpers that can be inlined without losing clarity
-- shallow tests: assertions that check truthiness/defined instead of specific expected values
-
-Do not spend time on:
-- formatting or whitespace
-- trivial style preferences
-- performance unless it directly impacts DX (e.g., slow dev builds)
-
-Rules:
-- report only issues that would meaningfully improve a developer's experience working with this code
-- prefer fewer, stronger findings over many weak ones
-- every finding must include exact file and line
-- if code is functional but confusing, explain the confusion clearly
-- read the code in the review scope before producing findings
-
-You are not the final judge. Your value is the DX perspective that other reviewers miss.
 `
 }
 

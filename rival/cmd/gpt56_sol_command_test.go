@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -20,47 +19,6 @@ func TestSolCommandsArePublicAndDeferToConfiguredEffort(t *testing.T) {
 	effort := runSolCmd.Flags().Lookup("effort")
 	if effort == nil || effort.DefValue != "" {
 		t.Fatalf("run effort default = %v, want configured-default sentinel", effort)
-	}
-}
-
-func TestLegacyStandaloneCommandsAreHidden(t *testing.T) {
-	if !commandGPT56SolCmd.Hidden || !runGPT56SolCmd.Hidden || !commandCodexCmd.Hidden || !runCodexCmd.Hidden {
-		t.Fatal("legacy standalone commands must stay hidden")
-	}
-}
-
-func TestLegacyStandaloneHelpUsesOnlyPublicNames(t *testing.T) {
-	tests := []struct {
-		name      string
-		alias     *cobra.Command
-		want      string
-		forbidden []string
-	}{
-		{"versioned Sol command", commandGPT56SolCmd, "rival command sol", []string{"gpt-5.6"}},
-		{"versioned Sol run", runGPT56SolCmd, "rival run sol", []string{"gpt-5.6"}},
-		{"legacy Sol command adapter", commandCodexCmd, "rival command sol", []string{"codex", "gpt-5.6"}},
-		{"legacy Sol run adapter", runCodexCmd, "rival run sol", []string{"codex", "gpt-5.6"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var output bytes.Buffer
-			tt.alias.SetOut(&output)
-			tt.alias.SetErr(&output)
-			defer tt.alias.SetOut(nil)
-			defer tt.alias.SetErr(nil)
-
-			tt.alias.HelpFunc()(tt.alias, nil)
-			got := strings.ToLower(output.String())
-			if !strings.Contains(got, tt.want) {
-				t.Fatalf("help = %q, want public usage %q", got, tt.want)
-			}
-			for _, forbidden := range tt.forbidden {
-				if strings.Contains(got, forbidden) {
-					t.Fatalf("help exposes hidden name %q: %q", forbidden, got)
-				}
-			}
-		})
 	}
 }
 
