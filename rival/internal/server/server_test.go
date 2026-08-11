@@ -646,3 +646,19 @@ func TestListPageValidationAndCap(t *testing.T) {
 		}
 	}
 }
+
+// An antislop run must reach the API as its own kind. It previously reused
+// the plan mode, so the dashboard labelled it a plan review.
+func TestGroupKindReportsAntislop(t *testing.T) {
+	sessions := []*session.Session{
+		{ID: "a", GroupID: "g", Mode: session.ModeAntislop, Status: "completed", CLI: "codex", Model: config.GPT56SolModel},
+		{ID: "b", GroupID: "g", Mode: session.ModeAntislop, Status: "completed", CLI: "fable", Model: config.FableModel},
+	}
+	groups := groupSessions(sessions)
+	if len(groups) != 1 {
+		t.Fatalf("got %d groups, want 1", len(groups))
+	}
+	if groups[0].Kind != "antislop" {
+		t.Errorf("group kind = %q, want antislop", groups[0].Kind)
+	}
+}

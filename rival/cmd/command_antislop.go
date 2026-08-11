@@ -12,6 +12,7 @@ import (
 	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/parser"
 	"github.com/1F47E/rival/internal/review"
+	"github.com/1F47E/rival/internal/session"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -172,7 +173,7 @@ func commandAntislopAction(cmd *cobra.Command, args []string) error {
 
 	groupID := uuid.New().String()
 
-	result, err := review.RunDocReview(ctx, prompt, target, effort, config.DefaultAntislopEffort, workdir, groupID, noQueue, clis)
+	result, err := review.RunDocReview(ctx, session.ModeAntislop, prompt, target, effort, config.DefaultAntislopEffort, workdir, groupID, noQueue, clis)
 	if err != nil {
 		return err
 	}

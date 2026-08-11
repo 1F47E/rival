@@ -21,6 +21,13 @@ func pidStartNanos(pid int) int64 {
 	return n
 }
 
+// Session modes. The dashboards label a run by its mode, so a new run type
+// needs its own value here rather than reusing an existing one.
+const (
+	ModePlan     = "plan"
+	ModeAntislop = "antislop"
+)
+
 type Session struct {
 	ID            string     `json:"id"`
 	GroupID       string     `json:"group_id,omitempty"`
