@@ -148,19 +148,51 @@ func TestClaudeAuth(t *testing.T) {
 	}
 }
 
-func TestResolveReviewTargets_DefaultIsCuratedTwoModelRoster(t *testing.T) {
+// The default roster dropped K3 on 2026-08-14. K3 stays selectable with
+// -m k3, but it no longer bug-hunts alongside Sol by default.
+func TestResolveReviewTargets_DefaultIsSolAlone(t *testing.T) {
 	got, err := ResolveReviewTargets(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("default target count = %d, want 2: %+v", len(got), got)
+	if len(got) != 1 {
+		t.Fatalf("default target count = %d, want 1: %+v", len(got), got)
 	}
 	if got[0].CLI != "codex" || got[0].Model != GPT56SolModel {
-		t.Fatalf("first default target = %+v, want %s", got[0], GPT56SolModel)
+		t.Fatalf("default target = %+v, want %s", got[0], GPT56SolModel)
 	}
-	if got[1].CLI != "opencode" || got[1].Model != KimiModel {
-		t.Fatalf("unexpected default target order: %+v", got)
+	if got[0].Prompt != PromptBugHunter {
+		t.Errorf("Sol runs the %s lens by default, want bug hunting", got[0].Prompt)
+	}
+}
+
+// K3 always carries the security lens, wherever it is selected.
+func TestResolveReviewTargets_K3AlwaysCarriesSecurity(t *testing.T) {
+	for _, alias := range []string{"k3", "kimi-k3"} {
+		got, err := ResolveReviewTargets([]string{alias})
+		if err != nil {
+			t.Fatalf("%s: %v", alias, err)
+		}
+		if len(got) != 1 || got[0].Model != KimiModel {
+			t.Fatalf("%s resolved to %+v", alias, got)
+		}
+		if got[0].Prompt != PromptSecurity {
+			t.Errorf("%s runs the %s lens, want security", alias, got[0].Prompt)
+		}
+	}
+}
+
+// A mixed roster carries two different lenses, which is the point.
+func TestResolveReviewTargets_MixedLenses(t *testing.T) {
+	got, err := ResolveReviewTargets([]string{"sol,k3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d targets, want 2: %+v", len(got), got)
+	}
+	if got[0].Prompt != PromptBugHunter || got[1].Prompt != PromptSecurity {
+		t.Errorf("lenses = %s, %s; want bug hunting then security", got[0].Prompt, got[1].Prompt)
 	}
 }
 

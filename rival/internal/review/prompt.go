@@ -10,18 +10,21 @@ import (
 
 // BuildReviewerPrompt builds the reviewer prompt by combining scope context
 // with the bug-hunter instructions and the JSON output contract.
-func BuildReviewerPrompt(scope string) string {
+func BuildReviewerPrompt(scope string, kind config.PromptKind) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Review scope: %s\n\n", scope))
 
-	// A user can still override the reviewer prompt through the "bug_hunter"
-	// key in ~/.rival/config.yaml, which is the only role name the config
-	// surface ever accepted.
-	if override, ok := config.RolePromptOverride("bug_hunter"); ok {
+	// Both prompts stay overridable through ~/.rival/config.yaml. An empty
+	// override falls through rather than producing an empty prompt.
+	key, builtin := "bug_hunter", bugHunterInstructions
+	if kind == config.PromptSecurity {
+		key, builtin = "security", securityInstructions
+	}
+	if override, ok := config.RolePromptOverride(key); ok && strings.TrimSpace(override) != "" {
 		sb.WriteString(override)
 	} else {
-		sb.WriteString(bugHunterInstructions())
+		sb.WriteString(builtin())
 	}
 
 	sb.WriteString(reviewerJSONContract())
@@ -40,6 +43,7 @@ func BuildConsiliumPrompt(inputs []ReviewInput, scope string, threshold int) str
 	sb.WriteString(fmt.Sprintf("Review scope: %s\n\n", scope))
 
 	sb.WriteString(consiliumInstructions(threshold, reviewerLabels))
+	sb.WriteString(reviewerLensMap(inputs))
 
 	// Reviewer findings
 	sb.WriteString(fmt.Sprintf("## Reviewer Findings (%d reviewers)\n\n", len(inputs)))
@@ -102,6 +106,28 @@ You are not the final judge. Optimize for true positives, not completeness.
 `
 }
 
+// reviewerLensMap tells the judge which reviewer looked for what. Without it
+// the judge cannot tell a finding that nobody corroborated from one that only
+// a single reviewer was equipped to find.
+func reviewerLensMap(inputs []ReviewInput) string {
+	var sb strings.Builder
+	sb.WriteString("## Reviewer lenses\n\n")
+	for _, input := range inputs {
+		fmt.Fprintf(&sb, "- %s reviewed for: %s\n", config.EngineLabel(input.CLI, input.Model), input.Prompt)
+	}
+	sb.WriteString(`
+Reviewers can carry different lenses. Absence of corroboration from a reviewer
+that was not looking for a class of defect is NOT evidence against a finding.
+Do not lower confidence, and do not drop a finding, merely because only the
+reviewer equipped to find it reported it.
+
+The consensus bonus still applies whenever two reviewers independently report
+the same issue, whatever lens each of them used.
+
+`)
+	return sb.String()
+}
+
 func consiliumInstructions(threshold int, reviewerLabels []string) string {
 	return fmt.Sprintf(`## Instructions
 
@@ -135,6 +161,63 @@ Severity levels:
 - low: Minor issue, edge case, improvement suggestion
 
 `, strings.Join(reviewerLabels, ", "), threshold)
+}
+
+// securityInstructions is the vulnerability-hunting lens. It shares the JSON
+// contract with the bug hunter so one parser and one formatter serve both.
+//
+// The twelve classes below are the taxonomy the plan review settled on. Each
+// is asserted by a test, because a prompt that quietly loses a class produces
+// a review that looks complete while never checking for it.
+func securityInstructions() string {
+	return `## Role: Security Reviewer
+
+You are the security reviewer for this code review. Hunt exploitable
+vulnerabilities, not style and not ordinary logic bugs.
+
+Work through every class below. For each finding, state the attack: what an
+attacker controls, what they reach, and what they get.
+
+1. **Injection** — SQL, shell, template, LDAP, XPath, or NoSQL built from
+   untrusted input; interpolation where a parameterized API exists.
+2. **Authorization** — missing or wrong ownership checks; an identifier from
+   the request used to fetch a record without proving the caller may see it
+   (IDOR); privilege escalation through a mass-assigned field.
+3. **Authentication** — guessable or missing session invalidation, tokens
+   that never expire, comparison of secrets with a non-constant-time
+   operation, credentials accepted from an untrusted source.
+4. **Crypto** — a broken or ad-hoc algorithm, a static IV or nonce, a key
+   derived from something predictable, randomness from a non-cryptographic
+   source.
+5. **Path traversal** — a filename or path segment from input reaching the
+   filesystem without containment; archive extraction that trusts entry
+   names.
+6. **SSRF** — a URL, host, or port from input driving an outbound request;
+   redirects followed into an internal network; metadata endpoints reachable.
+7. **Deserialization** — untrusted input decoded into typed objects, or a
+   format that can instantiate arbitrary types.
+8. **Secret exposure** — credentials in logs, error text, URLs, or client
+   responses; keys committed to the repository; a token widened beyond the
+   scope it needs.
+9. **Input validation** — missing bounds or type checks that reach memory,
+   allocation, or a parser; an integer that can overflow into an index or a
+   size.
+10. **CSRF** — a state-changing route with no token or origin check, or one
+    whose check can be bypassed by method or content type.
+11. **Open redirect** — a redirect target taken from input without an
+    allowlist, including the login-return case.
+12. **Resource exhaustion** — an unbounded read, allocation, or loop driven
+    by input; a regex that backtracks exponentially; a missing timeout or
+    limit on work an attacker can trigger repeatedly.
+
+Rules:
+- Report only what you can tie to exact code. Name the file and the line.
+- Prefer few strong findings over many weak ones. If a class does not apply
+  to this code, say nothing about it rather than inventing a finding.
+- If the code is genuinely sound, say so and return no findings.
+- Do not report style, naming, or ordinary logic bugs. Another reviewer
+  covers those.
+`
 }
 
 func reviewerJSONContract() string {

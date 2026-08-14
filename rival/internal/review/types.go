@@ -1,5 +1,7 @@
 package review
 
+import "github.com/1F47E/rival/internal/config"
+
 // ReviewerOutput is the structured JSON every reviewer must emit.
 type ReviewerOutput struct {
 	Summary  string            `json:"summary"`
@@ -20,10 +22,14 @@ type ReviewerFinding struct {
 
 // ReviewInput holds the output from a single CLI reviewer for the consilium.
 type ReviewInput struct {
-	CLI       string          `json:"cli"`
-	Model     string          `json:"model"`
-	RawOutput string          `json:"raw_output"`
-	Parsed    *ReviewerOutput `json:"parsed,omitempty"`
+	CLI   string `json:"cli"`
+	Model string `json:"model"`
+	// Prompt is the lens this reviewer ran. The judge needs it: a finding
+	// only one reviewer could have produced must not be discounted for
+	// lacking corroboration from a reviewer that was not looking for it.
+	Prompt    config.PromptKind `json:"-"`
+	RawOutput string            `json:"raw_output"`
+	Parsed    *ReviewerOutput   `json:"parsed,omitempty"`
 }
 
 // Finding is a single code review finding (consilium judge output).

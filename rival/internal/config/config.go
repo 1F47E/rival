@@ -290,14 +290,18 @@ func publicReviewHeader(line string) string {
 type ReviewTarget struct {
 	CLI   string
 	Model string
+	// Prompt selects the lens this reviewer runs. The zero value is the bug
+	// hunter, so only targets that need a different lens set it.
+	Prompt PromptKind
 }
 
 // DefaultReviewTargets returns the curated two-model megareview roster. The
 // order is also the consilium judge preference order.
 func DefaultReviewTargets() []ReviewTarget {
+	// K3 left the default roster on 2026-08-14. It stays selectable with
+	// -m k3, where it always carries the security lens.
 	return []ReviewTarget{
 		{CLI: "codex", Model: GPT56SolModel},
-		{CLI: "opencode", Model: KimiModel},
 	}
 }
 
@@ -346,8 +350,9 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		case SolLabel, GPT56SolModel:
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel}}
 		case "k3", "kimi-k3":
+			// K3 only ever runs the security lens, in any roster.
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
-			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel}}
+			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Prompt: PromptSecurity}}
 		case GrokLabel:
 			// Opt-in only: grok never joins the default roster.
 			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel}}
@@ -579,6 +584,24 @@ Rules:
 - A lean plan gets a high rating and few or zero findings. Do not invent problems, and do not pad this review.
 
 ` + antislopJSONContract
+
+// PromptKind selects which reviewer prompt a target runs. The zero value is
+// the bug hunter, so an unset field keeps the existing behavior.
+type PromptKind int
+
+const (
+	PromptBugHunter PromptKind = iota
+	PromptSecurity
+)
+
+// String names the lens for the consilium judge, which needs to know that
+// reviewers looked for different things.
+func (k PromptKind) String() string {
+	if k == PromptSecurity {
+		return "security"
+	}
+	return "bug hunting"
+}
 
 // SecurityModel describes one model that can run the security review. Both
 // entries run through the OpenCode adapter, so the differences between them

@@ -40,8 +40,10 @@ type RunResult struct {
 
 // cliResult holds the outcome of a single CLI reviewer.
 type cliResult struct {
-	CLI       string
-	Model     string
+	CLI   string
+	Model string
+	// Kind is the lens this reviewer ran, carried so the judge can see it.
+	Kind      config.PromptKind
 	RawOutput string
 	ExitCode  int
 	Err       error
@@ -52,7 +54,10 @@ type cliResult struct {
 type reviewerPlan struct {
 	cli   string
 	model string
-	sess  *session.Session
+	// kind is the lens this reviewer runs. runReviewer rebuilds the prompt,
+	// so it must travel with the plan rather than only reaching the session.
+	kind config.PromptKind
+	sess *session.Session
 }
 
 // RunMegaReviewWithModels runs the full pipeline: resolve roster → preflight →
@@ -113,21 +118,21 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 	// Create reviewer sessions up front (status "queued") so they appear in
 	// the TUI/web while waiting, and so the queue ticket can reference them.
 	var plans []reviewerPlan
-	addReviewer := func(cli, model string) error {
+	addReviewer := func(cli, model string, kind config.PromptKind) error {
 		effectiveEffort, err := reviewerEffortFor(cli, model, effort)
 		if err != nil {
 			return err
 		}
-		sess, err := newReviewerSession(cli, model, scope, effectiveEffort, workdir, groupID)
+		sess, err := newReviewerSession(cli, model, kind, scope, effectiveEffort, workdir, groupID)
 		if err != nil {
 			return err
 		}
-		plans = append(plans, reviewerPlan{cli: cli, model: sess.Model, sess: sess})
+		plans = append(plans, reviewerPlan{cli: cli, model: sess.Model, kind: kind, sess: sess})
 		sessions = append(sessions, sess)
 		return nil
 	}
 	for _, target := range available {
-		if err := addReviewer(target.CLI, target.Model); err != nil {
+		if err := addReviewer(target.CLI, target.Model, target.Prompt); err != nil {
 			return nil, err
 		}
 	}
@@ -170,7 +175,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		wg.Add(1)
 		go func(index int, pl reviewerPlan) {
 			defer wg.Done()
-			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, scope, workdir)}
+			results <- indexedCLIResult{index: index, result: runReviewer(ctx, pl.sess, pl.cli, pl.model, pl.kind, scope, workdir)}
 		}(i, p)
 	}
 
@@ -224,6 +229,7 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 		inputs = append(inputs, ReviewInput{
 			CLI:       r.CLI,
 			Model:     r.Model,
+			Prompt:    r.Kind,
 			RawOutput: config.PublicRuntimeLog(r.CLI, r.Model, r.RawOutput),
 			Parsed:    parsed,
 		})
@@ -304,11 +310,11 @@ func RunMegaReviewWithModels(ctx context.Context, scope, effort, workdir, groupI
 
 // newReviewerSession creates a queued session for one reviewer. An empty model
 // is derived from the adapter.
-func newReviewerSession(cli, model string, scope, effort, workdir, groupID string) (*session.Session, error) {
+func newReviewerSession(cli, model string, kind config.PromptKind, scope, effort, workdir, groupID string) (*session.Session, error) {
 	if model == "" {
 		model = modelForCLI(cli)
 	}
-	prompt := BuildReviewerPrompt(scope)
+	prompt := BuildReviewerPrompt(scope, kind)
 	sess, err := session.NewQueued(cli, "megareview", model, effort, workdir, prompt, scope, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("create %s session: %w", config.EngineLabel(cli, model), err)
@@ -406,11 +412,11 @@ func WaitForGroupSlot(ctx context.Context, noQueue bool, ticketSessions, runSess
 
 // runReviewer runs one reviewer. An empty model falls back to the
 // adapter-derived default.
-func runReviewer(ctx context.Context, sess *session.Session, cli, model string, scope, workdir string) cliResult {
+func runReviewer(ctx context.Context, sess *session.Session, cli, model string, kind config.PromptKind, scope, workdir string) cliResult {
 	if model == "" {
 		model = modelForCLI(cli)
 	}
-	prompt := BuildReviewerPrompt(scope)
+	prompt := BuildReviewerPrompt(scope, kind)
 
 	defer func() {
 		if sess.Status == "running" || sess.Status == "queued" {
@@ -422,14 +428,14 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 
 	run, ok := reviewerRunnerFor(cli)
 	if !ok {
-		return cliResult{CLI: cli, Model: model, Err: fmt.Errorf("unsupported cli: %s", cli)}
+		return cliResult{CLI: cli, Model: model, Kind: kind, Err: fmt.Errorf("unsupported cli: %s", cli)}
 	}
 	result, err := run(ctx, sess, prompt, sess.Effort, workdir, model)
 
 	if err != nil {
 		reason := config.PublicRuntimeError(cli, model, err.Error())
 		_ = sess.Fail(1, reason)
-		return cliResult{CLI: cli, Model: model, Err: errors.New(reason)}
+		return cliResult{CLI: cli, Model: model, Kind: kind, Err: errors.New(reason)}
 	}
 
 	// Read the log file to get raw output, including stdout and stderr.
@@ -438,7 +444,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 		if result.ExitCode != 0 {
 			_ = sess.Fail(result.ExitCode, fmt.Sprintf("%s exited with code %d", config.EngineLabel(cli, model), result.ExitCode))
 		}
-		return cliResult{CLI: cli, Model: model, Err: fmt.Errorf("read log: %w", err), ExitCode: result.ExitCode}
+		return cliResult{CLI: cli, Model: model, Kind: kind, Err: fmt.Errorf("read log: %w", err), ExitCode: result.ExitCode}
 	}
 
 	raw := string(logData)
@@ -460,6 +466,7 @@ func runReviewer(ctx context.Context, sess *session.Session, cli, model string, 
 	return cliResult{
 		CLI:       cli,
 		Model:     model,
+		Kind:      kind,
 		RawOutput: raw,
 		ExitCode:  result.ExitCode,
 	}
