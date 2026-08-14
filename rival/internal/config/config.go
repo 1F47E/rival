@@ -580,6 +580,145 @@ Rules:
 
 ` + antislopJSONContract
 
+// SecurityModel describes one model that can run the security review. Both
+// entries run through the OpenCode adapter, so the differences between them
+// are data rather than code.
+type SecurityModel struct {
+	// Name is the config value: "k3" or "grok".
+	Name string
+	// Model is the upstream model id.
+	Model string
+	// Selector is what `opencode -m` receives. OpenCode splits it at the
+	// first slash to choose the provider, so for OpenRouter-hosted models
+	// this differs from Model.
+	Selector string
+	// Provider names the block in the generated OpenCode config.
+	Provider string
+	// BaseURL is the provider endpoint. Empty means OpenCode's own default,
+	// which is what the built-in Moonshot provider uses.
+	BaseURL string
+	// KeyEnv is the environment variable holding the API key.
+	KeyEnv string
+	// Label is the public name shown in output. It must not collide with any
+	// other model's label or concrete id.
+	Label string
+	// Variant is the reasoning level passed to the provider.
+	Variant string
+}
+
+// SecurityReviewerK3 and SecurityReviewerGrok are the accepted values of the
+// security.reviewer config key.
+const (
+	SecurityReviewerK3   = "k3"
+	SecurityReviewerGrok = "grok"
+)
+
+// GrokOpenRouterModel is Grok 4.6 served through OpenRouter. It is a
+// different runtime from GrokModel, which reaches xAI through the grok CLI.
+const (
+	GrokOpenRouterModel    = "x-ai/grok-4.6"
+	GrokOpenRouterSelector = "openrouter/x-ai/grok-4.6"
+	// GrokOpenRouterLabel deliberately differs from GrokLabel. The two Groks
+	// are separate models on separate runtimes with separate credentials, and
+	// a shared label would make their sessions and logs indistinguishable.
+	GrokOpenRouterLabel = "grok-4.6-openrouter"
+	openRouterBaseURL   = "https://openrouter.ai/api/v1"
+)
+
+// securityModels is the registry. Adding an entry here is all a new security
+// model needs: the adapter reads provider, key, selector, and variant from it.
+var securityModels = map[string]SecurityModel{
+	SecurityReviewerK3: {
+		Name:     SecurityReviewerK3,
+		Model:    KimiModel,
+		Selector: KimiModel,
+		Provider: "moonshotai",
+		KeyEnv:   "MOONSHOT_API_KEY",
+		Label:    K3Label,
+		Variant:  "max",
+	},
+	SecurityReviewerGrok: {
+		Name:     SecurityReviewerGrok,
+		Model:    GrokOpenRouterModel,
+		Selector: GrokOpenRouterSelector,
+		Provider: "openrouter",
+		BaseURL:  openRouterBaseURL,
+		KeyEnv:   "OPENROUTER_API_KEY",
+		Label:    GrokOpenRouterLabel,
+		Variant:  "xhigh",
+	},
+}
+
+// SecurityReviewerNames lists the accepted config values, for error messages.
+func SecurityReviewerNames() []string {
+	return []string{SecurityReviewerK3, SecurityReviewerGrok}
+}
+
+// ResolveSecurityModel returns the model that runs the security review. An
+// empty config value means K3.
+func ResolveSecurityModel() (SecurityModel, error) {
+	name := SecurityReviewerK3
+	if userConfig != nil {
+		if configured := strings.TrimSpace(userConfig.Security.Reviewer); configured != "" {
+			name = strings.ToLower(configured)
+		}
+	}
+	entry, ok := securityModels[name]
+	if !ok {
+		return SecurityModel{}, fmt.Errorf("invalid security.reviewer %q, must be one of: %s",
+			name, strings.Join(SecurityReviewerNames(), ", "))
+	}
+	return entry, nil
+}
+
+// OpenCodeEntryFor looks up a registry entry by concrete model id. The
+// megareview uses it so an explicit -m selection never consults the security
+// config: with security.reviewer set to grok, `-m k3` must still run K3.
+func OpenCodeEntryFor(model string) (SecurityModel, bool) {
+	for _, entry := range securityModels {
+		if entry.Model == model {
+			return entry, true
+		}
+	}
+	return SecurityModel{}, false
+}
+
+// SecurityAPIKeyFrom resolves an entry's API key. Precedence matches
+// KimiAPIKeyFrom: the process environment first, then the nearest .env found
+// walking up from workdir.
+func SecurityAPIKeyFrom(entry SecurityModel, workdir string) string {
+	if key := strings.TrimSpace(os.Getenv(entry.KeyEnv)); key != "" {
+		return key
+	}
+	if entry.Name == SecurityReviewerK3 {
+		// K3 keeps its legacy alias.
+		if key := strings.TrimSpace(os.Getenv("KIMI_API")); key != "" {
+			return key
+		}
+	}
+	if workdir == "" {
+		return ""
+	}
+	dir, err := filepath.Abs(workdir)
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for i := 0; i < 8; i++ {
+		if vars, err := godotenv.Read(filepath.Join(dir, ".env")); err == nil {
+			if key := strings.TrimSpace(vars[entry.KeyEnv]); key != "" {
+				return key
+			}
+		}
+		parent := filepath.Dir(dir)
+		if dir == home || parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
 // IsValidEffort checks if the given effort level is in the allowlist.
 func IsValidEffort(e string) bool {
 	for _, v := range ValidEfforts {
@@ -709,10 +848,16 @@ type ClaudeConfig struct {
 }
 
 // UserConfig holds optional user configuration from ~/.rival/config.yaml.
+// SecurityConfig selects which model runs the security review.
+type SecurityConfig struct {
+	Reviewer string `yaml:"reviewer"`
+}
+
 type UserConfig struct {
-	Claude  ClaudeConfig      `yaml:"claude"`
-	Efforts map[string]string `yaml:"efforts"`
-	Roles   map[string]string `yaml:"roles"`
+	Claude   ClaudeConfig      `yaml:"claude"`
+	Security SecurityConfig    `yaml:"security"`
+	Efforts  map[string]string `yaml:"efforts"`
+	Roles    map[string]string `yaml:"roles"`
 }
 
 var userConfig *UserConfig
@@ -754,6 +899,17 @@ func LoadUserConfig() {
 			return
 		}
 		cfg.Efforts[label] = effort
+	}
+	// Validate the security reviewer here, not only where it is resolved, so a
+	// typo fails every command instead of waiting for a security run.
+	if configured := strings.TrimSpace(cfg.Security.Reviewer); configured != "" {
+		name := strings.ToLower(configured)
+		if _, ok := securityModels[name]; !ok {
+			userConfigErr = fmt.Errorf("invalid security.reviewer %q in %s; use one of: %s",
+				configured, path, strings.Join(SecurityReviewerNames(), ", "))
+			return
+		}
+		cfg.Security.Reviewer = name
 	}
 	userConfig = &cfg
 }
