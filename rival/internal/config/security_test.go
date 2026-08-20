@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestResolveSecurityModelDefaultsToK3(t *testing.T) {
 	userConfig = nil
@@ -116,5 +120,56 @@ func TestBothGroksNormalizeToTheirOwnLabel(t *testing.T) {
 	// The xAI model id must not appear as a bare label in OpenRouter output.
 	if ModelLabel(GrokModel) == ModelLabel(GrokOpenRouterModel) {
 		t.Errorf("both Groks resolve to the same label %q", ModelLabel(GrokModel))
+	}
+}
+
+// K3 accepted the legacy KIMI_API alias from a project .env, not only from
+// the process environment. The registry must not quietly drop that.
+func TestK3KeyStillReadsTheLegacyEnvAlias(t *testing.T) {
+	t.Setenv("MOONSHOT_API_KEY", "")
+	t.Setenv("KIMI_API", "")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KIMI_API=from-dotenv\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := OpenCodeEntryFor(KimiModel)
+	if !ok {
+		t.Fatal("K3 missing from the registry")
+	}
+	if got := SecurityAPIKeyFrom(entry, dir); got != "from-dotenv" {
+		t.Errorf("legacy .env alias not read: got %q", got)
+	}
+}
+
+// Normalization must be idempotent. Logs get normalized more than once, and
+// "grok-4.6-openrouter" contains the id "grok-4.6", so a careless pass
+// rewrites an already-correct label into "grok-openrouter".
+func TestRuntimeLogNormalizationIsIdempotent(t *testing.T) {
+	cases := []struct {
+		name string
+		cli  string
+		model string
+		raw  string
+		want string
+	}{
+		{"openrouter id becomes its label", "opencode", GrokOpenRouterModel,
+			"banner from " + GrokOpenRouterModel + " done", GrokOpenRouterLabel},
+		{"xai id becomes its label", GrokLabel, GrokModel,
+			"banner from " + GrokModel + " done", GrokLabel},
+		{"k3 id becomes its label", "opencode", KimiModel,
+			"banner from " + KimiModel + " done", K3Label},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			once := PublicRuntimeLog(tc.cli, tc.model, tc.raw)
+			if !contains(once, tc.want) {
+				t.Fatalf("first pass = %q, want it to contain %q", once, tc.want)
+			}
+			twice := PublicRuntimeLog(tc.cli, tc.model, once)
+			if twice != once {
+				t.Errorf("not idempotent:\nonce:  %q\ntwice: %q", once, twice)
+			}
+		})
 	}
 }

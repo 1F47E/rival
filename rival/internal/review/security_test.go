@@ -88,3 +88,43 @@ func TestFormatSecurityConsoleCleanReview(t *testing.T) {
 		t.Errorf("clean review should say so explicitly:\n%s", got)
 	}
 }
+
+// The prompt tells the model to answer {"summary": "No issues found.",
+// "findings": []} when the code is clean. A run that only echoes the prompt
+// therefore parses as a clean review. For a security gate, accepting that
+// would report "no vulnerabilities" when nothing was reviewed.
+func TestEchoedPromptIsNotACleanReview(t *testing.T) {
+	echoed := review_promptEcho()
+	parsed := &ReviewerOutput{Summary: "No issues found."}
+
+	if err := ValidateSecurityResult(parsed, echoed); err == nil {
+		t.Error("an echoed prompt was accepted as a clean security review")
+	}
+
+	out := FormatSecurityResult(parsed, echoed, "opencode", "moonshotai/kimi-k3", "src/")
+	if !strings.Contains(out, "UNUSABLE OUTPUT") {
+		t.Errorf("echoed prompt was not reported as unusable:\n%s", out)
+	}
+}
+
+// A genuine clean review uses the same summary but does not contain the
+// prompt's instructions, so it must still be accepted.
+func TestGenuineCleanReviewIsStillAccepted(t *testing.T) {
+	parsed := &ReviewerOutput{Summary: "No issues found."}
+	raw := `{"summary": "No issues found.", "findings": []}`
+
+	if err := ValidateSecurityResult(parsed, raw); err != nil {
+		t.Errorf("a genuine clean review was rejected: %v", err)
+	}
+	out := FormatSecurityResult(parsed, raw, "opencode", "moonshotai/kimi-k3", "src/")
+	if !strings.Contains(out, "No vulnerabilities found.") {
+		t.Errorf("clean review not rendered:\n%s", out)
+	}
+}
+
+// review_promptEcho returns output that looks like the model reflected the
+// prompt back instead of reviewing.
+func review_promptEcho() string {
+	return BuildReviewerPrompt("src/", config.PromptSecurity) +
+		"\n" + `{"summary": "No issues found.", "findings": []}`
+}

@@ -262,6 +262,37 @@ func replaceConcreteModelIDs(cli, model, text string) string {
 	})
 
 	labels := make([]string, 0, len(pairs))
+
+	// Protect public labels before touching ids. Text can already contain a
+	// label — a re-normalized log, or a model naming itself — and
+	// "grok-4.6-openrouter" contains the id "grok-4.6", so an unprotected
+	// label would be rewritten into "grok-openrouter".
+	protected := []string{GrokOpenRouterLabel, K3Label, SolLabel, FableLabel, GrokLabel}
+	sort.SliceStable(protected, func(i, j int) bool {
+		return len(protected[i]) > len(protected[j])
+	})
+	for i, label := range protected {
+		if !strings.Contains(text, label) {
+			continue
+		}
+		// Skip a label that only appears inside a concrete id we are about to
+		// replace. Protecting it there would mask the id and leave it
+		// un-normalized.
+		masksAnID := false
+		for _, p := range pairs {
+			if p.id != "" && strings.Contains(p.id, label) && strings.Contains(text, p.id) {
+				masksAnID = true
+				break
+			}
+		}
+		if masksAnID {
+			continue
+		}
+		token := "\x00rival-label-" + strconv.Itoa(i) + "\x00"
+		text = strings.ReplaceAll(text, label, token)
+		labels = append(labels, token, label)
+	}
+
 	for i, p := range pairs {
 		if p.id == "" || !strings.Contains(text, p.id) {
 			continue
@@ -755,14 +786,14 @@ func OpenCodeEntryFor(model string) (SecurityModel, bool) {
 // KimiAPIKeyFrom: the process environment first, then the nearest .env found
 // walking up from workdir.
 func SecurityAPIKeyFrom(entry SecurityModel, workdir string) string {
+	if entry.Name == SecurityReviewerK3 {
+		// Delegate rather than reimplement: KimiAPIKeyFrom checks the legacy
+		// KIMI_API alias in every .env it walks, not only in the process
+		// environment, and an existing installation may rely on that.
+		return KimiAPIKeyFrom(workdir)
+	}
 	if key := strings.TrimSpace(os.Getenv(entry.KeyEnv)); key != "" {
 		return key
-	}
-	if entry.Name == SecurityReviewerK3 {
-		// K3 keeps its legacy alias.
-		if key := strings.TrimSpace(os.Getenv("KIMI_API")); key != "" {
-			return key
-		}
 	}
 	if workdir == "" {
 		return ""

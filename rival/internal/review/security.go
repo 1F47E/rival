@@ -18,8 +18,21 @@ import (
 // reviewed. A caller must treat a validation failure exactly like a parse
 // failure.
 func ValidateSecurityOutput(out *ReviewerOutput) error {
+	return ValidateSecurityResult(out, "")
+}
+
+// ValidateSecurityResult validates a payload against the raw output it came
+// from. The raw text matters: the reviewer prompt contains a parseable clean
+// example, `{"summary": "No issues found.", "findings": []}`, so a run that
+// merely echoes the prompt without reviewing anything parses successfully and
+// looks like a clean review. For a security gate that is the worst failure
+// available, so an echoed prompt is rejected rather than trusted.
+func ValidateSecurityResult(out *ReviewerOutput, raw string) error {
 	if out == nil {
 		return fmt.Errorf("no structured output")
+	}
+	if raw != "" && looksLikeEchoedPrompt(out, raw) {
+		return fmt.Errorf("output repeats the prompt's own example rather than a review")
 	}
 	if strings.TrimSpace(out.Summary) == "" {
 		return fmt.Errorf("summary is empty")
@@ -38,11 +51,35 @@ func ValidateSecurityOutput(out *ReviewerOutput) error {
 	return nil
 }
 
+// promptEchoMarkers are phrases that appear in the security prompt itself. A
+// review quoting one is possible, so they are only evidence alongside the
+// example summary.
+var promptEchoMarkers = []string{
+	"## Role: Security Reviewer",
+	"Work through every class below",
+}
+
+// looksLikeEchoedPrompt reports whether the output is the prompt reflected
+// back. A genuine clean review carries the same summary text, so the summary
+// alone is not enough: the raw output must also contain the prompt's own
+// instructions, which a reviewer has no reason to reproduce.
+func looksLikeEchoedPrompt(out *ReviewerOutput, raw string) bool {
+	if strings.TrimSpace(out.Summary) != "No issues found." || len(out.Findings) > 0 {
+		return false
+	}
+	for _, marker := range promptEchoMarkers {
+		if strings.Contains(raw, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // FormatSecurityResult renders a security review, or falls back to the raw log
 // when the payload is unusable. It owns that choice because the inner
 // formatter has neither the raw output nor the CLI the normalizer needs.
 func FormatSecurityResult(parsed *ReviewerOutput, raw, cli, model, scope string) string {
-	if err := ValidateSecurityOutput(parsed); err != nil {
+	if err := ValidateSecurityResult(parsed, raw); err != nil {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "\n═══ RIVAL SECURITY REVIEW — UNUSABLE OUTPUT ═══\n\n")
 		fmt.Fprintf(&sb, "Model: %s\nScope: %s\nProblem: %s\n\n", config.EngineLabel(cli, model), scope, err)

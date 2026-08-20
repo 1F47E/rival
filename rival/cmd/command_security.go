@@ -198,13 +198,19 @@ func commandSecurityAction(cmd *cobra.Command, args []string) error {
 	// A security gate must not exit 0 on output it cannot trust. Non-empty
 	// output is not evidence a review happened: it can be an echoed prompt,
 	// truncated JSON, or an unrecognized provider error.
-	if validErr := review.ValidateSecurityOutput(parsed); validErr != nil {
+	if validErr := review.ValidateSecurityResult(parsed, raw); validErr != nil {
 		failSession(sess, 1, fmt.Sprintf("unusable security output: %v", validErr))
 		return &ExitCodeError{Code: 1, Err: fmt.Errorf("security review produced no usable findings: %w", validErr)}
 	}
 
 	if saveErr := sess.Complete(result.ExitCode, result.OutputBytes, result.OutputLines); saveErr != nil {
+		// Complete mutates the in-memory status before saving, so the deferred
+		// cleanup no longer sees a running session and skips its own write.
+		// Exiting 0 here would leave the stored session running forever, and a
+		// detached `rival wait` reports that as a crash.
 		log.Warn().Err(saveErr).Str("session", sess.ID).Msg("failed to save session completion")
+		failSession(sess, 1, fmt.Sprintf("could not persist completion: %v", saveErr))
+		return &ExitCodeError{Code: 1, Err: fmt.Errorf("save session completion: %w", saveErr)}
 	}
 	return nil
 }
