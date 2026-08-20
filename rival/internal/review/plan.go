@@ -185,14 +185,9 @@ func FormatPlanResult(result *PlanRunResult, file string) string {
 }
 
 // FormatAntislopResult renders a PlanRunResult from an antislop run. Same
-// dispatch as FormatPlanResult with the antislop header and body labels; the
-// target line is "File: …" in plan mode and "Scope: …" in code mode.
-func FormatAntislopResult(result *PlanRunResult, target string, planMode bool) string {
-	targetLabel := "Scope"
-	if planMode {
-		targetLabel = "File"
-	}
-	targetLine := fmt.Sprintf("%s: %s", targetLabel, target)
+// dispatch as FormatPlanResult with the antislop header and body labels.
+func FormatAntislopResult(result *PlanRunResult, target string) string {
+	targetLine := fmt.Sprintf("Scope: %s", target)
 
 	if result == nil || len(result.Results) == 0 {
 		return "No antislop review output.\n"

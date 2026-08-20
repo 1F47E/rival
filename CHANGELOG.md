@@ -4,6 +4,15 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Removed — /rival-antislop-plan
+
+Antislop no longer reviews plan documents. The skill, the `plan <path>` stdin
+mode, and the plan prompt are gone; `rival command antislop` now only takes a
+code scope. The skill is marked deprecated, so `rival install` removes copies
+already on disk.
+
+`/rival-antislop` on changed code is unaffected.
+
 ### Added — /rival-security, a dedicated security review
 
 A new skill and command that hunt exploitable vulnerabilities across twelve

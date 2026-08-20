@@ -45,7 +45,6 @@ run detached and report back when done.
 | `/rival-review` | Sol reviews your changes; add `-m k3` for a second reviewer that hunts vulnerabilities, and a consilium judge merges both | The default review gate. One independent model with full repo access, or two with different lenses |
 | `/rival-security` | Dedicated security review: injection, authorization and IDOR, crypto, SSRF, traversal, deserialization, secrets, CSRF, and more | Bug reviews barely touch security. This one hunts exploitable vulnerabilities and refuses to run rather than skip silently |
 | `/rival-antislop` | Quality-only review of changed code: over-engineering, reinvented libraries, compat hoarding, AI-slop patterns. Returns a leanness rating (1-10) and a cut list | Bug reviews can't tell you the code shouldn't exist. This one names what to delete, merge, or replace — the counterweight to AI-generated bloat |
-| `/rival-antislop-plan` | The same cut-list pass for a plan/spec markdown doc: scope creep, YAGNI, gold-plating, ceremony padding | Run it on a fresh plan before any reviewer or implementer sees it — over-engineering is cheapest to remove before code exists |
 | `/rival-plan` | Sol + Fable independently rate a plan/spec 1-10 and list bugs, gaps, and ambiguities (xhigh effort) | Catches wrong steps and missing pieces in a design while they're still words, with two models' blind spots covering each other |
 | `/rival-plan-sol` / `/rival-plan-fable` | Single-model plan review | When you want one specific second opinion — Sol for independence from a Claude-based session, Fable when Sol is unavailable |
 | `/rival-sol` | Any prompt, or `review [scope]`, via Sol (OpenAI Codex CLI) | An independent non-Anthropic perspective with read-only repo access — ask it anything or point it at a diff |
@@ -149,7 +148,6 @@ could have made is not discounted for lacking a second vote.
 /rival-antislop                             — cut list for the changed files (auto-detect)
 /rival-antislop src/api/                    — cut list for a specific scope
 /rival-antislop -m fable src/               — with Fable instead of Sol
-/rival-antislop-plan path/to/plan.md        — cut list for a plan/spec document
 ```
 
 Every other rival command hunts bugs. Antislop hunts the opposite failure
@@ -157,11 +155,9 @@ mode: code (or a plan) that *works* but shouldn't exist in that shape. Angles:
 reuse/DRY, simplification, efficiency, altitude (fixes at the wrong depth),
 backward-compat hoarding, library reinvention, and AI-slop signatures (comment
 slop, silent fallbacks, pass-through wrappers, speculative generality; scope
-creep and ceremony padding in plans). Default model **sol**, default effort
-**xhigh**. Report-only: it proposes, your session applies. Native form:
-`rival command antislop` — `plan <path>` on stdin starts plan mode, `--
-<scope>` takes a scope verbatim, a directory literally named `plan` is
-`./plan`.
+speculative generality). Default model **sol**, default effort **xhigh**.
+Report-only: it proposes, your session applies. Native form:
+`rival command antislop`, where `--` takes a scope verbatim.
 
 ### Plan review
 

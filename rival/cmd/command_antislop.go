@@ -22,7 +22,6 @@ const antislopUsage = `Usage:
   /rival-antislop — quality-only review of the changed files (git auto-detect)
   /rival-antislop src/api/ — review a specific scope
   /rival-antislop -m fable -re high src/ — pick model and reasoning effort
-  /rival-antislop-plan path/to/plan.md — cut list for a plan/spec document
   rival command antislop --help — show native command options
 
 Antislop hunts slop and over-engineering — reuse/DRY, simplification,
@@ -30,13 +29,10 @@ efficiency, altitude, backward-compat hoarding, library reinvention, comment
 and wrapper slop — and returns a leanness rating (1-10) plus a cut list. It
 never reports bugs; use the code review commands for that.
 
-Input starts plan mode with the token "plan" followed by the document path
-(everything after the token is the path). Anything else is a code-review
-scope. "--" ends option parsing AND takes the rest verbatim as a code scope,
-so "-- plan handling in the parser" reviews code; "./plan" reviews a
-directory named plan. Default model is sol; -m accepts sol and fable
-(comma-separated). Default reasoning effort is xhigh; override with
--re/--effort or per model in ~/.rival/config.yaml.`
+Input is a code-review scope. "--" ends option parsing and takes the rest
+verbatim, so a scope beginning with a dash is still reviewable. Default model
+is sol; -m accepts sol and fable (comma-separated). Default reasoning effort
+is xhigh; override with -re/--effort or per model in ~/.rival/config.yaml.`
 
 var defaultAntislopModels = []string{config.SolLabel}
 
@@ -52,26 +48,6 @@ func init() {
 	commandAntislopCmd.Flags().StringSliceP("model", "m", defaultAntislopModels, "antislop model(s): sol, fable (comma-separated)")
 	commandAntislopCmd.Flags().String("effort", "", "override reasoning effort for every selected model: low, medium, high, ultra")
 	commandCmd.AddCommand(commandAntislopCmd)
-}
-
-// antislopMode splits the parsed scope into plan mode (leading "plan" token,
-// everything after it is the document path — spaces preserved) or code mode.
-// A bare "plan" with no path is a usage error rather than an empty-path stat
-// failure. autoScope means no scope tokens were given at all, which is always
-// code mode. escaped means the scope came after "--", which takes it verbatim
-// as a code scope — so "-- plan handling in the parser" is reviewable.
-func antislopMode(scope string, autoScope, escaped bool) (planMode bool, planPath string, err error) {
-	if autoScope || escaped {
-		return false, "", nil
-	}
-	token, rest := popPlanToken(scope)
-	if token != "plan" {
-		return false, "", nil
-	}
-	if strings.TrimSpace(rest) == "" {
-		return false, "", fmt.Errorf("plan mode requires a document path: antislop plan <path>; to review a directory named \"plan\", pass ./plan")
-	}
-	return true, strings.TrimSpace(rest), nil
 }
 
 // buildAntislopCodePrompt assembles the code-mode prompt and the scope strings.
@@ -148,24 +124,7 @@ func commandAntislopAction(cmd *cobra.Command, args []string) error {
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 
-	planMode, planPath, err := antislopMode(parsed.ReviewScope, parsed.AutoScope, parsed.Escaped)
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stdout, err.Error())
-		return &ExitCodeError{Code: 1, Err: err}
-	}
-
-	var prompt, target, display string
-	if planMode {
-		absPath, err := resolvePlanPath(planPath, workdir)
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stdout, err.Error())
-			return &ExitCodeError{Code: 1, Err: err}
-		}
-		prompt = strings.ReplaceAll(config.AntislopPlanPrompt, "{FILE}", absPath)
-		target, display = absPath, absPath
-	} else {
-		prompt, target, display = buildAntislopCodePrompt(parsed.ReviewScope, parsed.AutoScope, workdir)
-	}
+	prompt, target, display := buildAntislopCodePrompt(parsed.ReviewScope, parsed.AutoScope, workdir)
 
 	// Cancel the queue wait / child processes on SIGINT/SIGTERM.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -178,7 +137,7 @@ func commandAntislopAction(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	out := review.FormatAntislopResult(result, display, planMode)
+	out := review.FormatAntislopResult(result, display)
 	if _, err := io.WriteString(os.Stdout, out); err != nil {
 		return fmt.Errorf("write stdout: %w", err)
 	}

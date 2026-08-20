@@ -84,6 +84,20 @@ func TestPlanSkillRunsBothModelsAtXhigh(t *testing.T) {
 	}
 }
 
+// Plan mode was dropped on 2026-08-20. The skill must stay deprecated so
+// rival install removes copies that are already on disk.
+func TestAntislopPlanSkillIsGone(t *testing.T) {
+	if slices.Contains(Names, "rival-antislop-plan") {
+		t.Error("rival-antislop-plan is active again; plan mode was removed")
+	}
+	if !slices.Contains(Deprecated, "rival-antislop-plan") {
+		t.Error("rival-antislop-plan must stay in Deprecated so installs clean it up")
+	}
+	if _, err := Files.ReadFile("rival-antislop-plan/SKILL.md"); err == nil {
+		t.Error("the plan skill file is still embedded")
+	}
+}
+
 func TestAntislopSkillsAreEmbedded(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -95,13 +109,6 @@ func TestAntislopSkillsAreEmbedded(t *testing.T) {
 			"rival command antislop --detach --workdir",
 			"rival wait --log <rival_err>",
 			"never bugs",
-		}},
-		{"rival-antislop-plan", []string{
-			"name: rival-antislop-plan",
-			"argument-hint: \"<path-to-plan.md>\"",
-			"rival command antislop --detach --workdir",
-			"rival wait --log <rival_err>",
-			"write `plan $ARGUMENTS`",
 		}},
 	}
 	for _, tt := range tests {

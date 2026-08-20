@@ -19,7 +19,7 @@ func TestFormatAntislopResultSingle(t *testing.T) {
 		},
 	}}}
 
-	out := FormatAntislopResult(result, "src/api/", false)
+	out := FormatAntislopResult(result, "src/api/")
 	for _, want := range []string{
 		"═══ RIVAL ANTISLOP REVIEW ═══",
 		"Scope: src/api/",
@@ -35,15 +35,15 @@ func TestFormatAntislopResultSingle(t *testing.T) {
 	}
 }
 
-func TestFormatAntislopResultPlanModeEmpty(t *testing.T) {
+func TestFormatAntislopResultNoFindings(t *testing.T) {
 	result := &PlanRunResult{Results: []PlanCLIResult{{
 		CLI:    "fable",
 		Model:  "fable",
 		Parsed: &PlanOutput{Summary: "Lean.", Rating: 10},
 	}}}
 
-	out := FormatAntislopResult(result, "/tmp/plan.md", true)
-	for _, want := range []string{"File: /tmp/plan.md", "Leanness: 10/10", "No slop found."} {
+	out := FormatAntislopResult(result, "src/")
+	for _, want := range []string{"Scope: src/", "Leanness: 10/10", "No slop found."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -62,7 +62,7 @@ func TestFormatAntislopResultMulti(t *testing.T) {
 		Skipped: []SkippedCLI{{CLI: "grok", Model: "grok", Reason: "unavailable"}},
 	}
 
-	out := FormatAntislopResult(result, "changed files (git auto-detect)", false)
+	out := FormatAntislopResult(result, "changed files (git auto-detect)")
 	for _, want := range []string{
 		"═══ RIVAL ANTISLOP REVIEW (",
 		"Scope: changed files (git auto-detect)",
