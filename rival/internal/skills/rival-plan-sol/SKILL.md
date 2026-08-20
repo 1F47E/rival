@@ -1,6 +1,6 @@
 ---
 name: rival-plan-sol
-version: 3.27.0
+version: 3.27.1
 description: Review a plan/spec markdown document with Sol at xhigh effort via the rival binary. Rates it 1-10 and finds bugs and gaps. Use only when the user explicitly invokes /rival-plan-sol.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read, Write

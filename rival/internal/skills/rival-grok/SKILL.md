@@ -1,14 +1,14 @@
 ---
 name: rival-grok
-version: 3.27.0
-description: Run Grok (grok-4.5) through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-grok.
+version: 3.27.1
+description: Run Grok (grok-4.6) through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-grok.
 argument-hint: "[-re low|medium|high] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write
 ---
 
 # Grok runner
 
-Run Grok (`grok-4.5`) through the `rival` Go binary. `review` runs are
+Run Grok (`grok-4.6`) through the `rival` Go binary. `review` runs are
 **mechanically sandboxed read-only**; raw prompts run **full auto** — the agent
 can read, edit files, and run commands in the workdir. The run is detached and
 watched in the background, so this skill does not block your session.
@@ -32,7 +32,7 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 > - `/rival-grok -re high review src/api/` — review with high reasoning
 >
 > **Reasoning effort** (`-re`): `low`, `medium`, `high` — levels above `high`
-> (e.g. `ultra`) clamp down to `high`, which is also grok-4.5's own default.
+> (e.g. `ultra`) clamp down to `high`, which is also grok-4.6's own default.
 > Omitted uses the `grok` default in `~/.rival/config.yaml` (built-in
 > fallback: `high`).
 > `review` is sandboxed read-only; raw prompts run **full auto** — they can

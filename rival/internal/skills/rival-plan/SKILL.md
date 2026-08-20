@@ -1,6 +1,6 @@
 ---
 name: rival-plan
-version: 3.27.0
+version: 3.27.1
 description: Review a plan/spec markdown document with Sol and Fable in parallel at xhigh effort via the rival binary. Each rates it 1-10 and finds bugs and gaps; both results are shown. Use only when the user explicitly invokes /rival-plan.
 argument-hint: "<path-to-plan.md>"
 allowed-tools: Bash, Read, Write
