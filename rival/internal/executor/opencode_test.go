@@ -36,33 +36,42 @@ func TestOpencodePreflightRejectsUnsupportedModel(t *testing.T) {
 }
 
 func TestOpencodeProviderConfig(t *testing.T) {
-	if got := opencodeProviderConfig("custom/example-model", "sk-custom"); got != "" {
-		t.Errorf("unsupported provider config = %s, want empty", got)
+	// An unregistered model has no entry at all.
+	if _, ok := config.OpenCodeEntryFor("custom/example-model"); ok {
+		t.Error("an unregistered model resolved to a registry entry")
+	}
+	entry, ok := config.OpenCodeEntryFor(config.KimiModel)
+	if !ok {
+		t.Fatal("K3 missing from the registry")
 	}
 	// Moonshot model → built-in provider "moonshotai".
-	got := opencodeProviderConfig(config.KimiModel, "sk-moon")
+	got := opencodeProviderConfig(entry, "sk-moon")
 	if !strings.Contains(got, `"moonshotai"`) {
 		t.Errorf("moonshot provider config wrong: %s", got)
 	}
-	// Empty model or key → empty.
-	if opencodeProviderConfig("", "k") != "" || opencodeProviderConfig(config.KimiModel, "") != "" {
-		t.Error("empty model/key should yield empty config")
+	// An empty key yields an empty config.
+	if opencodeProviderConfig(entry, "") != "" {
+		t.Error("empty key should yield empty config")
 	}
 }
 
 func TestOpencodeRunArgs_UsesOnlySupportedVariants(t *testing.T) {
+	k3, ok := config.OpenCodeEntryFor(config.KimiModel)
+	if !ok {
+		t.Fatal("K3 missing from the registry")
+	}
 	tests := []struct {
 		name   string
-		model  string
+		entry  config.SecurityModel
 		effort string
 		want   string
 	}{
-		{name: "kimi-k3 pins max", model: config.KimiModel, effort: "max", want: "--variant max"},
-		{name: "kimi-k3 pins max at low", model: config.KimiModel, effort: "low", want: "--variant max"},
+		{name: "kimi-k3 pins max", entry: k3, effort: "max", want: "--variant max"},
+		{name: "kimi-k3 pins max at low", entry: k3, effort: "low", want: "--variant max"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			joined := strings.Join(opencodeRunArgs(tc.model, tc.effort, "/repo"), " ")
+			joined := strings.Join(opencodeRunArgs(tc.entry, tc.effort, "/repo"), " ")
 			if !strings.Contains(joined, tc.want) {
 				t.Fatalf("args %q do not contain %q", joined, tc.want)
 			}
@@ -72,8 +81,8 @@ func TestOpencodeRunArgs_UsesOnlySupportedVariants(t *testing.T) {
 
 func TestOpencodeRunEnv_IsolatesSessionDatabases(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "sk-test")
-	first := strings.Join(opencodeRunEnvWith("session-a", config.KimiModel, "", OpencodeRunOpts{}), "\n")
-	second := strings.Join(opencodeRunEnvWith("session-b", config.KimiModel, "", OpencodeRunOpts{}), "\n")
+	first := strings.Join(opencodeRunEnvWith("session-a", mustK3Entry(t), "", OpencodeRunOpts{}), "\n")
+	second := strings.Join(opencodeRunEnvWith("session-b", mustK3Entry(t), "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(first, "OPENCODE_DB=rival-session-a.db") {
 		t.Fatalf("first env missing isolated DB: %s", first)
 	}

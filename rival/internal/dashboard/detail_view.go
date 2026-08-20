@@ -104,6 +104,8 @@ func renderGroupDetailMeta(item *displayItem, width int, promptExpanded bool, pr
 	}
 	title := "Megareview"
 	switch sessionview.Kind(item.Sessions) {
+	case "security":
+		title = "Security Review"
 	case "antislop":
 		title = "Antislop Review"
 	case "plan":

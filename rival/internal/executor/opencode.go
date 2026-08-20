@@ -16,14 +16,22 @@ import (
 // the Moonshot API-key .env walk-up for K3 (see config.KimiAPIKeyFrom);
 // pass "" when no workdir context exists.
 func OpencodePreflightModel(model, workdir string) error {
-	if model != config.KimiModel {
+	entry, ok := config.OpenCodeEntryFor(model)
+	if !ok {
 		return fmt.Errorf("unsupported OpenCode model %q", model)
 	}
+	return OpencodePreflightEntry(entry, workdir)
+}
+
+// OpencodePreflightEntry verifies one registry entry can run: the CLI exists
+// and its credential resolves. The two failures are reported separately,
+// because a present key does not help when the binary is missing.
+func OpencodePreflightEntry(entry config.SecurityModel, workdir string) error {
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return fmt.Errorf("opencode CLI not installed. Install: curl -fsSL https://opencode.ai/install | bash")
 	}
-	if config.KimiAPIKeyFrom(workdir) == "" {
-		return fmt.Errorf("model %s requires MOONSHOT_API_KEY — add it to the project .env or export it", model)
+	if config.SecurityAPIKeyFrom(entry, workdir) == "" {
+		return fmt.Errorf("model %s requires %s — add it to the project .env or export it", entry.Label, entry.KeyEnv)
 	}
 	return nil
 }
@@ -75,11 +83,20 @@ func RunOpencodeWith(ctx context.Context, sess *session.Session, prompt, effort,
 	if model == "" {
 		model = config.KimiModel
 	}
-	if model != config.KimiModel {
+	entry, ok := config.OpenCodeEntryFor(model)
+	if !ok {
 		return nil, fmt.Errorf("unsupported OpenCode model %q", model)
 	}
-	args := opencodeRunArgs(model, effort, workdir)
-	env := opencodeRunEnvWith(sess.ID, model, workdir, opts)
+	return RunOpencodeEntry(ctx, sess, prompt, effort, workdir, entry, opts, mirror)
+}
+
+// RunOpencodeEntry runs one registry entry. Everything provider-specific —
+// the -m selector, the config block, the credential, the reasoning variant —
+// comes from the entry, so adding a model is a registry change rather than a
+// code change.
+func RunOpencodeEntry(ctx context.Context, sess *session.Session, prompt, effort, workdir string, entry config.SecurityModel, opts OpencodeRunOpts, mirror io.Writer) (*Result, error) {
+	args := opencodeRunArgs(entry, effort, workdir)
+	env := opencodeRunEnvWith(sess.ID, entry, workdir, opts)
 
 	fullPrompt := config.SystemPrompt + "\n\n" + config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	// Drop any inherited OPENCODE_PERMISSION / OPENCODE_CONFIG_CONTENT before
@@ -91,7 +108,7 @@ func RunOpencodeWith(ctx context.Context, sess *session.Session, prompt, effort,
 	return RunSubprocess(ctx, sess, "opencode", args, env, fullPrompt, mirror, drop...)
 }
 
-func opencodeRunArgs(model, effort, workdir string) []string {
+func opencodeRunArgs(entry config.SecurityModel, effort, workdir string) []string {
 	args := []string{
 		"run",
 		// --pure runs without external plugins / project-controlled config, so a
@@ -99,16 +116,19 @@ func opencodeRunArgs(model, effort, workdir string) []string {
 		// otherwise weaken the read-only sandbox. (OPENCODE_PERMISSION already
 		// wins over project config, but this removes all reliance on that.)
 		"--pure",
-		"-m", model,
+		// OpenCode splits this at the first slash to choose the provider, so
+		// an OpenRouter-hosted model needs the openrouter/ prefix here even
+		// though its upstream id does not carry one.
+		"-m", entry.Selector,
 	}
-	if variant := config.OpencodeVariant(model, effort); variant != "" {
+	if variant := entry.Variant; variant != "" {
 		args = append(args, "--variant", variant)
 	}
 	args = append(args, "--dir", workdir)
 	return args
 }
 
-func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) []string {
+func opencodeRunEnvWith(sessionID string, entry config.SecurityModel, workdir string, opts OpencodeRunOpts) []string {
 	permission := opts.Permission
 	if permission == "" {
 		permission = opencodeReadOnlyPermission
@@ -123,32 +143,37 @@ func opencodeRunEnvWith(sessionID, model, workdir string, opts OpencodeRunOpts) 
 		"OPENCODE_DB=rival-" + sessionID + ".db",
 	}
 
-	// Inject the Moonshot key into K3's provider config. A caller may supply an
-	// explicit key; otherwise resolve MOONSHOT_API_KEY from the process or the
-	// workdir .env walk-up. The key is never hardcoded or written to disk.
+	// Inject the entry's key into its provider config. A caller may supply an
+	// explicit key; otherwise resolve the entry's own variable from the
+	// process env or the workdir .env walk-up. The key is never hardcoded or
+	// written to disk.
 	key := opts.APIKey
 	if key == "" {
-		key = config.KimiAPIKeyFrom(workdir)
+		key = config.SecurityAPIKeyFrom(entry, workdir)
 	}
 	if key != "" {
-		if cfg := opencodeProviderConfig(model, key); cfg != "" {
+		if cfg := opencodeProviderConfig(entry, key); cfg != "" {
 			env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 		}
 	}
 	return env
 }
 
-// opencodeProviderConfig returns K3's in-memory Moonshot provider config.
-// Unsupported models and empty keys are rejected.
-func opencodeProviderConfig(model, key string) string {
-	if model != config.KimiModel || key == "" {
+// opencodeProviderConfig returns the in-memory provider config for one
+// registry entry. An empty key is rejected.
+func opencodeProviderConfig(entry config.SecurityModel, key string) string {
+	if key == "" {
 		return ""
+	}
+	options := map[string]any{"apiKey": key}
+	if entry.BaseURL != "" {
+		options["baseURL"] = entry.BaseURL
 	}
 	cfg := map[string]any{
 		"$schema": "https://opencode.ai/config.json",
 		"provider": map[string]any{
-			"moonshotai": map[string]any{
-				"options": map[string]any{"apiKey": key},
+			entry.Provider: map[string]any{
+				"options": options,
 			},
 		},
 	}

@@ -19,7 +19,7 @@ func TestGrokEffort(t *testing.T) {
 		{effort: "low", want: "low"},
 		{effort: "medium", want: "medium"},
 		{effort: "high", want: "high"},
-		// grok-4.5 has no reasoning level above high; rival's richer menu clamps down.
+		// grok-4.6 has no reasoning level above high; rival's richer menu clamps down.
 		{effort: "xhigh", want: "high"},
 		{effort: "ultra", want: "high"},
 		{effort: "max", want: "high"},

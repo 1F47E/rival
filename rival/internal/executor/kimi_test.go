@@ -73,7 +73,7 @@ func TestKimiRunOptsByMode(t *testing.T) {
 func TestMoonshotModelUsesKimiKey(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "sk-moonshot")
 
-	env := strings.Join(opencodeRunEnvWith("sess-1", config.KimiModel, "", OpencodeRunOpts{}), "\n")
+	env := strings.Join(opencodeRunEnvWith("sess-1", mustK3Entry(t), "", OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-moonshot") {
 		t.Errorf("moonshot model env missing API key: %s", env)
 	}
@@ -96,7 +96,7 @@ func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
 	if err := os.MkdirAll(sub, 0700); err != nil {
 		t.Fatal(err)
 	}
-	env := strings.Join(opencodeRunEnvWith("sess-4", config.KimiModel, sub, OpencodeRunOpts{}), "\n")
+	env := strings.Join(opencodeRunEnvWith("sess-4", mustK3Entry(t), sub, OpencodeRunOpts{}), "\n")
 	if !strings.Contains(env, "sk-walkup") {
 		t.Errorf("moonshot fallback did not walk up to the workdir .env: %s", env)
 	}
@@ -107,7 +107,7 @@ func TestMoonshotFallbackWalksUpFromWorkdir(t *testing.T) {
 
 func TestKimiRawEnvUsesFullAutoPermission(t *testing.T) {
 	t.Setenv("MOONSHOT_API_KEY", "test-key")
-	env := strings.Join(opencodeRunEnvWith("sess-3", config.KimiModel, "", kimiRunOpts("raw", t.TempDir())), "\n")
+	env := strings.Join(opencodeRunEnvWith("sess-3", mustK3Entry(t), "", kimiRunOpts("raw", t.TempDir())), "\n")
 	if !strings.Contains(env, "OPENCODE_PERMISSION="+opencodeFullAutoPermission) {
 		t.Errorf("raw env missing full-auto permission: %s", env)
 	}

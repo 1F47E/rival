@@ -72,14 +72,18 @@ func Status(sessions []*session.Session) string {
 	return "completed"
 }
 
-// Kind classifies a GROUP, and returns exactly one of "antislop", "plan", or
-// "megareview". There is no empty value. A solo row must display the
+// Kind classifies a GROUP, and returns exactly one of "security", "antislop",
+// "plan", or "megareview". There is no empty value. A solo row must display the
 // session's own Mode instead of calling this.
 //
-// Precedence: any member in antislop mode wins, then any member in plan mode,
-// else megareview. A group never mixes antislop and plan members, because one
+// Precedence: security, then antislop, then plan, else megareview. A group never mixes antislop and plan members, because one
 // command creates all of them.
 func Kind(sessions []*session.Session) string {
+	for _, s := range sessions {
+		if s.Mode == session.ModeSecurity {
+			return "security"
+		}
+	}
 	for _, s := range sessions {
 		if s.Mode == "antislop" {
 			return "antislop"

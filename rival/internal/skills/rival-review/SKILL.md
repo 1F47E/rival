@@ -1,6 +1,6 @@
 ---
 name: rival-review
-version: 3.26.0
+version: 3.27.0
 description: Run Sol, K3, and/or opt-in grok code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-m sol|k3|grok[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
@@ -9,7 +9,8 @@ allowed-tools: Bash, Read, Write
 # Megareview Runner (rival binary)
 
 Run the curated reviewers via the `rival` Go binary. The default roster is
-Sol + K3; `-m/--model` replaces that roster for one invocation.
+Sol alone; `-m/--model` replaces that roster for one invocation. K3 is
+selectable but always runs the security lens, never a second bug hunt.
 Returns a single combined answer.
 
 ## Instructions
@@ -25,8 +26,8 @@ respond with this usage message and STOP:
 > **Usage:**
 > - `/rival-review` — both default models; auto-detect changed files via git
 > - `/rival-review -m sol src/api/` — Sol only
-> - `/rival-review -m k3 src/api/` — K3 only (requires `MOONSHOT_API_KEY`)
-> - `/rival-review -m sol,k3 src/api/` — exactly those two models
+> - `/rival-review -m k3 src/api/` — K3 only, security lens (requires `MOONSHOT_API_KEY`)
+> - `/rival-review -m sol,k3 src/api/` — Sol hunts bugs, K3 hunts vulnerabilities
 > - `/rival-review -m grok src/api/` — grok only (opt-in; requires `grok login`)
 > - `/rival-review -re ultra src/api/` — override compatible model defaults
 >

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ const (
 	// K3Label, which is the public display and error name.
 	K3CommandName        = "k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
-	GrokModel            = "grok-4.5"
+	GrokModel            = "grok-4.6"
 	GrokLabel            = "grok"
 	ClaudeDockerImage    = "rival-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
@@ -85,6 +86,10 @@ func ModelLabel(model string) string {
 		return K3Label
 	case GrokModel, GrokLabel:
 		return GrokLabel
+	case GrokOpenRouterModel, GrokOpenRouterLabel:
+		// Distinct from GrokLabel: this is Grok on OpenCode via OpenRouter,
+		// a different runtime with a different credential.
+		return GrokOpenRouterLabel
 	default:
 		return "retired-model"
 	}
@@ -103,6 +108,10 @@ func EngineLabel(cli, model string) string {
 		return K3Label
 	case GrokModel:
 		return GrokLabel
+	case GrokOpenRouterModel:
+		// Checked before the adapter fallback below: both this and K3 run on
+		// opencode, so falling through would label Grok as K3.
+		return GrokOpenRouterLabel
 	}
 
 	// Adapter identity is the reliable fallback for sessions written by older
@@ -229,13 +238,72 @@ func PublicRuntimeLog(cli, model, raw string) string {
 }
 
 func replaceConcreteModelIDs(cli, model, text string) string {
-	if model != "" {
-		text = strings.ReplaceAll(text, model, EngineLabel(cli, model))
+	// Model ids overlap textually: "grok-4.6" is a substring of the label
+	// "grok-4.6-openrouter". Replacing ids directly lets one substitution
+	// corrupt another's output, so each id becomes a placeholder first and
+	// only expands to its label once every id is consumed.
+	type pair struct{ id, label string }
+	pairs := []pair{
+		{GPT56SolModel, SolLabel},
+		{FableModel, FableLabel},
+		{KimiModel, K3Label},
+		{GrokOpenRouterModel, GrokOpenRouterLabel},
+		{GrokModel, GrokLabel},
 	}
-	text = strings.ReplaceAll(text, GPT56SolModel, SolLabel)
-	text = strings.ReplaceAll(text, FableModel, FableLabel)
-	text = strings.ReplaceAll(text, KimiModel, K3Label)
-	text = strings.ReplaceAll(text, GrokModel, GrokLabel)
+	if model != "" {
+		// The run's own model wins, and is matched before the shared list so
+		// a longer id is never shadowed by a shorter one it contains.
+		pairs = append([]pair{{model, EngineLabel(cli, model)}}, pairs...)
+	}
+
+	// Longest id first: a short id must never consume part of a longer one.
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return len(pairs[i].id) > len(pairs[j].id)
+	})
+
+	labels := make([]string, 0, len(pairs))
+
+	// Protect public labels before touching ids. Text can already contain a
+	// label — a re-normalized log, or a model naming itself — and
+	// "grok-4.6-openrouter" contains the id "grok-4.6", so an unprotected
+	// label would be rewritten into "grok-openrouter".
+	protected := []string{GrokOpenRouterLabel, K3Label, SolLabel, FableLabel, GrokLabel}
+	sort.SliceStable(protected, func(i, j int) bool {
+		return len(protected[i]) > len(protected[j])
+	})
+	for i, label := range protected {
+		if !strings.Contains(text, label) {
+			continue
+		}
+		// Skip a label that only appears inside a concrete id we are about to
+		// replace. Protecting it there would mask the id and leave it
+		// un-normalized.
+		masksAnID := false
+		for _, p := range pairs {
+			if p.id != "" && strings.Contains(p.id, label) && strings.Contains(text, p.id) {
+				masksAnID = true
+				break
+			}
+		}
+		if masksAnID {
+			continue
+		}
+		token := "\x00rival-label-" + strconv.Itoa(i) + "\x00"
+		text = strings.ReplaceAll(text, label, token)
+		labels = append(labels, token, label)
+	}
+
+	for i, p := range pairs {
+		if p.id == "" || !strings.Contains(text, p.id) {
+			continue
+		}
+		token := "\x00rival-model-" + strconv.Itoa(i) + "\x00"
+		text = strings.ReplaceAll(text, p.id, token)
+		labels = append(labels, token, p.label)
+	}
+	for i := 0; i < len(labels); i += 2 {
+		text = strings.ReplaceAll(text, labels[i], labels[i+1])
+	}
 	return text
 }
 
@@ -290,14 +358,18 @@ func publicReviewHeader(line string) string {
 type ReviewTarget struct {
 	CLI   string
 	Model string
+	// Prompt selects the lens this reviewer runs. The zero value is the bug
+	// hunter, so only targets that need a different lens set it.
+	Prompt PromptKind
 }
 
 // DefaultReviewTargets returns the curated two-model megareview roster. The
 // order is also the consilium judge preference order.
 func DefaultReviewTargets() []ReviewTarget {
+	// K3 left the default roster on 2026-08-14. It stays selectable with
+	// -m k3, where it always carries the security lens.
 	return []ReviewTarget{
 		{CLI: "codex", Model: GPT56SolModel},
-		{CLI: "opencode", Model: KimiModel},
 	}
 }
 
@@ -346,8 +418,9 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		case SolLabel, GPT56SolModel:
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel}}
 		case "k3", "kimi-k3":
+			// K3 only ever runs the security lens, in any roster.
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
-			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel}}
+			expanded = []ReviewTarget{{CLI: "opencode", Model: KimiModel, Prompt: PromptSecurity}}
 		case GrokLabel:
 			// Opt-in only: grok never joins the default roster.
 			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel}}
@@ -580,6 +653,171 @@ Rules:
 
 ` + antislopJSONContract
 
+// PromptKind selects which reviewer prompt a target runs. The zero value is
+// the bug hunter, so an unset field keeps the existing behavior.
+type PromptKind int
+
+const (
+	PromptBugHunter PromptKind = iota
+	PromptSecurity
+)
+
+// String names the lens for the consilium judge, which needs to know that
+// reviewers looked for different things.
+func (k PromptKind) String() string {
+	if k == PromptSecurity {
+		return "security"
+	}
+	return "bug hunting"
+}
+
+// SecurityModel describes one model that can run the security review. Both
+// entries run through the OpenCode adapter, so the differences between them
+// are data rather than code.
+type SecurityModel struct {
+	// Name is the config value: "k3" or "grok".
+	Name string
+	// Model is the upstream model id.
+	Model string
+	// Selector is what `opencode -m` receives. OpenCode splits it at the
+	// first slash to choose the provider, so for OpenRouter-hosted models
+	// this differs from Model.
+	Selector string
+	// Provider names the block in the generated OpenCode config.
+	Provider string
+	// BaseURL is the provider endpoint. Empty means OpenCode's own default,
+	// which is what the built-in Moonshot provider uses.
+	BaseURL string
+	// KeyEnv is the environment variable holding the API key.
+	KeyEnv string
+	// Label is the public name shown in output. It must not collide with any
+	// other model's label or concrete id.
+	Label string
+	// Variant is the reasoning level passed to the provider.
+	Variant string
+}
+
+// SecurityReviewerK3 and SecurityReviewerGrok are the accepted values of the
+// security.reviewer config key.
+const (
+	SecurityReviewerK3   = "k3"
+	SecurityReviewerGrok = "grok"
+)
+
+// GrokOpenRouterModel is Grok 4.6 served through OpenRouter. It is a
+// different runtime from GrokModel, which reaches xAI through the grok CLI.
+const (
+	GrokOpenRouterModel    = "x-ai/grok-4.6"
+	GrokOpenRouterSelector = "openrouter/x-ai/grok-4.6"
+	// GrokOpenRouterLabel deliberately differs from GrokLabel. The two Groks
+	// are separate models on separate runtimes with separate credentials, and
+	// a shared label would make their sessions and logs indistinguishable.
+	GrokOpenRouterLabel = "grok-4.6-openrouter"
+	openRouterBaseURL   = "https://openrouter.ai/api/v1"
+)
+
+// securityModels is the registry. Adding an entry here is all a new security
+// model needs: the adapter reads provider, key, selector, and variant from it.
+var securityModels = map[string]SecurityModel{
+	SecurityReviewerK3: {
+		Name:     SecurityReviewerK3,
+		Model:    KimiModel,
+		Selector: KimiModel,
+		Provider: "moonshotai",
+		KeyEnv:   "MOONSHOT_API_KEY",
+		Label:    K3Label,
+		Variant:  "max",
+	},
+	SecurityReviewerGrok: {
+		Name:     SecurityReviewerGrok,
+		Model:    GrokOpenRouterModel,
+		Selector: GrokOpenRouterSelector,
+		Provider: "openrouter",
+		BaseURL:  openRouterBaseURL,
+		KeyEnv:   "OPENROUTER_API_KEY",
+		Label:    GrokOpenRouterLabel,
+		Variant:  "xhigh",
+	},
+}
+
+// SecurityReviewerNames lists the accepted config values, for error messages.
+func SecurityReviewerNames() []string {
+	return []string{SecurityReviewerK3, SecurityReviewerGrok}
+}
+
+// ResolveSecurityModel returns the model that runs the security review. An
+// empty config value means K3.
+func ResolveSecurityModel() (SecurityModel, error) {
+	name := SecurityReviewerK3
+	if userConfig != nil {
+		if configured := strings.TrimSpace(userConfig.Security.Reviewer); configured != "" {
+			name = strings.ToLower(configured)
+		}
+	}
+	entry, ok := securityModels[name]
+	if !ok {
+		return SecurityModel{}, fmt.Errorf("invalid security.reviewer %q, must be one of: %s",
+			name, strings.Join(SecurityReviewerNames(), ", "))
+	}
+	return entry, nil
+}
+
+// ConfiguredSecurityReviewer returns the raw config value, or "" when unset.
+func ConfiguredSecurityReviewer() string {
+	if userConfig == nil {
+		return ""
+	}
+	return strings.TrimSpace(userConfig.Security.Reviewer)
+}
+
+// OpenCodeEntryFor looks up a registry entry by concrete model id. The
+// megareview uses it so an explicit -m selection never consults the security
+// config: with security.reviewer set to grok, `-m k3` must still run K3.
+func OpenCodeEntryFor(model string) (SecurityModel, bool) {
+	for _, entry := range securityModels {
+		if entry.Model == model {
+			return entry, true
+		}
+	}
+	return SecurityModel{}, false
+}
+
+// SecurityAPIKeyFrom resolves an entry's API key. Precedence matches
+// KimiAPIKeyFrom: the process environment first, then the nearest .env found
+// walking up from workdir.
+func SecurityAPIKeyFrom(entry SecurityModel, workdir string) string {
+	if entry.Name == SecurityReviewerK3 {
+		// Delegate rather than reimplement: KimiAPIKeyFrom checks the legacy
+		// KIMI_API alias in every .env it walks, not only in the process
+		// environment, and an existing installation may rely on that.
+		return KimiAPIKeyFrom(workdir)
+	}
+	if key := strings.TrimSpace(os.Getenv(entry.KeyEnv)); key != "" {
+		return key
+	}
+	if workdir == "" {
+		return ""
+	}
+	dir, err := filepath.Abs(workdir)
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for i := 0; i < 8; i++ {
+		if vars, err := godotenv.Read(filepath.Join(dir, ".env")); err == nil {
+			if key := strings.TrimSpace(vars[entry.KeyEnv]); key != "" {
+				return key
+			}
+		}
+		parent := filepath.Dir(dir)
+		if dir == home || parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
 // IsValidEffort checks if the given effort level is in the allowlist.
 func IsValidEffort(e string) bool {
 	for _, v := range ValidEfforts {
@@ -709,10 +947,16 @@ type ClaudeConfig struct {
 }
 
 // UserConfig holds optional user configuration from ~/.rival/config.yaml.
+// SecurityConfig selects which model runs the security review.
+type SecurityConfig struct {
+	Reviewer string `yaml:"reviewer"`
+}
+
 type UserConfig struct {
-	Claude  ClaudeConfig      `yaml:"claude"`
-	Efforts map[string]string `yaml:"efforts"`
-	Roles   map[string]string `yaml:"roles"`
+	Claude   ClaudeConfig      `yaml:"claude"`
+	Security SecurityConfig    `yaml:"security"`
+	Efforts  map[string]string `yaml:"efforts"`
+	Roles    map[string]string `yaml:"roles"`
 }
 
 var userConfig *UserConfig
@@ -754,6 +998,17 @@ func LoadUserConfig() {
 			return
 		}
 		cfg.Efforts[label] = effort
+	}
+	// Validate the security reviewer here, not only where it is resolved, so a
+	// typo fails every command instead of waiting for a security run.
+	if configured := strings.TrimSpace(cfg.Security.Reviewer); configured != "" {
+		name := strings.ToLower(configured)
+		if _, ok := securityModels[name]; !ok {
+			userConfigErr = fmt.Errorf("invalid security.reviewer %q in %s; use one of: %s",
+				configured, path, strings.Join(SecurityReviewerNames(), ", "))
+			return
+		}
+		cfg.Security.Reviewer = name
 	}
 	userConfig = &cfg
 }
@@ -802,7 +1057,7 @@ func builtinModelEffort(label string) string {
 	case FableLabel:
 		return "medium"
 	case GrokLabel:
-		// grok-4.5's menu is low/medium/high, and high is its own default.
+		// grok-4.6's menu is low/medium/high, and high is its own default.
 		return "high"
 	default:
 		return DefaultReviewEffort

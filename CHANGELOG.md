@@ -4,6 +4,47 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Added — /rival-security, a dedicated security review
+
+A new skill and command that hunt exploitable vulnerabilities across twelve
+classes: injection, authorization and IDOR, authentication, crypto misuse,
+path traversal, SSRF, deserialization, secret exposure, input validation,
+CSRF, open redirect, and resource exhaustion. It does not report style or
+ordinary logic bugs, which the existing reviews already cover.
+
+The model is a config choice, not a fixed part of the skill:
+
+```yaml
+security:
+  reviewer: k3      # or grok — k3 is the default
+```
+
+`k3` runs Kimi K3 on Moonshot; `grok` runs Grok 4.6 through OpenRouter with
+`OPENROUTER_API_KEY`. Adding a model is now a registry entry rather than new
+code, because the OpenCode adapter reads the provider, credential, selector,
+and reasoning variant from data.
+
+Two behaviors worth knowing. The run fails when the selected model has no
+key, instead of falling back, because a security review that silently skips
+is worse than one that refuses to start. And output that does not parse into
+usable findings is reported as unusable rather than as a clean review, so
+automation cannot mistake it for a pass.
+
+### Changed — the default review roster is Sol alone
+
+K3 left the default `/rival-review` roster. It stays selectable with `-m k3`,
+where it now always carries the security lens rather than a second bug hunt.
+So `-m sol,k3` gives you two different lenses, and the consilium judge is
+told which reviewer used which, so a finding only the security reviewer could
+have made is not discounted for lacking a second vote.
+
+### Changed — the xAI Grok model is now grok-4.6
+
+Verified against the CLI before shipping. Because its id textually overlaps
+the OpenRouter model's label, runtime log normalization was rewritten to
+substitute placeholders before expanding labels; previously it could turn
+`grok-4.6-openrouter` into `grok-openrouter`.
+
 ### Changed — plan reviews default to xhigh, antislop runs at xhigh
 
 `/rival-plan` and `/rival-plan-sol` now pin **xhigh** instead of ultra, and
