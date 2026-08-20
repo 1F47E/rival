@@ -96,10 +96,16 @@ const (
 	iconGrok     = "𝕏" // Grok
 	iconPlan     = "▤" // Plan/spec review
 	iconAntislop = "⌁" // Antislop quality review
+	iconSecurity = "⚿" // Security review
 )
 
 // cliLabel returns a display label with icon for a CLI name.
 func cliLabel(cli, model, mode string) string {
+	// A solo security session must show its own identity; without this it
+	// falls through to its CLI arm and looks like an ordinary opencode run.
+	if mode == session.ModeSecurity {
+		return iconSecurity + " sec"
+	}
 	if mode == "plan" {
 		return iconPlan + " plan"
 	}
@@ -165,6 +171,8 @@ func groupEffort(item *displayItem) string {
 // groupIcon returns the list-row icon and label for a group.
 func groupIcon(item *displayItem) string {
 	switch sessionview.Kind(item.Sessions) {
+	case "security":
+		return iconSecurity + " sec"
 	case "antislop":
 		return iconAntislop + " slop"
 	case "plan":

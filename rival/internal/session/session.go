@@ -26,13 +26,14 @@ func pidStartNanos(pid int) int64 {
 const (
 	ModePlan     = "plan"
 	ModeAntislop = "antislop"
+	ModeSecurity = "security"
 )
 
 // IsTaskMode reports whether mode names a task rather than a transport.
 // A task mode identifies the run in both dashboards, so a runtime must not
 // overwrite it with a transport name such as "native" or "docker".
 func IsTaskMode(mode string) bool {
-	return mode == ModePlan || mode == ModeAntislop
+	return mode == ModePlan || mode == ModeAntislop || mode == ModeSecurity
 }
 
 type Session struct {

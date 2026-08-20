@@ -12,10 +12,11 @@ import "embed"
 //go:embed all:rival-grok
 //go:embed all:rival-antislop
 //go:embed all:rival-antislop-plan
+//go:embed all:rival-security
 var Files embed.FS
 
 // Names lists all embedded skill directory names.
-var Names = []string{"rival-sol", "rival-review", "rival-plan", "rival-plan-sol", "rival-plan-fable", "rival-fable", "rival-k3", "rival-grok", "rival-antislop", "rival-antislop-plan"}
+var Names = []string{"rival-sol", "rival-review", "rival-plan", "rival-plan-sol", "rival-plan-fable", "rival-fable", "rival-k3", "rival-grok", "rival-antislop", "rival-antislop-plan", "rival-security"}
 
 // Deprecated lists legacy or superseded skills that should be removed on
 // install. Re-enable a skill by adding it back to Names and the //go:embed list.

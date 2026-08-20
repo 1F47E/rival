@@ -974,6 +974,7 @@ const CLI_ICONS = {
 };
 const PLAN_ICON = '▤';
 const ANTISLOP_ICON = '⌁';
+const SECURITY_ICON = '⚿';
 const PAGE_SIZE = 100;
 
 const state = {
@@ -1065,11 +1066,13 @@ function createCell(className, text, title) {
 function reviewerLabel(group) {
   const primary = group.sessions[0] || {};
   if (group.is_group) {
+    if (group.kind === 'security') return { icon: SECURITY_ICON, text: 'security review' };
     if (group.kind === 'antislop') return { icon: ANTISLOP_ICON, text: 'antislop review' };
     if (group.kind === 'plan') return { icon: PLAN_ICON, text: 'plan review' };
     const reviewerCount = Math.max(1, group.sessions.filter(s => s.mode === 'megareview').length);
     return { icon: '❯'.repeat(Math.min(reviewerCount, 4)), text: reviewerCount + '-model review' };
   }
+  if (primary.mode === 'security') return { icon: SECURITY_ICON, text: 'security' };
   if (primary.mode === 'antislop') return { icon: ANTISLOP_ICON, text: 'antislop' };
   if (primary.mode === 'plan') return { icon: PLAN_ICON, text: 'plan' };
   const label = group.cli || primary.model || primary.cli || 'session';
@@ -1283,7 +1286,7 @@ function addMeta(container, labelText, valueText, options = {}) {
 function renderDetailMeta(group) {
   const primary = group.sessions[0] || {};
   const title = group.is_group
-    ? (group.kind === 'antislop' ? 'Antislop review' : group.kind === 'plan' ? 'Plan review' : 'Multi-model review')
+    ? (group.kind === 'security' ? 'Security review' : group.kind === 'antislop' ? 'Antislop review' : group.kind === 'plan' ? 'Plan review' : 'Multi-model review')
     : (group.cli || primary.model || 'Session');
   byId('detail-eyebrow').textContent = group.is_group ? 'Grouped run' : 'Session detail';
   byId('detail-title').childNodes[0].nodeValue = title + ' ';

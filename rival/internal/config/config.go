@@ -694,6 +694,14 @@ func ResolveSecurityModel() (SecurityModel, error) {
 	return entry, nil
 }
 
+// ConfiguredSecurityReviewer returns the raw config value, or "" when unset.
+func ConfiguredSecurityReviewer() string {
+	if userConfig == nil {
+		return ""
+	}
+	return strings.TrimSpace(userConfig.Security.Reviewer)
+}
+
 // OpenCodeEntryFor looks up a registry entry by concrete model id. The
 // megareview uses it so an explicit -m selection never consults the security
 // config: with security.reviewer set to grok, `-m k3` must still run K3.
