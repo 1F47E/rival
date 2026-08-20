@@ -11,18 +11,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # .claude/skills/ copies were removed — `rival install` copies these out to
 # ~/.claude/skills/ on install/update, so there is no second copy to keep in sync.
 # Deprecated skill directories are skipped because they are removed on install.
-SKILL_DIRS=(
-	"$ROOT/rival/internal/skills/rival-sol"
-	"$ROOT/rival/internal/skills/rival-plan"
-	"$ROOT/rival/internal/skills/rival-plan-sol"
-	"$ROOT/rival/internal/skills/rival-plan-fable"
-	"$ROOT/rival/internal/skills/rival-fable"
-	"$ROOT/rival/internal/skills/rival-review"
-	"$ROOT/rival/internal/skills/rival-k3"
-	"$ROOT/rival/internal/skills/rival-grok"
-	"$ROOT/rival/internal/skills/rival-antislop"
-	"$ROOT/rival/internal/skills/rival-antislop-plan"
+# Derived from embed.go's Names list rather than repeated here: a static copy
+# silently skips a newly added skill, and a skill whose version never moves is
+# never reinstalled, because `rival install` skips files whose versions match.
+SKILLS_DIR="$ROOT/rival/internal/skills"
+SKILL_DIRS=()
+while IFS= read -r name; do
+	SKILL_DIRS+=("$SKILLS_DIR/$name")
+done < <(
+	sed -n 's/^var Names = \[\]string{\(.*\)}$/\1/p' "$SKILLS_DIR/embed.go" |
+		tr ',' '\n' | tr -d ' "'
 )
+
+if [ ${#SKILL_DIRS[@]} -eq 0 ]; then
+	echo "error: could not read skill names from embed.go" >&2
+	exit 1
+fi
 
 for dir in "${SKILL_DIRS[@]}"; do
   file="$dir/SKILL.md"

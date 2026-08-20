@@ -84,9 +84,11 @@ func printSecurityResolution(entry config.SecurityModel, workdir string) error {
 	fmt.Printf("%s: %s\n", entry.KeyEnv, status)
 
 	// A present key does not make the model usable when the binary is absent,
-	// so report the two conditions separately.
+	// so report the two conditions separately. The error travels only through
+	// ExitCodeError: Execute prints it, and printing here as well would show
+	// the same line twice.
 	if err := executor.OpencodePreflightEntry(entry, workdir); err != nil {
-		fmt.Printf("\nNot usable: %v\n", err)
+		fmt.Printf("\nNot usable.\n")
 		return &ExitCodeError{Code: 1, Err: err}
 	}
 	fmt.Printf("\nReady.\n")
@@ -106,6 +108,13 @@ func commandSecurityAction(cmd *cobra.Command, args []string) error {
 
 	if which {
 		return printSecurityResolution(entry, workdir)
+	}
+
+	// A terminal stdin means the command was run by hand with no piped scope.
+	// Show usage rather than silently reviewing the whole project.
+	if stat, statErr := os.Stdin.Stat(); statErr == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
+		_, _ = fmt.Fprintln(os.Stdout, securityUsage)
+		return nil
 	}
 
 	var rawScope string

@@ -89,7 +89,7 @@ prompt out of the process table. The argv is:
 
 ```
 grok --prompt-file <tmpfile> \
-     -m grok-4.5 \
+     -m grok-4.6 \
      --effort <low|medium|high> \
      --output-format plain \
      --no-auto-update \
@@ -194,7 +194,7 @@ The clamp is applied before the session is created, so `rival sessions` and the
 dashboards report the level actually sent.
 
 The general built-in defaults are Sol `high`, Fable `medium`, Kimi K3 `max`, and
-Grok `high` — which is also grok-4.5's own built-in default. Plan review preserves its surface-specific fallbacks: Sol is `high`,
+Grok `high` — which is also grok-4.6's own built-in default. Plan review preserves its surface-specific fallbacks: Sol is `high`,
 Fable alone is `low`, and a native Sol/Fable pair is `high` for both. The
 installed paired plan skill explicitly requests `ultra`, so that explicit skill
 value wins over configured defaults.

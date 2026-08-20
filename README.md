@@ -2,15 +2,38 @@
 
 <img src="assets/banner2.png" width="600px">
 
-Dispatch prompts to external AI models from your coding session as separate
-reviewer processes. Their repository exploration and tool traces stay out of
-your primary agent's context; Rival returns the final review.
+## TLDR
 
-One coding agent tends to preserve its own assumptions when reviewing its own
-work. Rival asks independent models — in separate processes, with independent
-context, exploring the actual repository — and turns their overlap and
-disagreements into one verdict. Reviews run detached behind a cross-process
-queue, so your session is never blocked.
+**Why this exists.** A coding agent reviewing its own work keeps its own
+assumptions. It wrote the bug, so it reads the code the same way twice. Rival
+asks a different model, in a separate process with its own context, to read
+the repository and report back. You get a second opinion that has not already
+agreed with you.
+
+**1. Install**
+
+```bash
+brew install 1F47E/tap/rival
+rival install          # copies the slash commands into ~/.claude/skills/
+```
+
+Then set up at least one model. Sol is the usual first one:
+
+```bash
+npm install -g @openai/codex && codex login
+```
+
+**2. Use it from Claude Code**
+
+```
+/rival-review              review your changes with an independent model
+/rival-security            hunt vulnerabilities, not style
+/rival-antislop            find over-engineering and AI slop
+/rival-plan plan.md        rate a plan before you build it
+```
+
+Each runs in the background and reports when done, so your session keeps
+moving. `/rival-review` with no arguments reviews whatever you have changed.
 
 ## Skills
 
@@ -19,14 +42,15 @@ run detached and report back when done.
 
 | Skill | What it does | Why it's useful |
 |-------|--------------|-----------------|
-| `/rival-review` | Sol + Kimi K3 review your changes in parallel; a consilium judge merges duplicates, applies consensus bonuses, filters weak findings | The default review gate: two independent models with full repo access, one deduplicated verdict instead of two overlapping reports |
+| `/rival-review` | Sol reviews your changes; add `-m k3` for a second reviewer that hunts vulnerabilities, and a consilium judge merges both | The default review gate. One independent model with full repo access, or two with different lenses |
+| `/rival-security` | Dedicated security review: injection, authorization and IDOR, crypto, SSRF, traversal, deserialization, secrets, CSRF, and more | Bug reviews barely touch security. This one hunts exploitable vulnerabilities and refuses to run rather than skip silently |
 | `/rival-antislop` | Quality-only review of changed code: over-engineering, reinvented libraries, compat hoarding, AI-slop patterns. Returns a leanness rating (1-10) and a cut list | Bug reviews can't tell you the code shouldn't exist. This one names what to delete, merge, or replace — the counterweight to AI-generated bloat |
 | `/rival-antislop-plan` | The same cut-list pass for a plan/spec markdown doc: scope creep, YAGNI, gold-plating, ceremony padding | Run it on a fresh plan before any reviewer or implementer sees it — over-engineering is cheapest to remove before code exists |
 | `/rival-plan` | Sol + Fable independently rate a plan/spec 1-10 and list bugs, gaps, and ambiguities (xhigh effort) | Catches wrong steps and missing pieces in a design while they're still words, with two models' blind spots covering each other |
 | `/rival-plan-sol` / `/rival-plan-fable` | Single-model plan review | When you want one specific second opinion — Sol for independence from a Claude-based session, Fable when Sol is unavailable |
 | `/rival-sol` | Any prompt, or `review [scope]`, via Sol (OpenAI Codex CLI) | An independent non-Anthropic perspective with read-only repo access — ask it anything or point it at a diff |
 | `/rival-fable` | Code review of changed files via Fable (Claude Code CLI) | A separate Claude reviewer whose exploration stays out of your session's context |
-| `/rival-k3` | Any prompt, or `review [scope]`, via Kimi K3 (max reasoning, OpenCode) | A cheap third opinion from a thinking-only model on a different provider |
+| `/rival-k3` | Any prompt via Kimi K3 (max reasoning, OpenCode) | A cheap opinion from a thinking-only model on a different provider |
 | `/rival-grok` | Any prompt, or `review [scope]`, via Grok (xAI CLI); opt-in only | Never in the default roster; there when you explicitly want the fourth opinion |
 
 All accept `-re <effort>` (`low`/`medium`/`high`/`xhigh`) and, where a roster
@@ -73,8 +97,8 @@ skipped, not fatal.
 ### Reviews
 
 ```
-/rival-review                              — Sol + K3; auto-detect changed files
-/rival-review -m sol src/api/              — one model, explicit scope
+/rival-review                              — Sol; auto-detect changed files
+/rival-review -m sol,k3 src/api/           — add the security lens
 /rival-review -re xhigh src/api/           — override effort
 /rival-sol review                          — single-model review
 /rival-fable                               — Fable review of changed files
@@ -92,6 +116,32 @@ rival strips known credential env vars from the child as blast-radius
 reduction. Grok's `review` additionally passes `--sandbox read-only`, but its
 built-in profiles fail open without a kernel sandbox and keep temp dirs
 writable — treat it accordingly.
+
+### Security
+
+```
+/rival-security                             — vulnerabilities in the changed files
+/rival-security src/api/                    — a specific scope
+rival command security --which              — which model will run, and can it
+```
+
+The model comes from `~/.rival/config.yaml`, so the skill never hardcodes one:
+
+```yaml
+security:
+  reviewer: k3      # or grok — k3 is the default
+```
+
+`k3` runs Kimi K3 through OpenCode on Moonshot (`MOONSHOT_API_KEY`); `grok`
+runs Grok 4.6 through OpenCode on OpenRouter (`OPENROUTER_API_KEY`). The run
+fails if the chosen model has no key rather than falling back, because a
+security review that quietly skips is worse than one that refuses to start.
+Output that does not parse is reported as unusable, never as a clean review.
+
+`-m k3` in a megareview carries the same security lens, so `-m sol,k3` gives
+you one reviewer hunting bugs and one hunting vulnerabilities. The judge is
+told which reviewer used which lens, so a finding only the security reviewer
+could have made is not discounted for lacking a second vote.
 
 ### Antislop
 
