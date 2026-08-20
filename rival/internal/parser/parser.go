@@ -32,7 +32,7 @@ func ParseFableArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
-// ParseGrokArgs parses raw arguments for the grok command (grok-4.5).
+// ParseGrokArgs parses raw arguments for the grok command (grok-4.6).
 // Identical grammar to Sol: an omitted effort stays empty so the command can
 // apply grok's configured default.
 func ParseGrokArgs(raw string) (*ParseResult, error) {

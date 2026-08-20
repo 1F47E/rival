@@ -123,7 +123,7 @@ func grokRunArgs(model, promptFile, effort, workdir string, review bool) ([]stri
 	return args, nil
 }
 
-// GrokEffort maps rival's effort menu onto grok-4.5's own low/medium/high.
+// GrokEffort maps rival's effort menu onto grok-4.6's own low/medium/high.
 // Levels above high clamp to high and levels below low clamp to low rather
 // than failing a run over a level the model simply does not expose; an
 // unrecognized value is still an error so typos do not silently downgrade.

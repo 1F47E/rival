@@ -97,3 +97,24 @@ func indexOf(h, n string) int {
 	}
 	return -1
 }
+
+// The xAI Grok bumped to 4.6 on 2026-08-20, after a live probe confirmed the
+// CLI accepts it. That makes its concrete id textually close to the
+// OpenRouter model's, so assert the labels stay distinct in every direction.
+func TestBothGroksNormalizeToTheirOwnLabel(t *testing.T) {
+	xaiLog := "runtime banner from " + GrokModel + " finished"
+	if got := PublicRuntimeLog(GrokLabel, GrokModel, xaiLog); !contains(got, GrokLabel) {
+		t.Errorf("xAI log did not normalize to %q: %s", GrokLabel, got)
+	}
+
+	orLog := "runtime banner from " + GrokOpenRouterModel + " finished"
+	got := PublicRuntimeLog("opencode", GrokOpenRouterModel, orLog)
+	if !contains(got, GrokOpenRouterLabel) {
+		t.Errorf("OpenRouter log did not normalize to %q: %s", GrokOpenRouterLabel, got)
+	}
+
+	// The xAI model id must not appear as a bare label in OpenRouter output.
+	if ModelLabel(GrokModel) == ModelLabel(GrokOpenRouterModel) {
+		t.Errorf("both Groks resolve to the same label %q", ModelLabel(GrokModel))
+	}
+}

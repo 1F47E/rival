@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ const (
 	// K3Label, which is the public display and error name.
 	K3CommandName        = "k3"
 	KimiModel            = "moonshotai/kimi-k3" // Kimi K3 via OpenCode's built-in Moonshot AI provider
-	GrokModel            = "grok-4.5"
+	GrokModel            = "grok-4.6"
 	GrokLabel            = "grok"
 	ClaudeDockerImage    = "rival-fable"
 	ClaudeDockerTokenEnv = "RIVAL_CLAUDE_TOKEN"
@@ -85,6 +86,10 @@ func ModelLabel(model string) string {
 		return K3Label
 	case GrokModel, GrokLabel:
 		return GrokLabel
+	case GrokOpenRouterModel, GrokOpenRouterLabel:
+		// Distinct from GrokLabel: this is Grok on OpenCode via OpenRouter,
+		// a different runtime with a different credential.
+		return GrokOpenRouterLabel
 	default:
 		return "retired-model"
 	}
@@ -103,6 +108,10 @@ func EngineLabel(cli, model string) string {
 		return K3Label
 	case GrokModel:
 		return GrokLabel
+	case GrokOpenRouterModel:
+		// Checked before the adapter fallback below: both this and K3 run on
+		// opencode, so falling through would label Grok as K3.
+		return GrokOpenRouterLabel
 	}
 
 	// Adapter identity is the reliable fallback for sessions written by older
@@ -229,13 +238,41 @@ func PublicRuntimeLog(cli, model, raw string) string {
 }
 
 func replaceConcreteModelIDs(cli, model, text string) string {
-	if model != "" {
-		text = strings.ReplaceAll(text, model, EngineLabel(cli, model))
+	// Model ids overlap textually: "grok-4.6" is a substring of the label
+	// "grok-4.6-openrouter". Replacing ids directly lets one substitution
+	// corrupt another's output, so each id becomes a placeholder first and
+	// only expands to its label once every id is consumed.
+	type pair struct{ id, label string }
+	pairs := []pair{
+		{GPT56SolModel, SolLabel},
+		{FableModel, FableLabel},
+		{KimiModel, K3Label},
+		{GrokOpenRouterModel, GrokOpenRouterLabel},
+		{GrokModel, GrokLabel},
 	}
-	text = strings.ReplaceAll(text, GPT56SolModel, SolLabel)
-	text = strings.ReplaceAll(text, FableModel, FableLabel)
-	text = strings.ReplaceAll(text, KimiModel, K3Label)
-	text = strings.ReplaceAll(text, GrokModel, GrokLabel)
+	if model != "" {
+		// The run's own model wins, and is matched before the shared list so
+		// a longer id is never shadowed by a shorter one it contains.
+		pairs = append([]pair{{model, EngineLabel(cli, model)}}, pairs...)
+	}
+
+	// Longest id first: a short id must never consume part of a longer one.
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return len(pairs[i].id) > len(pairs[j].id)
+	})
+
+	labels := make([]string, 0, len(pairs))
+	for i, p := range pairs {
+		if p.id == "" || !strings.Contains(text, p.id) {
+			continue
+		}
+		token := "\x00rival-model-" + strconv.Itoa(i) + "\x00"
+		text = strings.ReplaceAll(text, p.id, token)
+		labels = append(labels, token, p.label)
+	}
+	for i := 0; i < len(labels); i += 2 {
+		text = strings.ReplaceAll(text, labels[i], labels[i+1])
+	}
 	return text
 }
 
@@ -989,7 +1026,7 @@ func builtinModelEffort(label string) string {
 	case FableLabel:
 		return "medium"
 	case GrokLabel:
-		// grok-4.5's menu is low/medium/high, and high is its own default.
+		// grok-4.6's menu is low/medium/high, and high is its own default.
 		return "high"
 	default:
 		return DefaultReviewEffort
