@@ -113,7 +113,7 @@ func TestParsePlanModels(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"exact models", []string{"gpt-5.6-sol", "claude-fable-5"}, []string{"codex", "fable"}, false},
+		{"exact models", []string{"gpt-5.6-sol", "claude-fable-5-1"}, []string{"codex", "fable"}, false},
 		{"friendly aliases", []string{"sol", "fable"}, []string{"codex", "fable"}, false},
 		{"comma separated", []string{"sol,fable"}, []string{"codex", "fable"}, false},
 		{"dedup preserves order", []string{"fable", "sol", "gpt-5.6-sol"}, []string{"fable", "codex"}, false},

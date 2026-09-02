@@ -4,6 +4,12 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Changed — Fable reviews run 5.1
+
+`FableModel` moves from `claude-fable-5` to `claude-fable-5-1`, verified
+against the CLI before the constant changed. The `fable` label is unchanged,
+so dashboards, session records, and `-m fable` all keep working.
+
 ### Removed — /rival-antislop-plan
 
 Antislop no longer reviews plan documents. The skill, the `plan <path>` stdin

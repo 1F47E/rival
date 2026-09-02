@@ -26,7 +26,7 @@ func ParseGPT56SolArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
 }
 
-// ParseFableArgs parses raw arguments for the fable command (claude-fable-5).
+// ParseFableArgs parses raw arguments for the fable command (claude-fable-5-1).
 // Identical grammar to claude.
 func ParseFableArgs(raw string) (*ParseResult, error) {
 	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)

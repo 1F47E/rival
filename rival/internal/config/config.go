@@ -18,7 +18,7 @@ import (
 const (
 	GPT56SolModel = "gpt-5.6-sol"
 	CodexModel    = GPT56SolModel // legacy internal alias
-	FableModel    = "claude-fable-5"
+	FableModel    = "claude-fable-5-1"
 	SolLabel      = "sol"
 	FableLabel    = "fable"
 	K3Label       = "kimi-k3"
