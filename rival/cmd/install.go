@@ -14,6 +14,7 @@ import (
 )
 
 var forceInstall bool
+var installTarget = "claude"
 
 // retiredSkillNameHashes lets upgrades remove two retired integration skills
 // without retaining their obsolete public names anywhere in the shipped tree.
@@ -25,12 +26,13 @@ var retiredSkillNameHashes = map[string]struct{}{
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install slash-command skills to ~/.claude/skills/",
+	Short: "Install skills for Claude Code or Codex",
 	RunE:  runInstall,
 }
 
 func init() {
 	installCmd.Flags().BoolVar(&forceInstall, "force", false, "overwrite without prompting")
+	installCmd.Flags().StringVar(&installTarget, "target", "claude", "skill host: claude (~/.claude/skills) or codex (~/.agents/skills)")
 	rootCmd.AddCommand(installCmd)
 }
 
@@ -39,7 +41,14 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("get home dir: %w", err)
 	}
-	targetBase := filepath.Join(home, ".claude", "skills")
+	targetBase, err := skillTargetBase(home, installTarget)
+	if err != nil {
+		return err
+	}
+	return installSkills(targetBase, installTarget, forceInstall)
+}
+
+func installSkills(targetBase, target string, force bool) error {
 	fmt.Printf("Installing skills to %s\n\n", targetBase)
 
 	var installed, updated, skipped int
@@ -48,6 +57,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		srcContent, srcVersion, err := readEmbeddedSkill(name)
 		if err != nil {
 			return fmt.Errorf("read embedded skill %s: %w", name, err)
+		}
+		if target == "codex" {
+			srcContent, err = skills.Codex(name, srcContent)
+			if err != nil {
+				return fmt.Errorf("render Codex skill %s: %w", name, err)
+			}
 		}
 
 		targetDir := filepath.Join(targetBase, name)
@@ -70,13 +85,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 		dstVersion := parseVersion(string(existingContent))
 
-		if srcVersion == dstVersion && !forceInstall {
+		if srcVersion == dstVersion && !force {
 			fmt.Printf("  · %s — already up to date (v%s)\n", name, srcVersion)
 			skipped++
 			continue
 		}
 
-		if !forceInstall {
+		if !force {
 			fmt.Printf("  ? %s — update v%s → v%s? [y/N] ", name, dstVersion, srcVersion)
 			reader := bufio.NewReader(os.Stdin)
 			answer, _ := reader.ReadString('\n')
@@ -119,6 +134,17 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Printf("Done: %d installed, %d updated, %d up to date, %d removed\n", installed, updated, skipped, removed)
 	return nil
+}
+
+func skillTargetBase(home, target string) (string, error) {
+	switch target {
+	case "claude":
+		return filepath.Join(home, ".claude", "skills"), nil
+	case "codex":
+		return filepath.Join(home, ".agents", "skills"), nil
+	default:
+		return "", fmt.Errorf("unknown skill target %q; use claude or codex", target)
+	}
 }
 
 func removeSkillDirsByHash(targetBase string, hashes map[string]struct{}) (int, error) {

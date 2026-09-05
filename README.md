@@ -35,6 +35,9 @@ npm install -g @openai/codex && codex login
 Each runs in the background and reports when done, so your session keeps
 moving. `/rival-review` with no arguments reviews whatever you have changed.
 
+Codex can host the skills too: run `rival install --target codex`, then use
+`$rival-review` in Codex. Claude Code remains the default install target.
+
 ## Skills
 
 Installed into Claude Code by `rival install`. Each is a slash command; all
@@ -69,6 +72,27 @@ in the `rival/` subdirectory, so remote `go install` is not supported).
 Upgrade with `rival update` (equivalent: `brew upgrade 1F47E/tap/rival &&
 rival install --force`), then restart or reload Claude Code so it picks up the
 refreshed skills.
+
+### Codex as the host
+
+```bash
+rival install --target codex          # installs all skills into ~/.agents/skills/
+rival install --target codex --force  # refreshes existing Codex copies
+rival update --target codex           # upgrades and refreshes that host
+```
+
+Invoke `$rival-review`, `$rival-sol`, `$rival-astra`, `$rival-fable`, or any of
+the other Rival skills from Codex. Model names, provider login, and effort
+configuration are unchanged. A separate Codex-hosted review still runs in its
+own Rival process and context; it does not automatically imply a different
+model family.
+
+Codex skills use the host's execution/session tools to collect the result. They
+do not depend on Claude's `Bash`/`Write` tool names, `$ARGUMENTS` substitution,
+or background task notifications. The default flow waits for a final report;
+detached execution remains available when requested. Local skill discovery
+uses the [documented Codex user location](https://learn.chatgpt.com/docs/build-skills).
+Installing for one host leaves the other host's skills untouched.
 
 ### Provider setup
 
@@ -116,6 +140,46 @@ rival strips known credential env vars from the child as blast-radius
 reduction. Grok's `review` additionally passes `--sandbox read-only`, but its
 built-in profiles fail open without a kernel sandbox and keep temp dirs
 writable — treat it accordingly.
+
+### GitLab merge requests
+
+```bash
+glab auth login --hostname gitlab.example.com
+rival review --model sol --workdir /path/to/repo \
+  https://gitlab.example.com/group/project/-/merge_requests/42
+```
+
+In Claude use `/rival-review -m sol <MR-URL>`; in Codex use
+`$rival-review -m sol <MR-URL>`. The URL must be the entire scope (options are
+still accepted). Nested namespaces and links ending in `/diffs` or `/commits`,
+with query strings or fragments, are supported. Use a local repository with a
+Git remote matching the URL's host and target project. For a fork MR, add the
+target project's remote if only the fork's remote exists. HTTPS and standard
+SSH remotes are supported; credential-bearing HTTPS URLs are rejected.
+
+Rival calls `glab api --hostname` before starting any reviewer. It uses glab's
+saved authentication for that host, ignoring global `GITLAB_TOKEN`,
+`GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`, and `CI_JOB_TOKEN` values so another
+instance's credentials are not reused. Git fetch uses your normal Git/SSH
+authentication. Both API and Git access must work from the host.
+
+The [MR API's `diff_refs`](https://docs.gitlab.com/api/merge_requests/#get-single-mr)
+bind the review to the merge-base SHA and source-head SHA. Rival fetches those
+objects into a temporary repository, checks out that exact head, and includes
+the URL and SHAs in the prompt and report. The caller's branch, index, and
+dirty files are untouched. All reviewers and the judge use the snapshot; it
+is removed when the command finishes or is cancelled normally.
+
+Unavailable API, mismatched remote, missing/stale diff refs, or failed fetch
+abort the review. There is no fallback to local HEAD. Preparation is bounded
+to two minutes. Single-model/raw, security, and antislop commands reject MR
+URLs and direct callers to `rival review` or `rival-review`; for one reviewer,
+select `--model sol`. No comments or approvals are posted to GitLab.
+
+The report describes the recorded snapshot, even if the MR later changes.
+Submodules and LFS objects are not hydrated, and reviewer sandbox restrictions
+can prevent tests or access to additional context. Such checks must be reported
+as unavailable. An uncatchable kill can leave a `rival-mr-*` temporary directory.
 
 ### Security
 
@@ -339,6 +403,7 @@ appends an actionable hint (not logged in → run `claude` and `/login`).
 
 ```bash
 rm -rf ~/.claude/skills/rival-*
+rm -rf ~/.agents/skills/rival-*  # if installed for Codex
 brew uninstall rival        # if installed via brew
 # source install: rm "$(go env GOBIN 2>/dev/null || echo "$(go env GOPATH)/bin")/rival"
 ```

@@ -15,10 +15,14 @@ var updateCmd = &cobra.Command{
 }
 
 func init() {
+	updateCmd.Flags().StringVar(&installTarget, "target", "claude", "skill host to refresh: claude or codex")
 	rootCmd.AddCommand(updateCmd)
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
+	if _, err := skillTargetBase("", installTarget); err != nil {
+		return err
+	}
 	current := Version
 
 	// Check latest release from GitHub

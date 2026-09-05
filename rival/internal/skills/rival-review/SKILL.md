@@ -1,7 +1,7 @@
 ---
 name: rival-review
 version: 3.30.1
-description: Run Sol, K3, and/or opt-in grok code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
+description: Review local changes or a GitLab merge request URL with Sol, K3, and/or opt-in grok and a consilium judge via Rival. Use only when the user explicitly invokes /rival-review.
 argument-hint: "[-m sol|astra|k3|grok[,model...]] [-re high|ultra] [scope]"
 allowed-tools: Bash, Read, Write
 ---
@@ -16,6 +16,19 @@ Returns a single combined answer.
 ## Instructions
 
 **Arguments received:** $ARGUMENTS
+
+### GitLab merge requests
+
+For an MR review, pass its HTTPS URL as the entire scope, with optional -m/-re
+options: `/rival-review -m sol https://gitlab.example.com/group/project/-/merge_requests/42`.
+Choose the local repository with a Git remote for that target project as the
+command's workdir, even when the host session is in a parent workspace.
+The host needs `glab auth login --hostname <URL-host>` and working Git fetch
+authentication. Rival resolves the MR outside the reviewer sandbox, checks its
+base/head SHAs, and reviews an isolated checkout. Failure to resolve or fetch
+the MR is a failed review; never substitute the current branch or strip the
+URL to retry locally. Preserve the URL/base/head header in the delivered report.
+Reviewing does not authorize posting MR comments or approvals.
 
 ### Usage
 
