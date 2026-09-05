@@ -1,6 +1,6 @@
 ---
 name: rival-sol
-version: 3.30.0
+version: 3.30.1
 description: Run Sol through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-sol.
 argument-hint: "[-re low|medium|high|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write

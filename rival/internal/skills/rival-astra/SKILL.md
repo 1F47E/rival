@@ -1,6 +1,6 @@
 ---
 name: rival-astra
-version: 3.30.0
+version: 3.30.1
 description: Run Astra through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-astra.
 argument-hint: "[-re low|medium|high|xhigh|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write
@@ -26,8 +26,8 @@ If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 > - `/rival-astra review src/api/` — review specific scope (bypasses git detection)
 > - `/rival-astra -re ultra review src/api/` — review with ultra reasoning
 >
-> **Reasoning effort** (`-re`): `low`, `medium`, `high`, `ultra`. Omitted uses
-> the `astra` default in `~/.rival/config.yaml` (built-in fallback: `high`).
+> **Reasoning effort** (`-re`): `low`, `medium`, `high`, `xhigh`, `ultra`.
+> Omitted uses the `astra` default in `~/.rival/config.yaml` (built-in: `xhigh`).
 
 ### Execute — launch detached, then watch in the background
 
