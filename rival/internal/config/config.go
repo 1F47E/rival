@@ -18,10 +18,15 @@ import (
 const (
 	GPT56SolModel = "gpt-5.6-sol"
 	CodexModel    = GPT56SolModel // legacy internal alias
-	FableModel    = "claude-fable-5-1"
-	SolLabel      = "sol"
-	FableLabel    = "fable"
-	K3Label       = "kimi-k3"
+	// AstraModel is a sibling of Sol: a different model on the same codex
+	// runtime, so EngineLabel must match it before the "codex" adapter
+	// fallback below, which would otherwise label every Astra run "sol".
+	AstraModel = "gpt-6-astra"
+	AstraLabel = "astra"
+	FableModel = "claude-fable-5-1"
+	SolLabel   = "sol"
+	FableLabel = "fable"
+	K3Label    = "kimi-k3"
 	// K3CommandName is the cobra command word for K3. It differs from
 	// K3Label, which is the public display and error name.
 	K3CommandName        = "k3"
@@ -80,6 +85,8 @@ func ModelLabel(model string) string {
 	switch model {
 	case GPT56SolModel, SolLabel:
 		return SolLabel
+	case AstraModel, AstraLabel:
+		return AstraLabel
 	case FableModel, FableLabel:
 		return FableLabel
 	case KimiModel, K3Label:
@@ -102,6 +109,10 @@ func EngineLabel(cli, model string) string {
 	switch model {
 	case GPT56SolModel:
 		return SolLabel
+	case AstraModel:
+		// Checked before the adapter fallback: Astra and Sol both run on
+		// codex, so falling through would label Astra as Sol.
+		return AstraLabel
 	case FableModel:
 		return FableLabel
 	case KimiModel:
@@ -245,6 +256,7 @@ func replaceConcreteModelIDs(cli, model, text string) string {
 	type pair struct{ id, label string }
 	pairs := []pair{
 		{GPT56SolModel, SolLabel},
+		{AstraModel, AstraLabel},
 		{FableModel, FableLabel},
 		{KimiModel, K3Label},
 		{GrokOpenRouterModel, GrokOpenRouterLabel},
@@ -267,7 +279,7 @@ func replaceConcreteModelIDs(cli, model, text string) string {
 	// label — a re-normalized log, or a model naming itself — and
 	// "grok-4.6-openrouter" contains the id "grok-4.6", so an unprotected
 	// label would be rewritten into "grok-openrouter".
-	protected := []string{GrokOpenRouterLabel, K3Label, SolLabel, FableLabel, GrokLabel}
+	protected := []string{GrokOpenRouterLabel, K3Label, SolLabel, FableLabel, GrokLabel, AstraLabel}
 	sort.SliceStable(protected, func(i, j int) bool {
 		return len(protected[i]) > len(protected[j])
 	})
@@ -327,7 +339,13 @@ func publicReviewHeader(line string) string {
 	}
 	switch strings.ToLower(reviewer) {
 	case "codex":
-		reviewer = SolLabel
+		// Sol and Astra share this adapter, so disambiguate by identity
+		// before defaulting to Sol.
+		if strings.Contains(lowerIdentity, AstraLabel) {
+			reviewer = AstraLabel
+		} else {
+			reviewer = SolLabel
+		}
 	case "claude":
 		if strings.Contains(lowerIdentity, FableLabel) {
 			reviewer = FableLabel
@@ -417,6 +435,8 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 		switch alias {
 		case SolLabel, GPT56SolModel:
 			expanded = []ReviewTarget{{CLI: "codex", Model: GPT56SolModel}}
+		case AstraLabel, AstraModel:
+			expanded = []ReviewTarget{{CLI: "codex", Model: AstraModel}}
 		case "k3", "kimi-k3":
 			// K3 only ever runs the security lens, in any roster.
 			// Kimi K3 runs through the Moonshot AI provider and needs its API key.
@@ -425,7 +445,7 @@ func ResolveReviewTargets(selectors []string) ([]ReviewTarget, error) {
 			// Opt-in only: grok never joins the default roster.
 			expanded = []ReviewTarget{{CLI: GrokLabel, Model: GrokModel}}
 		default:
-			return nil, fmt.Errorf("unknown review model %q; use one of: sol, kimi-k3, grok", raw)
+			return nil, fmt.Errorf("unknown review model %q; use one of: sol, astra, kimi-k3, grok", raw)
 		}
 		for _, target := range expanded {
 			appendTarget(target)
@@ -1024,6 +1044,9 @@ func builtinModelEffort(label string) string {
 	switch label {
 	case SolLabel:
 		return DefaultReviewEffort
+	case AstraLabel:
+		// Astra is the deep-reasoning sibling of Sol and is pinned to xhigh.
+		return "xhigh"
 	case "kimi-k3":
 		return "max"
 	case FableLabel:
@@ -1038,7 +1061,7 @@ func builtinModelEffort(label string) string {
 
 func knownEffortModel(label string) bool {
 	switch label {
-	case SolLabel, "kimi-k3", FableLabel, GrokLabel:
+	case SolLabel, AstraLabel, "kimi-k3", FableLabel, GrokLabel:
 		return true
 	default:
 		return false

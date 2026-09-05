@@ -28,6 +28,20 @@ func solSpec() modelSpec {
 	}
 }
 
+func astraSpec() modelSpec {
+	return modelSpec{
+		commandName: config.AstraLabel,
+		cli:         "codex",
+		model:       config.AstraModel,
+		usage:       astraUsage,
+		parse:       parser.ParseAstraArgs,
+		preflight:   func(string) error { return executor.CodexPreflight() },
+		run: func(ctx context.Context, sess *session.Session, prompt, effort, workdir string, _ bool, out io.Writer) (*executor.Result, error) {
+			return executor.RunCodexModel(ctx, sess, prompt, effort, workdir, config.AstraModel, out)
+		},
+	}
+}
+
 func fableSpec() modelSpec {
 	return modelSpec{
 		commandName: config.FableLabel,

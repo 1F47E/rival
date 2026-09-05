@@ -1,48 +1,37 @@
 ---
-name: rival-review
+name: rival-astra
 version: 3.29.0
-description: Run Sol, K3, and/or opt-in grok code reviews with a consilium judge via the rival binary. Use only when the user explicitly invokes /rival-review.
-argument-hint: "[-m sol|astra|k3|grok[,model...]] [-re high|ultra] [scope]"
+description: Run Astra through the rival binary, detached and watched in the background. Use only when the user explicitly invokes /rival-astra.
+argument-hint: "[-re low|medium|high|xhigh|ultra] [review [scope] | prompt]"
 allowed-tools: Bash, Read, Write
 ---
 
-# Megareview Runner (rival binary)
+# Astra runner
 
-Run the curated reviewers via the `rival` Go binary. The default roster is
-Sol alone; `-m/--model` replaces that roster for one invocation. K3 is
-selectable but always runs the security lens, never a second bug hunt.
-Returns a single combined answer.
+Run Astra through the `rival` Go binary. The run is detached and
+watched in the background, so this skill does not block your session.
 
 ## Instructions
 
 **Arguments received:** $ARGUMENTS
 
-### Usage
+### Empty arguments check
 
-Pass `$ARGUMENTS` through verbatim. Empty arguments are valid and review the
-git-detected scope with both default models. If `$ARGUMENTS` is `-h` or `--help`,
-respond with this usage message and STOP:
+If `$ARGUMENTS` is empty or blank, respond with this usage message and STOP:
 
 > **Usage:**
-> - `/rival-review` — both default models; auto-detect changed files via git
-> - `/rival-review -m sol src/api/` — Sol only
-> - `/rival-review -m sol,astra src/api/` — Sol plus its deep-reasoning sibling
-> - `/rival-review -m k3 src/api/` — K3 only, security lens (requires `MOONSHOT_API_KEY`)
-> - `/rival-review -m sol,k3 src/api/` — Sol hunts bugs, K3 hunts vulnerabilities
-> - `/rival-review -m grok src/api/` — grok only (opt-in; requires `grok login`)
-> - `/rival-review -re ultra src/api/` — override compatible model defaults
+> - `/rival-astra 'explain the auth flow'` — run any prompt with Astra
+> - `/rival-astra -re ultra 'find bugs in src/main.go'` — use ultra reasoning
+> - `/rival-astra review` — code review (auto-detects changed files via git)
+> - `/rival-astra review src/api/` — review specific scope (bypasses git detection)
+> - `/rival-astra -re ultra review src/api/` — review with ultra reasoning
 >
-> **Models** (`-m`, `--model`): `sol`, `kimi-k3` (`k3`, requires `MOONSHOT_API_KEY`),
-> `grok` (opt-in — never in the default roster; requires `grok login`)
-> **Reasoning effort** (`-re`, `--effort`): `low`, `medium`, `high`, `ultra`;
-> omitted uses per-model defaults from `~/.rival/config.yaml`.
->
-> An explicit model list is exact; no other reviewer is added implicitly. A
-> single selected model performs both the review and consilium pass.
+> **Reasoning effort** (`-re`): `low`, `medium`, `high`, `ultra`. Omitted uses
+> the `astra` default in `~/.rival/config.yaml` (built-in fallback: `high`).
 
 ### Execute — launch detached, then watch in the background
 
-rival coordinates runs through a bounded cross-process queue and a review can take many
+Rival coordinates runs through a bounded cross-process queue and a review can take many
 minutes, so this skill **does not block**. It launches rival detached (survives
 this context ending), arms a **background watcher**, and then returns control to
 you immediately. The watcher notifies you when the run finishes — you present
@@ -53,7 +42,7 @@ the result then, possibly several turns later.
 ```bash
 RIVAL_IN="/tmp/rival_in_<8-random-hex>.txt"   # the file you created with the Write tool
 RIVAL_OUT="$(mktemp -t rival_out.XXXXXX)"; RIVAL_ERR="$(mktemp -t rival_err.XXXXXX)"
-rival command megareview --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
+rival command astra --detach --workdir "$(pwd)" <"$RIVAL_IN" >"$RIVAL_OUT" 2>"$RIVAL_ERR"
 rm -f "$RIVAL_IN"
 echo "rival_out=$RIVAL_OUT rival_err=$RIVAL_ERR"
 RIVAL_PID="$(sed -n 's/^rival: detached pid=\([0-9]*\)$/\1/p' "$RIVAL_ERR" | head -1)"

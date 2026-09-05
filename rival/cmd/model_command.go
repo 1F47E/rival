@@ -52,8 +52,10 @@ func (s modelSpec) resolveEffort(requested string) (string, error) {
 		return "max", nil
 	}
 	fallback := config.DefaultReviewEffort
-	if s.commandName == config.FableLabel {
-		// Fable resolves its own configured default rather than the review one.
+	if s.commandName == config.FableLabel || s.commandName == config.AstraLabel {
+		// Fable and Astra resolve their own configured defaults rather than
+		// the shared review one: a non-empty fallback here short-circuits
+		// builtinModelEffort and would silently override Astra's xhigh.
 		fallback = ""
 	}
 	effort, err := config.ResolveEffort(s.model, requested, fallback)

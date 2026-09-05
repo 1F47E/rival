@@ -97,3 +97,10 @@ func parseArgsWithEffort(raw, defaultEffort string, validEffort func(string) boo
 	result.Prompt = s
 	return result, nil
 }
+
+// ParseAstraArgs parses raw arguments for the astra command (gpt-6-astra).
+// Identical grammar to Sol: an omitted effort stays empty so the command can
+// apply Astra's configured default.
+func ParseAstraArgs(raw string) (*ParseResult, error) {
+	return parseArgsWithEffort(raw, "", config.IsValidEffort, config.ValidEfforts)
+}

@@ -48,6 +48,7 @@ run detached and report back when done.
 | `/rival-plan` | Sol + Fable independently rate a plan/spec 1-10 and list bugs, gaps, and ambiguities (xhigh effort) | Catches wrong steps and missing pieces in a design while they're still words, with two models' blind spots covering each other |
 | `/rival-plan-sol` / `/rival-plan-fable` | Single-model plan review | When you want one specific second opinion — Sol for independence from a Claude-based session, Fable when Sol is unavailable |
 | `/rival-sol` | Any prompt, or `review [scope]`, via Sol (OpenAI Codex CLI) | An independent non-Anthropic perspective with read-only repo access — ask it anything or point it at a diff |
+| `/rival-astra` | The same single-model run on Astra (`gpt-6-astra`), Sol's deep-reasoning sibling on the same runtime | Reach for it when Sol's pass feels shallow — it defaults to xhigh effort |
 | `/rival-fable` | Code review of changed files via Fable (Claude Code CLI) | A separate Claude reviewer whose exploration stays out of your session's context |
 | `/rival-k3` | Any prompt via Kimi K3 (max reasoning, OpenCode) | A cheap opinion from a thinking-only model on a different provider |
 | `/rival-grok` | Any prompt, or `review [scope]`, via Grok (xAI CLI); opt-in only | Never in the default roster; there when you explicitly want the fourth opinion |

@@ -4,6 +4,17 @@ All notable changes to **rival** are documented here. Versions follow [semver](h
 
 ## [Unreleased]
 
+### Added — /rival-astra
+
+A single-model runner for Astra (`gpt-6-astra`), verified against the codex
+CLI before wiring. Astra is Sol's sibling on the same runtime, so it is also
+selectable in a megareview with `-m astra`.
+
+Default effort is **xhigh**, and two collisions specific to sharing a runtime
+with Sol are covered by tests: `EngineLabel`'s `codex` adapter fallback would
+otherwise label every Astra run "sol", and the command path's non-empty
+effort fallback silently overrode the xhigh default until it was fixed.
+
 ### Changed — Fable reviews run 5.1
 
 `FableModel` moves from `claude-fable-5` to `claude-fable-5-1`, verified

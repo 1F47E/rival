@@ -38,8 +38,8 @@ func RunCodexModel(ctx context.Context, sess *session.Session, prompt, effort, w
 	if model == "" {
 		model = config.GPT56SolModel
 	}
-	if model != config.GPT56SolModel {
-		return nil, fmt.Errorf("unsupported Sol model %q", model)
+	if model != config.GPT56SolModel && model != config.AstraModel {
+		return nil, fmt.Errorf("unsupported codex model %q", model)
 	}
 	args := codexRunArgs(model, effort, workdir)
 
