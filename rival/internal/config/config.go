@@ -207,7 +207,10 @@ func PublicRuntimeLog(cli, model, raw string) string {
 		switch cli {
 		case "codex":
 			if strings.HasPrefix(trimmed, "OpenAI Codex") {
-				trimmed = "Sol runtime" + strings.TrimPrefix(trimmed, "OpenAI Codex")
+				// Sol and Astra share this runtime, so the banner takes the
+				// resolved label rather than a hardcoded "Sol". Title-cased to
+				// match the display form the banner has always used.
+				trimmed = titleLabel(EngineLabel(cli, model)) + " runtime" + strings.TrimPrefix(trimmed, "OpenAI Codex")
 				body = leading + trimmed
 				bannerSeen = true
 			} else if i == 0 && strings.HasPrefix(trimmed, "Codex ") {
@@ -1040,6 +1043,30 @@ func DefaultEffortForModel(model string) string {
 	return effort
 }
 
+// titleLabel upper-cases a label's first letter for banner display. Labels
+// are lowercase everywhere else, and the codex banner has always read
+// "Sol runtime".
+func titleLabel(label string) string {
+	if label == "" {
+		return label
+	}
+	return strings.ToUpper(label[:1]) + label[1:]
+}
+
+// pinnedModelEffort reports models whose effort is a property of the model
+// rather than of the surface invoking it. K3's provider exposes exactly one
+// level; Astra is the deep-reasoning tier and is meaningless below xhigh.
+func pinnedModelEffort(label string) (string, bool) {
+	switch label {
+	case "kimi-k3":
+		return "max", true
+	case AstraLabel:
+		return "xhigh", true
+	default:
+		return "", false
+	}
+}
+
 func builtinModelEffort(label string) string {
 	switch label {
 	case SolLabel:
@@ -1097,6 +1124,13 @@ func ResolveEffort(model, override, fallback string) (string, error) {
 		}
 	}
 	fallback = strings.ToLower(strings.TrimSpace(fallback))
+	// A model that pins its own effort outranks a surface-specific fallback.
+	// Without this, every caller that passes a non-empty fallback (the
+	// megareview and plan paths both pass one) silently overrides the pin,
+	// which is how Astra ran at high instead of xhigh.
+	if pinned, ok := pinnedModelEffort(label); ok {
+		return pinned, nil
+	}
 	if fallback == "" {
 		fallback = builtinModelEffort(label)
 	}

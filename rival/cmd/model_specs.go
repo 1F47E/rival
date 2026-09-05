@@ -35,7 +35,7 @@ func astraSpec() modelSpec {
 		model:       config.AstraModel,
 		usage:       astraUsage,
 		parse:       parser.ParseAstraArgs,
-		preflight:   func(string) error { return executor.CodexPreflight() },
+		preflight:   func(string) error { return executor.CodexPreflightFor(config.AstraModel) },
 		run: func(ctx context.Context, sess *session.Session, prompt, effort, workdir string, _ bool, out io.Writer) (*executor.Result, error) {
 			return executor.RunCodexModel(ctx, sess, prompt, effort, workdir, config.AstraModel, out)
 		},

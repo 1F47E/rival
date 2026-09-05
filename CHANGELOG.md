@@ -15,6 +15,12 @@ with Sol are covered by tests: `EngineLabel`'s `codex` adapter fallback would
 otherwise label every Astra run "sol", and the command path's non-empty
 effort fallback silently overrode the xhigh default until it was fixed.
 
+A model that pins its own effort now outranks any surface-specific fallback,
+so `-m astra` in a megareview reaches xhigh instead of the shared `high` —
+verified against the session record. Explicit `-re` and `~/.rival/config.yaml`
+still win over the pin. Codex preflight errors and the runtime banner take the
+resolved label, so an Astra failure no longer reports Sol as broken.
+
 ### Changed — Fable reviews run 5.1
 
 `FableModel` moves from `claude-fable-5` to `claude-fable-5-1`, verified

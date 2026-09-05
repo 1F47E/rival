@@ -70,3 +70,49 @@ func TestAstraSelectableInMegareview(t *testing.T) {
 		t.Errorf("astra should run the bug-hunter lens, got %v", targets[0].Prompt)
 	}
 }
+
+// The pin must not outrank an explicit override or user config — silently
+// ignoring what the user asked for would be worse than the bug it fixes.
+func TestAstraPinDoesNotOverrideUserIntent(t *testing.T) {
+	if got, _ := ResolveEffort(AstraModel, "medium", "high"); got != "medium" {
+		t.Errorf("explicit -re ignored: got %q, want medium", got)
+	}
+
+	prev := userConfig
+	t.Cleanup(func() { userConfig = prev })
+	userConfig = &UserConfig{Efforts: map[string]string{AstraLabel: "high"}}
+	if got, _ := ResolveEffort(AstraModel, "", "medium"); got != "high" {
+		t.Errorf("user config ignored: got %q, want high", got)
+	}
+}
+
+// Every surface must reach xhigh, not just the single-model command. The
+// megareview and plan paths each pass their own non-empty fallback.
+func TestAstraXhighOnEverySurface(t *testing.T) {
+	for _, fallback := range []string{"", DefaultReviewEffort, DefaultPlanEffort} {
+		got, err := ResolveEffort(AstraModel, "", fallback)
+		if err != nil {
+			t.Fatalf("ResolveEffort(fallback=%q): %v", fallback, err)
+		}
+		if got != "xhigh" {
+			t.Errorf("fallback %q gave effort %q, want xhigh", fallback, got)
+		}
+	}
+}
+
+// Sol and Astra share the codex runtime, so its banner and preflight errors
+// must name the model that actually ran.
+func TestCodexBannerNamesTheRunningModel(t *testing.T) {
+	const raw = "OpenAI Codex v1.0\nready"
+	sol := PublicRuntimeLog("codex", GPT56SolModel, raw)
+	if !contains(sol, "Sol runtime") {
+		t.Errorf("sol banner regressed: %q", sol)
+	}
+	astra := PublicRuntimeLog("codex", AstraModel, raw)
+	if !contains(astra, "Astra runtime") {
+		t.Errorf("astra banner still says sol: %q", astra)
+	}
+	if contains(astra, "OpenAI Codex") {
+		t.Errorf("raw runtime name leaked: %q", astra)
+	}
+}

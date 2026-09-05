@@ -11,16 +11,26 @@ import (
 	"github.com/1F47E/rival/internal/session"
 )
 
-// CodexPreflight checks that codex is installed and authenticated.
+// CodexPreflight checks that codex is installed and authenticated, reporting
+// failures under the default Sol label. Callers running another model on this
+// runtime should use CodexPreflightFor so the diagnostic names their model.
 func CodexPreflight() error {
+	return CodexPreflightFor(config.GPT56SolModel)
+}
+
+// CodexPreflightFor is CodexPreflight with the model named in its errors.
+// Sol and Astra share this runtime, so a hardcoded label would tell an Astra
+// user that Sol is broken.
+func CodexPreflightFor(model string) error {
+	label := config.EngineLabel("codex", model)
 	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("%s runtime is not installed", config.SolLabel)
+		return fmt.Errorf("%s runtime is not installed", label)
 	}
 
 	cmd := exec.Command("codex", "login", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s authentication is unavailable\n%s", config.SolLabel, string(out))
+		return fmt.Errorf("%s authentication is unavailable\n%s", label, string(out))
 	}
 	return nil
 }
