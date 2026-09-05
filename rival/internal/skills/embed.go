@@ -13,6 +13,7 @@ import "embed"
 //go:embed all:rival-grok
 //go:embed all:rival-antislop
 //go:embed all:rival-security
+//go:embed codex.md.tmpl
 var Files embed.FS
 
 // Names lists all embedded skill directory names.
