@@ -14,7 +14,7 @@ agreed with you.
 
 ```bash
 brew install 1F47E/tap/rival
-rival install          # copies the slash commands into ~/.claude/skills/
+rival install          # Claude skills + Codex skills when Codex is detected
 ```
 
 Then set up at least one model. Sol is the usual first one:
@@ -23,7 +23,21 @@ Then set up at least one model. Sol is the usual first one:
 npm install -g @openai/codex && codex login
 ```
 
-**2. Use it from Claude Code**
+**2. Use it from Codex or Claude Code**
+
+In Codex, use `$rival-fable` to get a Fable 5.1 review of your changes:
+
+```text
+$rival-fable
+$rival-fable src/api/
+$rival-fable -re high src/api/
+```
+
+Install and authenticate the Claude Code CLI (`claude auth login`) for Fable.
+Codex launches Rival, waits with progress updates, and presents the result in
+the same turn. All eleven skills are available with `$rival-...` names.
+
+In Claude Code:
 
 ```
 /rival-review              review your changes with an independent model
@@ -37,8 +51,9 @@ moving. `/rival-review` with no arguments reviews whatever you have changed.
 
 ## Skills
 
-Installed into Claude Code by `rival install`. Each is a slash command; all
-run detached and report back when done.
+Installed by `rival install`: slash commands in Claude Code and `$rival-...`
+skills in Codex. Both launch detached runs. Claude Code uses a background
+watcher; Codex keeps the turn active and waits for the result.
 
 | Skill | What it does | Why it's useful |
 |-------|--------------|-----------------|
@@ -60,15 +75,24 @@ applies, `-m <model[,model]>`.
 
 ```bash
 brew install 1F47E/tap/rival
-rival install          # copies the embedded skills into ~/.claude/skills/
+rival install          # Claude + detected Codex
+rival install --target codex  # explicit Codex install, even without auto-detection
 ```
 
 From source: `cd rival && make install && rival install` (the Go module lives
 in the `rival/` subdirectory, so remote `go install` is not supported).
 
+Skills go to `~/.claude/skills` for Claude and `~/.agents/skills` for Codex.
+`--target auto` (default) preserves Claude installation and adds Codex when its
+CLI, `~/.codex`/`CODEX_HOME` directory, or macOS app is present. `--target claude`,
+`codex`, or `all` overrides detection. `CODEX_HOME` is a detection signal; the
+Codex skill destination remains the documented user directory, `~/.agents/skills`.
+
 Upgrade with `rival update` (equivalent: `brew upgrade 1F47E/tap/rival &&
-rival install --force`), then restart or reload Claude Code so it picks up the
-refreshed skills.
+rival install --force`). It installs skills using the upgraded binary and also
+refreshes skills when the binary is already current, including for a newly
+installed Codex. Restart or reload the host if refreshed skills do not appear.
+To refresh only Codex, use `rival install --target codex --force`.
 
 ### Provider setup
 
@@ -84,8 +108,10 @@ skipped, not fatal.
   `brew install anomalyco/tap/opencode`) plus a
   [Kimi API key](https://platform.kimi.ai/console/api-keys) in
   `MOONSHOT_API_KEY` (project `.env` or shell export; keep `.env` gitignored).
-- **Fable** — the [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
-  CLI already hosting the skills, authenticated via its normal `/login`. See
+- **Fable 5.1** — the [Claude Code](https://code.claude.com/docs/en/overview)
+  CLI, authenticated with `claude auth login` or `/login`, even when Codex is
+  the host. Review restrictions were verified with Claude Code 2.1.263; update
+  the CLI if it rejects `--safe-mode` or another review flag. See
   [Fable auth](#fable-auth) for subscription-vs-API billing.
 - **Grok** (optional) — [Grok CLI](https://docs.x.ai/) with `grok login`
   (browser OAuth; `XAI_API_KEY` is deliberately unsupported — Rival blocks the
@@ -105,6 +131,14 @@ skipped, not fatal.
 /rival-k3 review src/api/
 /rival-grok review src/api/                — opt-in
 ```
+
+Fable code, plan, and antislop reviews expose only Read, Glob, and Grep.
+Shell execution, edits, MCP tools, and user/project hooks and plugins are disabled;
+the Docker transport additionally mounts the repository read-only. Fable can
+read source and follow imports, but cannot run tests or git commands itself.
+Rival performs git scope detection before starting the reviewer. These are CLI
+tool restrictions, not an OS sandbox for the native Claude process. Raw Fable
+prompts retain their existing full-auto behavior.
 
 Scope auto-detection via git: dirty files first, else last commit, else the
 full project. The scope is a focus hint, not a restriction — reviewers have
@@ -269,8 +303,9 @@ crashed slot-holder is reaped automatically.
 **`--detach`** re-execs rival into its own process session and returns
 immediately — the run survives the launching shell's teardown. **`rival wait
 --log <stderr-file>`** blocks until the detached run finishes (exit codes: 0
-completed · 2 failed · 3 crashed · 4 timed out); the skills arm it as a
-background watcher so your session never blocks.
+completed · 2 failed · 3 crashed · 4 timed out); Claude skills arm it as a
+background watcher; Codex skills wait through a resumable shell session and
+present the result before ending the turn.
 
 ## Architecture
 
@@ -299,14 +334,14 @@ unified verdict. TUI/web group sessions by GroupID.
 ```
 
 Key decisions: reviewers get real read-only repo access, not pasted diffs;
-skills are fully async (detached + watcher); stdin goes through Write-tool
-tempfiles, never shell echo; child env is sanitized; a failed reviewer never
+runs are detached, with host-specific waiting; stdin goes through safely written
+tempfiles; child env is sanitized; a failed reviewer never
 kills the run; unparseable reviewer output reaches the judge as a stub with a
 2KB debug tail instead of overflowing the prompt.
 
 ## Fable auth
 
-Fable runs through the authenticated host Claude Code CLI and bills your
+Fable runs through the authenticated Claude Code CLI and bills your
 **subscription login** by default — an exported `ANTHROPIC_API_KEY` is
 stripped from the child env so the CLI can't silently switch to API billing.
 
@@ -339,6 +374,7 @@ appends an actionable hint (not logged in → run `claude` and `/login`).
 
 ```bash
 rm -rf ~/.claude/skills/rival-*
+rm -rf ~/.agents/skills/rival-*
 brew uninstall rival        # if installed via brew
 # source install: rm "$(go env GOBIN 2>/dev/null || echo "$(go env GOPATH)/bin")/rival"
 ```

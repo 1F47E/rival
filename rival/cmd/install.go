@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +16,7 @@ import (
 )
 
 var forceInstall bool
+var installTarget string
 
 // retiredSkillNameHashes lets upgrades remove two retired integration skills
 // without retaining their obsolete public names anywhere in the shipped tree.
@@ -25,12 +28,14 @@ var retiredSkillNameHashes = map[string]struct{}{
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install slash-command skills to ~/.claude/skills/",
+	Short: "Install skills for Claude Code and Codex",
+	Args:  cobra.NoArgs,
 	RunE:  runInstall,
 }
 
 func init() {
 	installCmd.Flags().BoolVar(&forceInstall, "force", false, "overwrite without prompting")
+	installCmd.Flags().StringVar(&installTarget, "target", "auto", "skill host: auto, claude, codex, all")
 	rootCmd.AddCommand(installCmd)
 }
 
@@ -39,15 +44,79 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("get home dir: %w", err)
 	}
-	targetBase := filepath.Join(home, ".claude", "skills")
-	fmt.Printf("Installing skills to %s\n\n", targetBase)
+	targets, err := skillTargets(home, installTarget, codexInstalled(home))
+	if err != nil {
+		return err
+	}
+	if installTarget == "auto" && len(targets) == 1 {
+		cmd.Println("Codex not detected; skipped (use --target codex to install explicitly).")
+	}
+	return installTargets(cmd, targets, forceInstall)
+}
 
+type skillTarget struct{ host, base string }
+
+func skillTargets(home, target string, hasCodex bool) ([]skillTarget, error) {
+	claude := skillTarget{"claude", filepath.Join(home, ".claude", "skills")}
+	codex := skillTarget{"codex", filepath.Join(home, ".agents", "skills")}
+	switch target {
+	case "auto":
+		if hasCodex {
+			return []skillTarget{claude, codex}, nil
+		}
+		return []skillTarget{claude}, nil
+	case "claude":
+		return []skillTarget{claude}, nil
+	case "codex":
+		return []skillTarget{codex}, nil
+	case "all":
+		return []skillTarget{claude, codex}, nil
+	default:
+		return nil, fmt.Errorf("unknown install target %q; use auto, claude, codex, or all", target)
+	}
+}
+
+func codexInstalled(home string) bool {
+	return detectCodex(home, "/Applications")
+}
+
+func detectCodex(home, applications string) bool {
+	if _, err := exec.LookPath("codex"); err == nil {
+		return true
+	}
+	for _, path := range []string{os.Getenv("CODEX_HOME"), filepath.Join(home, ".codex"), filepath.Join(home, "Applications", "Codex.app"), filepath.Join(applications, "Codex.app")} {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func installTargets(cmd *cobra.Command, targets []skillTarget, force bool) error {
+	reader := bufio.NewReader(cmd.InOrStdin())
+	for _, target := range targets {
+		if err := installSkills(target, force, reader, cmd.OutOrStdout()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installSkills(target skillTarget, force bool, reader *bufio.Reader, out io.Writer) error {
+	targetBase := target.base
+	_, _ = fmt.Fprintf(out, "Installing %s skills to %s\n\n", target.host, targetBase)
 	var installed, updated, skipped int
 
 	for _, name := range skills.Names {
 		srcContent, srcVersion, err := readEmbeddedSkill(name)
 		if err != nil {
 			return fmt.Errorf("read embedded skill %s: %w", name, err)
+		}
+		if target.host == "codex" {
+			srcContent, err = skills.CodexSkill(name, srcVersion)
+			if err != nil {
+				return err
+			}
 		}
 
 		targetDir := filepath.Join(targetBase, name)
@@ -58,7 +127,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			if err := writeSkill(targetDir, targetFile, srcContent); err != nil {
 				return err
 			}
-			fmt.Printf("  ✓ %s — installed (v%s)\n", name, srcVersion)
+			_, _ = fmt.Fprintf(out, "  ✓ %s — installed (v%s)\n", name, srcVersion)
 			installed++
 			continue
 		}
@@ -70,19 +139,18 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 		dstVersion := parseVersion(string(existingContent))
 
-		if srcVersion == dstVersion && !forceInstall {
-			fmt.Printf("  · %s — already up to date (v%s)\n", name, srcVersion)
+		if srcVersion == dstVersion && !force {
+			_, _ = fmt.Fprintf(out, "  · %s — already up to date (v%s)\n", name, srcVersion)
 			skipped++
 			continue
 		}
 
-		if !forceInstall {
-			fmt.Printf("  ? %s — update v%s → v%s? [y/N] ", name, dstVersion, srcVersion)
-			reader := bufio.NewReader(os.Stdin)
+		if !force {
+			_, _ = fmt.Fprintf(out, "  ? %s — update v%s → v%s? [y/N] ", name, dstVersion, srcVersion)
 			answer, _ := reader.ReadString('\n')
 			answer = strings.TrimSpace(strings.ToLower(answer))
 			if answer != "y" && answer != "yes" {
-				fmt.Printf("    skipped\n")
+				_, _ = fmt.Fprintf(out, "    skipped\n")
 				skipped++
 				continue
 			}
@@ -91,7 +159,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if err := writeSkill(targetDir, targetFile, srcContent); err != nil {
 			return err
 		}
-		fmt.Printf("  ✓ %s — updated (v%s → v%s)\n", name, dstVersion, srcVersion)
+		_, _ = fmt.Fprintf(out, "  ✓ %s — updated (v%s → v%s)\n", name, dstVersion, srcVersion)
 		updated++
 	}
 
@@ -101,23 +169,23 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		targetDir := filepath.Join(targetBase, name)
 		if _, err := os.Stat(targetDir); err == nil {
 			if err := os.RemoveAll(targetDir); err != nil {
-				fmt.Println("  ✗ deprecated skill cleanup failed — check permissions in the skills directory")
+				_, _ = fmt.Fprintln(out, "  ✗ deprecated skill cleanup failed — check permissions in the skills directory")
 			} else {
-				fmt.Println("  🗑 deprecated skill removed")
+				_, _ = fmt.Fprintln(out, "  🗑 deprecated skill removed")
 				removed++
 			}
 		}
 	}
 	hashRemoved, err := removeSkillDirsByHash(targetBase, retiredSkillNameHashes)
 	if err != nil {
-		fmt.Println("  ✗ retired skill cleanup failed — check permissions in the skills directory")
+		_, _ = fmt.Fprintln(out, "  ✗ retired skill cleanup failed — check permissions in the skills directory")
 	} else if hashRemoved > 0 {
-		fmt.Printf("  🗑 %d retired skill(s) removed\n", hashRemoved)
+		_, _ = fmt.Fprintf(out, "  🗑 %d retired skill(s) removed\n", hashRemoved)
 		removed += hashRemoved
 	}
 
-	fmt.Println()
-	fmt.Printf("Done: %d installed, %d updated, %d up to date, %d removed\n", installed, updated, skipped, removed)
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "Done: %d installed, %d updated, %d up to date, %d removed\n", installed, updated, skipped, removed)
 	return nil
 }
 

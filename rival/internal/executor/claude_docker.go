@@ -91,18 +91,13 @@ func buildClaudeDockerImage() error {
 }
 
 // runClaudeDocker executes Fable through the Claude Code CLI inside Docker.
-func runClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+func runClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, readOnly bool, mirror io.Writer) (*Result, error) {
 	if model != config.FableModel {
 		return nil, fmt.Errorf("unsupported Claude Code model %q", model)
 	}
 	token := os.Getenv(config.ClaudeDockerTokenEnv)
 	if token == "" {
 		return nil, fmt.Errorf("%s env var not set", config.ClaudeDockerTokenEnv)
-	}
-
-	claudeEffort := config.ClaudeEffortLevel[effort]
-	if claudeEffort == "" {
-		claudeEffort = "max"
 	}
 
 	// Ensure workdir is absolute for Docker volume mount.
@@ -115,21 +110,18 @@ func runClaudeDocker(ctx context.Context, sess *session.Session, prompt, effort,
 		absWorkdir = wd + "/" + workdir
 	}
 
+	mount := absWorkdir + ":/workspace"
+	if readOnly {
+		mount += ":ro"
+	}
 	args := []string{
 		"run", "--rm", "-i",
-		"-v", absWorkdir + ":/workspace",
+		"-v", mount,
 		"-w", "/workspace",
 		"-e", "ANTHROPIC_AUTH_TOKEN=" + token,
 		claudeDockerImage,
-		// Claude args (entrypoint is "claude"):
-		"-p",
-		"--model", model,
-		"--effort", claudeEffort,
-		"--output-format", "text",
-		"--no-session-persistence",
-		"--dangerously-skip-permissions",
-		"--system-prompt", config.SystemPrompt,
 	}
+	args = append(args, claudeArgs(model, effort, readOnly)...)
 
 	fullPrompt := config.BuildWorkdirPreamble(workdir) + "\n" + prompt
 	return RunSubprocess(ctx, sess, "docker", args, nil, fullPrompt, mirror)

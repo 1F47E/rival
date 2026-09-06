@@ -1,13 +1,90 @@
 package executor
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/1F47E/rival/internal/config"
 	"github.com/1F47E/rival/internal/session"
 )
+
+func TestFableReviewTransportRestrictions(t *testing.T) {
+	for _, mode := range []string{"review", "plan", "antislop", "raw"} {
+		t.Run(mode, func(t *testing.T) {
+			home, bin, repo := t.TempDir(), t.TempDir(), t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("PATH", bin)
+			t.Setenv("CLAUDECODE", "1")
+			t.Setenv("RIVAL_CLAUDE_AUTH", "subscription")
+			t.Setenv("ANTHROPIC_API_KEY", "should-not-reach-child")
+			fake := "#!/bin/sh\n[ -z \"$CLAUDECODE\" ] || exit 10\n[ -z \"$ANTHROPIC_API_KEY\" ] || exit 11\nprintf '%s\\n' \"$@\"\n"
+			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(fake), 0700); err != nil {
+				t.Fatal(err)
+			}
+			sess, err := session.NewQueued("claude", mode, config.FableModel, "medium", repo, "review", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			result, err := RunFable(context.Background(), sess, "review", "medium", repo, &out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ExitCode != 0 {
+				t.Fatalf("child exit %d", result.ExitCode)
+			}
+			args := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+			if !slices.Contains(args, config.FableModel) {
+				t.Fatal("Fable model not selected")
+			}
+			if mode == "raw" {
+				if !slices.Contains(args, "--dangerously-skip-permissions") || slices.Contains(args, "--tools") {
+					t.Fatal("raw prompt behavior changed")
+				}
+				return
+			}
+			if slices.Contains(args, "--dangerously-skip-permissions") {
+				t.Fatal("review bypasses permissions")
+			}
+			for flag, want := range map[string]string{"--tools": "Read,Glob,Grep", "--permission-mode": "dontAsk", "--disallowedTools": "mcp__*", "--setting-sources": "", "--settings": `{"disableAllHooks":true}`, "--mcp-config": `{"mcpServers":{}}`} {
+				i := slices.Index(args, flag)
+				if i < 0 || i+1 >= len(args) || args[i+1] != want {
+					t.Fatalf("missing restriction %s %s in %v", flag, want, args)
+				}
+			}
+			if !slices.Contains(args, "--safe-mode") || !slices.Contains(args, "--strict-mcp-config") {
+				t.Fatal("review loads customizations")
+			}
+		})
+	}
+}
+
+func TestFableDockerReviewMountIsReadOnly(t *testing.T) {
+	bin, home, repo := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin)
+	t.Setenv(config.ClaudeDockerTokenEnv, "fixture-token")
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := session.NewQueued("claude", "review", config.FableModel, "medium", repo, "review", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	result, err := RunFable(context.Background(), sess, "review", "medium", repo, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 || !strings.Contains(out.String(), repo+":/workspace:ro\n") || !strings.Contains(out.String(), "Read,Glob,Grep") {
+		t.Fatalf("unsafe Docker review: %s", out.String())
+	}
+}
 
 func TestClaudeAuthHint(t *testing.T) {
 	writeLog := func(t *testing.T, content string) string {

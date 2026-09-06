@@ -34,14 +34,15 @@ func runClaudeModel(ctx context.Context, sess *session.Session, prompt, effort, 
 	if model != config.FableModel {
 		return nil, fmt.Errorf("unsupported Claude Code model %q", model)
 	}
+	readOnly := sess.Mode == "review" || session.IsTaskMode(sess.Mode)
 	var result *Result
 	var err error
 	if _, lookErr := exec.LookPath("claude"); lookErr == nil {
 		setClaudeTransportMode(sess, "native")
-		result, err = runClaudeNative(ctx, sess, prompt, effort, workdir, model, mirror)
+		result, err = runClaudeNative(ctx, sess, prompt, effort, workdir, model, readOnly, mirror)
 	} else {
 		setClaudeTransportMode(sess, "docker")
-		result, err = runClaudeDocker(ctx, sess, prompt, effort, workdir, model, mirror)
+		result, err = runClaudeDocker(ctx, sess, prompt, effort, workdir, model, readOnly, mirror)
 	}
 	if err != nil {
 		label := config.EngineLabel("claude", model)
@@ -63,7 +64,7 @@ func setClaudeTransportMode(sess *session.Session, transport string) {
 	sess.Mode = transport
 }
 
-func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, mirror io.Writer) (*Result, error) {
+func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort, workdir, model string, readOnly bool, mirror io.Writer) (*Result, error) {
 	auth, err := config.ClaudeAuth()
 	if err != nil {
 		return nil, err
@@ -74,28 +75,35 @@ func runClaudeNative(ctx context.Context, sess *session.Session, prompt, effort,
 	// Subscription mode: the claude CLI is already authed via /login. An
 	// inherited ANTHROPIC_API_KEY would silently win over that login and bill
 	// API credits — strip it so billing stays on the subscription.
-	var dropEnv []string
+	dropEnv := []string{"CLAUDECODE"}
 	if auth == config.ClaudeAuthSubscription {
-		dropEnv = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
+		dropEnv = append(dropEnv, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 	}
 
+	args := claudeArgs(model, effort, readOnly)
+
+	fullPrompt := config.BuildWorkdirPreamble(workdir) + "\n" + prompt
+	return RunSubprocess(ctx, sess, "claude", args, nil, fullPrompt, mirror, dropEnv...)
+}
+
+// claudeArgs restricts the available tools, not just auto-approved tools.
+// Safe mode prevents repository/user hooks and plugins from executing around
+// those tools while preserving the CLI's subscription authentication.
+func claudeArgs(model, effort string, readOnly bool) []string {
 	claudeEffort := config.ClaudeEffortLevel[effort]
 	if claudeEffort == "" {
 		claudeEffort = "max"
 	}
-
-	args := []string{
-		"-p",
-		"--model", model,
-		"--effort", claudeEffort,
-		"--output-format", "text",
-		"--no-session-persistence",
-		"--dangerously-skip-permissions",
-		"--system-prompt", config.SystemPrompt,
+	args := []string{"-p", "--model", model, "--effort", claudeEffort,
+		"--output-format", "text", "--no-session-persistence", "--system-prompt", config.SystemPrompt}
+	if readOnly {
+		return append(args, "--safe-mode", "--setting-sources", "",
+			"--settings", `{"disableAllHooks":true}`,
+			"--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`,
+			"--tools", "Read,Glob,Grep", "--allowedTools", "Read,Glob,Grep",
+			"--disallowedTools", "mcp__*", "--permission-mode", "dontAsk")
 	}
-
-	fullPrompt := config.BuildWorkdirPreamble(workdir) + "\n" + prompt
-	return RunSubprocess(ctx, sess, "claude", args, nil, fullPrompt, mirror, dropEnv...)
+	return append(args, "--dangerously-skip-permissions")
 }
 
 // claudeAuthMarkers are CLI output fragments that indicate an auth/billing

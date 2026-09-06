@@ -9,7 +9,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Source of truth: the embedded skills compiled into the binary. The repo-root
 # .claude/skills/ copies were removed — `rival install` copies these out to
-# ~/.claude/skills/ on install/update, so there is no second copy to keep in sync.
+# Claude skills and renders Codex skills on install/update. Both inherit this
+# version, so there is no second version list to keep in sync.
 # Deprecated skill directories are skipped because they are removed on install.
 # Derived from embed.go's Names list rather than repeated here: a static copy
 # silently skips a newly added skill, and a skill whose version never moves is

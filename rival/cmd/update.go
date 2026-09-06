@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/1F47E/rival/internal/update"
 	"github.com/spf13/cobra"
@@ -19,18 +22,27 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	current := Version
-
 	// Check latest release from GitHub
 	fmt.Print("Checking for updates... ")
 	latest, err := update.FetchLatest()
 	if err != nil {
 		return fmt.Errorf("check latest version: %w", err)
 	}
+	return updateToVersion(cmd, Version, latest)
+}
 
+func updateToVersion(cmd *cobra.Command, current, latest string) error {
 	if latest == current {
 		fmt.Printf("already on latest (v%s)\n", current)
-		return nil
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		targets, err := skillTargets(home, "auto", codexInstalled(home))
+		if err != nil {
+			return err
+		}
+		return installTargets(cmd, targets, true)
 	}
 
 	fmt.Printf("v%s → v%s\n\n", current, latest)
@@ -53,11 +65,25 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Reinstall skills
 	fmt.Println("\nUpdating skills...")
-	forceInstall = true
-	if err := runInstall(cmd, nil); err != nil {
+	prefixCmd := exec.CommandContext(cmd.Context(), "brew", "--prefix", "rival")
+	prefix, err := prefixCmd.Output()
+	if err != nil {
+		return fmt.Errorf("locate upgraded rival: %w", err)
+	}
+	binary := filepath.Join(strings.TrimSpace(string(prefix)), "bin", "rival")
+	if err := installUpdatedSkills(cmd, binary); err != nil {
 		return fmt.Errorf("install skills: %w", err)
 	}
 
 	fmt.Printf("\n✓ Updated to v%s\n", latest)
 	return nil
+}
+
+// Re-exec the Homebrew installation: this process still embeds the old skills.
+func installUpdatedSkills(cmd *cobra.Command, binary string) error {
+	install := exec.CommandContext(cmd.Context(), binary, "install", "--force", "--target", "auto")
+	install.Stdin = cmd.InOrStdin()
+	install.Stdout = cmd.OutOrStdout()
+	install.Stderr = cmd.ErrOrStderr()
+	return install.Run()
 }
